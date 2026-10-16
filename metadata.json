@@ -1,0 +1,6 @@
+{
+  "name": "MASTER_BOY",
+  "description": "MASTER_BOY platform with trusted backend API v1.2.0 and native Android client experience for craftsmen and clients.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

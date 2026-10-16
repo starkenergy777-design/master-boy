@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // All Firestore access is server-side through the Cloud Run service account.
+    // No browser/client access is permitted.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "superadmin_config": {
+      "title": "SuperAdminConfig",
+      "description": "Persisted superadministrator configurations including prices, ads, and keys",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "description": "Config version"
+        },
+        "lastPersistedAt": {
+          "type": "string",
+          "description": "Timestamp when config was saved"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/superadmin_config/{docId}": {
+      "schema": "superadmin_config",
+      "description": "Stores individual configuration documents for superadmin settings"
+    }
+  }
+}
