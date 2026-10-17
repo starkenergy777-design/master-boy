@@ -10,6 +10,8 @@ RUN unzip -q /tmp/master-boy-source.zip -d /app
 # Apply the reviewed Supabase/Render runtime changes maintained beside the archive.
 COPY deploy.patch /tmp/deploy.patch
 RUN patch --batch -p1 -d /app -i /tmp/deploy.patch
+COPY registration.patch /tmp/registration.patch
+RUN patch --batch -p1 -d /app -i /tmp/registration.patch
 
 RUN npm install --no-audit --no-fund
 RUN npm run build
