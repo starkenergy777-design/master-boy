@@ -1,0 +1,149 @@
+diff --git a/package.json b/package.json
+index 6ce9bf9..79cc1f1 100644
+--- a/package.json
++++ b/package.json
+@@ -15,5 +15,4 @@
+   },
+   "dependencies": {
+-    "@google-cloud/firestore": "^9.3.1",
+     "@google/genai": "^2.4.0",
+     "@tailwindcss/vite": "^4.3.3",
+diff --git a/.env.example b/.env.example
+index 4e4b22d..44b9968 100644
+--- a/.env.example
++++ b/.env.example
+@@ -3,4 +3,5 @@ NODE_ENV=production
+ 
+ DATABASE_URL=
++DB_POOL_MAX=4
+ BOOTSTRAP_PHONE=
+ BOOTSTRAP_PASSWORD=
+@@ -26,5 +27,4 @@ RECIPIENT_BENEFICIARY=
+ RECIPIENT_TAX_NUMBER=
+ 
+-FIRESTORE_PROJECT_ID=
+ APP_URL=
+ APP_ORIGIN=
+@@ -33,4 +33,4 @@ SMS_WEBHOOK_URL=
+ PAYMENTS_SIMULATION=false
+ 
+-# Required for production durability
++# Supabase Postgres is required for production durability.
+ REQUIRE_DURABLE_STORAGE=true
+diff --git a/.gitignore b/.gitignore
+index 5a86d2a..c5bd5cb 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,3 +1,7 @@
+ node_modules/
++.npm-cache/
++.patch-base/
++.patch-new/
++base-source.zip
+ build/
+ dist/
+diff --git a/README.md b/README.md
+index 8dbb752..9abd5f8 100644
+--- a/README.md
++++ b/README.md
+@@ -1,163 +1,41 @@
+-# MASTER_BOY — ხელოსნების ეროვნული პლატფორმა (Full-Stack Application)
++# MASTER_BOY
+ 
+-პროფესიონალი ხელოსნების საძიებო და მართვის სისტემა რეალურ დროში, სამენოვანი მხარდაჭერით (ქართული, რუსული, ინგლისური), GPS რუკით, 180-დღიანი ხელოსნის გამოწერის ციკლით, TOP 15 პრემიუმ სლოტების ბილინგით (BOG, TBC, Stripe), საიდუმლო Staff ადმინ CRM-ით, საიდუმლო სუპერ ადმინისტრატორით და ავტონომიური Gemini AI დამხმარით.
++სამენოვანი (ქართული, რუსული, ინგლისური) ხელოსნების საძიებო და მართვის აპლიკაცია. Frontend აგებულია React/Vite-ზე, API — Node.js/Express-ზე, ხოლო მომხმარებლების, პროფილების, გამოწერების, ფასების და ადმინისტრაციული ჩანაწერების მუდმივი საცავი Supabase PostgreSQL-ია.
+ 
+----
++## ლოკალურად გაშვება
+ 
+-## 🚀 სწრაფი დაწყება (Quick Start)
++    npm install
++    npm run dev
+ 
+-### 1. დამოკიდებულებების ინსტალაცია
+-```bash
+-npm install
+-```
++ლოკალურ რეჟიმში აპი იყენებს ჩაშენებულ კატალოგებს და დროებით მეხსიერებას. Supabase-ის ლოკალური ან დისტანციური DATABASE_URL შეიძლება ჩაიწეროს .env-ში.
+ 
+-### 2. გარემოს ცვლადების კონფიგურაცია
+-დააკოპირეთ `.env.example` ფაილი `.env`-ად:
+-```bash
+-cp .env.example .env
+-```
++## Supabase მონაცემთა ბაზა
+ 
+-### 3. აპლიკაციის გაშვება (Development)
+-```bash
+-npm run dev
+-```
+-აპლიკაცია გაეშვება `http://localhost:3000`-ზე (Express REST API v1.2.0 + Vite Frontend HMR).
++მიგრაციები ინარჩუნებს არსებულ სქემასა და მონაცემებს. 004_runtime_storage.sql ამატებს აპისთვის საჭირო ველებსა და ცხრილებს, ქმნის masterboy_app მონაცემთა ბაზის როლს და აძლევს სერვერზე წვდომას RLS პოლიტიკების გავლით. სერვისის როლს system_config-ში პროვაიდერების საიდუმლო ველებზე წვდომა არ აქვს.
+ 
+----
++მიგრაციები ავტომატურად არ იშვება აპის გაშვებისას. ისინი უნდა გაეშვას Supabase migration tool-ით ან npm run migrate ბრძანებით. Seed migration-ში არსებული მომხმარებლებისა და ხელოსნების ჩანაწერები ინახება და აპიდან იკითხება.
+ 
+-## 🗄️ მონაცემთა ბაზა და მიგრაციები (Database & Migrations)
++სერვერის გარემოს ცვლადები:
+ 
+-სისტემა შეიცავს მზა PostgreSQL მიგრაციის ფაილებს `migrations/` დირექტორიაში:
++- DATABASE_URL — masterboy_app უფლებებით დაკავშირებული Supabase PostgreSQL connection string.
++- ADMIN_PHONE, ADMIN_PASSWORD — ადმინისტრატორის შესვლის მონაცემები.
++- BOOTSTRAP_PHONE, BOOTSTRAP_PASSWORD — სუპერ ადმინისტრატორის საწყისი შესვლის მონაცემები.
++- APP_URL, APP_ORIGIN — Render-ის საჯარო მისამართი; CORS-ში გამოიყენება იგივე დომენი.
++- GEMINI_API_KEY, BOG_*, TBC_*, STRIPE_*, SMS_WEBHOOK_URL — მხოლოდ საჭიროებისას, Render-ის საიდუმლო გარემოს ცვლადებში.
+ 
+-- **`migrations/001_initial_schema.sql`**: სრული DDL სქემა — ცხრილები, უცხოური გასაღებები (FK), ინდექსები, ENUM ტიპები (`users`, `craftsmen`, `cities`, `professions`, `listings`, `top15`, `payments`, `audit_logs` და სხვა).
+-- **`migrations/002_seed_data.sql`**: საქართველოს 8 ქალაქი, 8 ძირითადი პროფესია, საწყისი TOP 15 ფასები, სუპერ ადმინი და სატესტო ხელოსნები.
++პროვაიდერის საიდუმლოები frontend-ში ან PostgreSQL-ში არ შეინახოთ. გადახდის endpoint-ები ნამდვილ პროვაიდერთან და callback-ის შემოწმებასთან კავშირის გარეშე გადახდას წარმატებულად არ მონიშნავს.
+ 
+-### მიგრაციების გაშვება:
+-```bash
+-# 1. მიუთითეთ თქვენი PostgreSQL / Supabase / Neon ბაზის ბმული
+-export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/master_boy"
++## Render-ზე განთავსება
+ 
+-# 2. გაუშვით მიგრატორი
+-npm run migrate
+-```
++Render Web Service იყენებს რეპოზიტორიის codex/master-boy-supabase-render ტოტს და root Dockerfile-ს. რეგიონი: Frankfurt. Build და start ბრძანებები Dockerfile-შია. საჭიროა DATABASE_URL, ადმინისტრატორისა და სუპერადმინისტრატორის პაროლები, ასევე APP_URL / APP_ORIGIN; ცარიელი საიდუმლო ცვლადები არ დაამატოთ.
+ 
+-ან `psql`-ის მეშვეობით:
+-```bash
+-psql -d "YOUR_DATABASE_URL" -f migrations/001_initial_schema.sql
+-psql -d "YOUR_DATABASE_URL" -f migrations/002_seed_data.sql
+-```
++/health პასუხობს 503-ით, სანამ Supabase-ის კავშირი მზად არ იქნება. /api/v1/health იმავე მდგომარეობას აბრუნებს.
+ 
+----
++## მონაცემთა დაცვა და არქიტექტურა
+ 
+-## 🐳 Docker Deployment
+-
+-სრული პროექტის გაშვება PostgreSQL 16 ბაზით Docker-ში:
+-```bash
+-docker compose up -d
+-```
+-Docker ავტომატურად:
+-1. გაუშვებს PostgreSQL კონტეინერს პორტზე `5432`.
+-2. შეასრულებს `001_initial_schema.sql` და `002_seed_data.sql` მიგრაციებს.
+-3. ააგებს და გაუშვებს Node.js სერვერს პორტზე `3000`.
+-
+----
+-
+-## 🔑 საწყისი ანგარიშები და წვდომები
+-
+-| როლი | ტელეფონის ნომერი | პაროლი | აღწერა |
+-| :--- | :--- | :--- | :--- |
+-| **სუპერ ადმინისტრატორი** | `BOOTSTRAP_PHONE` | `BOOTSTRAP_PASSWORD` | 6-თვიანი Config Lock, საბანკო IBAN, AI რეპორტები |
+-| **Staff ადმინისტრატორი** | `ADMIN_PHONE` | `ADMIN_PASSWORD` | CRM ხელოსნების მართვა, ბლოკირება/განბლოკვა, ფასები |
+-| **სატესტო ხელოსანი** | `+995599112233` | პაროლი არ ინახება README-ში | გიორგი ბერიძე (სანტექნიკოსი, თბილისი) |
+-
+-*შენიშვნა: ადმინისტრატორების შესასვლელი საჯარო ინტერფეისში დამალულია — ავტორიზაცია ხდება ხელოსნის შესასვლელი ფანჯრიდან შესაბამისი ნომრითა და პაროლით.*
+-
+----
+-
+-## 🛠️ Build & Production
+-
+-```bash
+-#
