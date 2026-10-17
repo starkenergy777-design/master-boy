@@ -1,8 +1,143 @@
 diff --git a/server/routes.ts b/server/routes.ts
-index 3470858..adef292 100644
+index 3470858..b2b27e9 100644
 --- a/server/routes.ts
 +++ b/server/routes.ts
-@@ -657,6 +657,16 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
+@@ -18,12 +18,20 @@ export const apiRouter = Router();
+ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+ const OTP_TTL_MS = 5 * 60 * 1000;
+ const MAX_OTP_ATTEMPTS = 5;
++const MAX_RATE_BUCKETS = 10_000;
+ const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+ 
+ function rateLimit(key: string, limit: number, windowMs: number): boolean {
+   const now = Date.now();
+   const current = rateBuckets.get(key);
+   if (!current || current.resetAt <= now) {
++    if (current) rateBuckets.delete(key);
++    if (rateBuckets.size >= MAX_RATE_BUCKETS) {
++      for (const [bucketKey, bucket] of rateBuckets) {
++        if (bucket.resetAt <= now) rateBuckets.delete(bucketKey);
++      }
++      if (rateBuckets.size >= MAX_RATE_BUCKETS) return false;
++    }
+     rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+     return true;
+   }
+@@ -36,6 +44,12 @@ function safeUser(user: User) {
+   return { id: user.id, phone: user.phone, roles: user.roles, status: user.status, createdAt: user.createdAt };
+ }
+ 
++function safeAdminCraftsman(craftsman: Craftsman | undefined) {
++  if (!craftsman) return null;
++  const { bankAccount: _bankAccount, ...safeCraftsman } = craftsman;
++  return safeCraftsman;
++}
++
+ function safeAdvertisement(ad: any) {
+   if (!ad) return ad;
+   const { password, ...publicData } = ad;
+@@ -59,12 +73,18 @@ function validateHttpUrl(value: unknown, field: string, allowEmpty = true): stri
+ function safeProvider(provider: any) {
+   if (!provider) return provider;
+   const clone = { ...provider };
+-  for (const field of ['apiKey','secretKey','clientId','webhookSecret']) {
+-    if (clone[field]) clone[field] = '********';
++  for (const field of ['apiKey', 'secretKey', 'webhookSecret']) {
++    clone[`${field}Configured`] = typeof clone[field] === 'string' && clone[field].length > 0;
++    delete clone[field];
+   }
++  if (clone.apiKeyConfigured) clone.apiKeyMasked = '********';
+   return clone;
+ }
+ 
++function isProviderType(value: string): value is 'payment' | 'sms' | 'email' {
++  return value === 'payment' || value === 'sms' || value === 'email';
++}
++
+ function requireRealPaymentIntegration(res: Response): boolean {
+   if (process.env.NODE_ENV === 'production') {
+     res.status(503).json({
+@@ -177,6 +197,43 @@ function requireAdPartner(req: AuthRequest, res: Response, next: NextFunction) {
+   });
+ }
+ 
++function canManageAccount(req: AuthRequest, res: Response, target: User, action: 'block' | 'unblock' | 'delete'): boolean {
++  if (target.id === req.user?.id) {
++    res.status(409).json({ code: 'CANNOT_MANAGE_SELF', message: 'You cannot change your own account status.' });
++    return false;
++  }
++
++  const isStaff = target.roles.some(role => role === 'ADMIN' || role === 'SUPER_ADMIN');
++  const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') === true;
++  if (isStaff && !isSuperAdmin) {
++    res.status(403).json({ code: 'STAFF_ACCOUNT_REQUIRES_SUPER_ADMIN', message: 'Only a super administrator can manage administrator accounts.' });
++    return false;
++  }
++
++  if (action === 'unblock' && target.status === 'DELETED') {
++    res.status(409).json({ code: 'DELETED_ACCOUNT_CANNOT_BE_RESTORED', message: 'Deleted accounts cannot be reactivated.' });
++    return false;
++  }
++
++  if ((action === 'block' || action === 'delete') && target.roles.includes('SUPER_ADMIN') && target.status === 'ACTIVE') {
++    const activeSuperAdmins = Array.from(db.users.values()).filter(user =>
++      user.roles.includes('SUPER_ADMIN') && user.status === 'ACTIVE'
++    ).length;
++    if (activeSuperAdmins <= 1) {
++      res.status(409).json({ code: 'LAST_SUPER_ADMIN', message: 'The last active super administrator cannot be blocked or deleted.' });
++      return false;
++    }
++  }
++
++  return true;
++}
++
++function revokeUserSessions(userId: string): void {
++  for (const [token, session] of db.sessions) {
++    if (session.userId === userId) db.sessions.delete(token);
++  }
++}
++
+ // Configuration Lock check middleware (§3.5)
+ function checkConfigLock(req: Request, res: Response, next: NextFunction) {
+   if (db.configLock.locked && db.configLock.lockedUntil) {
+@@ -431,19 +488,14 @@ apiRouter.post('/auth/otp/request', (req, res) => {
+     });
+   }
+ 
+-  // Regular user / craftsman OTP
+-  const challengeId = `chal-${Date.now()}-${crypto.randomBytes(16).toString('hex')}`;
+-  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+-  const expiresAt = Date.now() + 5 * 60 * 1000;
+-  db.otpChallenges.set(challengeId, { phone, code, expiresAt, attempts: 0 } as any);
+-
+-  // An SMS gateway must be configured for production OTP delivery.
+-  if (!process.env.SMS_WEBHOOK_URL) {
+-    db.otpChallenges.delete(challengeId);
+-    return res.status(503).json({ code: 'OTP_PROVIDER_NOT_CONFIGURED', message: 'SMS OTP provider is not configured' });
++  // SMS_WEBHOOK_URL alone is not an SMS integration: this server does not have
++  // a defined provider contract or credentials to deliver the generated code.
++  // Return an explicit error instead of issuing an unusable challenge.
++  if (process.env.SMS_WEBHOOK_URL) {
++    return res.status(503).json({ code: 'OTP_DELIVERY_NOT_IMPLEMENTED', message: 'SMS provider delivery is not implemented; use phone and password login.' });
+   }
+ 
+-  res.json({ challengeId, next: 'OTP' });
++  return res.status(503).json({ code: 'OTP_PROVIDER_NOT_CONFIGURED', message: 'SMS OTP provider is not configured; use phone and password login.' });
+ });
+ 
+ // POST /auth/otp/verify
+@@ -645,7 +697,8 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
+ 
+   const resolvedName = (name || req.body.fullName || '').trim() || 'ხელოსანი';
+ 
+-  if (!phone || phone.trim().length < 8) {
++  const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
++  if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
+     return res.status(400).json({ code: 'INVALID_PHONE', message: 'შეიყვანეთ ვალიდური ტელეფონის ნომერი (მინ. 8 ციფრი)' });
+   }
+ 
+@@ -657,35 +710,38 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
      return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'სახელი, ქალაქი და პროფესია სავალდებულოა' });
    }
  
@@ -19,7 +154,44 @@ index 3470858..adef292 100644
    // Check if phone already registered with a craftsman profile
    let user: User | undefined;
    for (const u of db.users.values()) {
-@@ -697,14 +707,6 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
+-    if (u.phone === phone) {
++    if (u.phone === normalizedPhone) {
+       user = u;
+       break;
+     }
+   }
+ 
+   if (user) {
+-    for (const c of db.craftsmen.values()) {
+-      if (c.userId === user.id) {
+-        return res.status(409).json({
+-          code: 'PHONE_ALREADY_REGISTERED',
+-          message: 'ეს ნომერი უკვე რეგისტრირებულია. გთხოვთ გაიაროთ ავტორიზაცია.',
+-        });
+-      }
+-    }
+-    // Update user password and ensure CRAFTSMAN role
+-    user.password = hashPassword(password);
+-    if (!user.roles.includes('CRAFTSMAN')) {
+-      user.roles.push('CRAFTSMAN');
+-    }
++    // An unauthenticated, paid registration must never reset an existing account's
++    // password or grant a new role. Existing users should sign in to continue.
++    return res.status(409).json({
++      code: 'PHONE_ALREADY_REGISTERED',
++      message: 'ეს ნომერი უკვე რეგისტრირებულია. გთხოვთ გაიაროთ ავტორიზაცია.',
++    });
+   } else {
+     // Create new user
+     const userId = `usr-${Date.now()}`;
+     user = {
+       id: userId,
+-      phone,
++      phone: normalizedPhone,
+       password: hashPassword(password),
+       roles: ['CRAFTSMAN'],
+       status: 'ACTIVE',
+@@ -697,14 +753,6 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
    const now = new Date();
    const startsAt = now.toISOString();
    const craftsmanId = `cm-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -34,7 +206,7 @@ index 3470858..adef292 100644
    const initialStatus: CraftsmanStatus = isPaid ? 'ACTIVE' : 'UNPAID_DRAFT';
  
    // Photo handling (strictly max 1 photo)
-@@ -865,18 +867,20 @@ apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res)
+@@ -865,18 +913,20 @@ apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res)
      return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'Name, City, and Profession are required' });
    }
  
@@ -63,10 +235,196 @@ index 3470858..adef292 100644
    const now = new Date();
    const startsAt = now.toISOString();
    const expiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString();
+@@ -1641,7 +1691,7 @@ apiRouter.get('/admin/craftsmen', requireAdmin, (req, res) => {
+   }
+ 
+   const offset = (page - 1) * size;
+-  const paginatedCraftsmen = list.slice(offset, offset + size);
++  const paginatedCraftsmen = list.slice(offset, offset + size).map(craftsman => safeAdminCraftsman(craftsman));
+   res.json({
+     content: paginatedCraftsmen,
+     data: paginatedCraftsmen,
+@@ -1716,7 +1766,7 @@ apiRouter.get('/admin/users', requireAdmin, (req, res) => {
+   }
+ 
+   const offset = (page - 1) * size;
+-  const paginatedUsers = list.slice(offset, offset + size);
++  const paginatedUsers = list.slice(offset, offset + size).map(safeUser);
+   res.json({
+     content: paginatedUsers,
+     data: paginatedUsers,
+@@ -1743,8 +1793,14 @@ apiRouter.put(['/admin/users/:id/block', '/admin/craftsmen/:id/block'], requireA
+     return res.status(404).json({ code: 'NOT_FOUND', message: 'User or craftsman not found' });
+   }
+ 
++  if (user && !canManageAccount(req, res, user, 'block')) return;
++  if (user && user.status === 'DELETED') {
++    return res.status(409).json({ code: 'DELETED_ACCOUNT_CANNOT_BE_BLOCKED', message: 'Deleted accounts cannot be blocked.' });
++  }
++
+   if (user) user.status = 'BLOCKED';
+   if (craftsman) craftsman.status = 'BLOCKED';
++  if (user) revokeUserSessions(user.id);
+ 
+   for (const c of db.craftsmen.values()) {
+     if (user && c.userId === user.id) c.status = 'BLOCKED';
+@@ -1760,7 +1816,7 @@ apiRouter.put(['/admin/users/:id/block', '/admin/craftsmen/:id/block'], requireA
+     createdAt: new Date().toISOString(),
+   });
+ 
+-  res.json({ success: true, user: user ? safeUser(user) : null, craftsman });
++  res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+ });
+ 
+ // PUT /admin/users/:id/unblock & /admin/craftsmen/:id/unblock
+@@ -1779,6 +1835,11 @@ apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requ
+     return res.status(404).json({ code: 'NOT_FOUND', message: 'User or craftsman not found' });
+   }
+ 
++  if (user && !canManageAccount(req, res, user, 'unblock')) return;
++  if (user && user.status !== 'BLOCKED') {
++    return res.status(409).json({ code: 'ACCOUNT_NOT_BLOCKED', message: 'Only blocked accounts can be unblocked.' });
++  }
++
+   if (user) user.status = 'ACTIVE';
+   if (craftsman) craftsman.status = 'ACTIVE';
+ 
+@@ -1796,7 +1857,7 @@ apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requ
+     createdAt: new Date().toISOString(),
+   });
+ 
+-  res.json({ success: true, user: user ? safeUser(user) : null, craftsman });
++  res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+ });
+ 
+ // DELETE /admin/craftsmen/:id & /admin/users/:id
+@@ -1813,8 +1874,13 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, (re
+   }
+ 
+   if (!c && !u) return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
++  if (u && !canManageAccount(req, res, u, 'delete')) return;
++  if (u && u.status === 'DELETED') {
++    return res.status(409).json({ code: 'ACCOUNT_ALREADY_DELETED', message: 'Account is already deleted.' });
++  }
+   if (c) c.status = 'DELETED';
+   if (u) u.status = 'DELETED';
++  if (u) revokeUserSessions(u.id);
+ 
+   db.auditLog.unshift({
+     id: `audit-${Date.now()}`,
+@@ -1906,7 +1972,7 @@ apiRouter.get('/admin/audit-log', requireAdmin, (req, res) => {
+ // GET /admin/providers/:type
+ apiRouter.get('/admin/providers/:type', requireSuperAdmin, (req, res) => {
+   const type = req.params.type as 'payment' | 'sms' | 'email';
+-  if (!['payment', 'sms', 'email'].includes(type)) {
++  if (!isProviderType(type)) {
+     return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
+   }
+   res.json((db.providerConfig[type] as any[]).map(safeProvider));
+@@ -1915,7 +1981,28 @@ apiRouter.get('/admin/providers/:type', requireSuperAdmin, (req, res) => {
+ // POST /admin/providers/:type (Protected by config lock!)
+ apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+   const type = req.params.type as 'payment' | 'sms' | 'email';
+-  const newItem = { id: `prov-${Date.now()}`, ...req.body };
++  if (!isProviderType(type)) {
++    return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
++  }
++  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
++  const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = body;
++  if (typeof name !== 'string' || !name.trim()) {
++    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Provider name is required.' });
++  }
++  if ([apiKey, secretKey, clientId, webhookSecret].some(value => value !== undefined && typeof value !== 'string') ||
++      (isActive !== undefined && typeof isActive !== 'boolean')) {
++    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Provider fields have invalid types.' });
++  }
++  const newItem: any = {
++    id: `prov-${crypto.randomUUID()}`,
++    name: name.trim(),
++    ...(apiKey?.trim() ? { apiKey: apiKey.trim() } : {}),
++    ...(secretKey?.trim() ? { secretKey: secretKey.trim() } : {}),
++    ...(clientId?.trim() ? { clientId: clientId.trim() } : {}),
++    ...(webhookSecret?.trim() ? { webhookSecret: webhookSecret.trim() } : {}),
++    isActive: isActive === true,
++  };
++  if (newItem.apiKey) newItem.apiKeyMasked = newItem.apiKey.length > 8 ? `${newItem.apiKey.slice(0, 4)}****${newItem.apiKey.slice(-4)}` : '****';
+   (db.providerConfig[type] as any[]).push(newItem);
+ 
+   db.auditLog.unshift({
+@@ -1930,13 +2017,13 @@ apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkConfigLock, asy
+ 
+   await db.persistSuperAdminConfig();
+ 
+-  res.json(newItem);
++  res.json(safeProvider(newItem));
+ });
+ 
+ // PUT /admin/providers/:type/:id (Update provider credentials and active status)
+ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+   const type = req.params.type as 'payment' | 'sms' | 'email';
+-  if (!['payment', 'sms', 'email'].includes(type)) {
++  if (!isProviderType(type)) {
+     return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
+   }
+   const items = db.providerConfig[type] as any[];
+@@ -1945,17 +2032,20 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock,
+     return res.status(404).json({ code: 'NOT_FOUND', message: 'Provider not found' });
+   }
+ 
+-  const { name, apiKey, apiKeyMasked, secretKey, clientId, webhookSecret, isActive } = req.body;
+-  if (name !== undefined) item.name = name;
+-  if (isActive !== undefined) item.isActive = !!isActive;
++  const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = req.body;
++  if ((name !== undefined && (typeof name !== 'string' || !name.trim())) ||
++      [apiKey, secretKey, clientId, webhookSecret].some(value => value !== undefined && typeof value !== 'string') ||
++      (isActive !== undefined && typeof isActive !== 'boolean')) {
++    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Provider fields have invalid types.' });
++  }
++  if (name !== undefined) item.name = name.trim();
++  if (isActive !== undefined) item.isActive = isActive;
+   if (apiKey !== undefined && apiKey.trim()) {
+     item.apiKey = apiKey.trim();
+     item.apiKeyMasked = apiKey.length > 8 ? `${apiKey.slice(0, 4)}****${apiKey.slice(-4)}` : '****';
+-  } else if (apiKeyMasked !== undefined) {
+-    item.apiKeyMasked = apiKeyMasked;
+   }
+   if (secretKey !== undefined && secretKey.trim()) item.secretKey = secretKey.trim();
+-  if (clientId !== undefined) item.clientId = clientId.trim();
++  if (clientId !== undefined && clientId.trim()) item.clientId = clientId.trim();
+   if (webhookSecret !== undefined) item.webhookSecret = webhookSecret.trim();
+ 
+   db.auditLog.unshift({
+@@ -2587,7 +2677,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
+   }
+   for (const intent of db.paymentIntents.values()) {
+     if (intent.idempotencyKey === idempotencyKey && intent.reservationId === ad.id) {
+-      return res.json({ success: intent.status === 'SUCCEEDED', paymentIntentId: intent.id, ad, replay: true });
++      return res.json({ success: intent.status === 'SUCCEEDED', paymentIntentId: intent.id, ad: safeAdvertisement(ad), replay: true });
+     }
+   }
+ 
+@@ -2621,7 +2711,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
+   res.json({
+     success: true,
+     paymentIntentId,
+-    ad,
++    ad: safeAdvertisement(ad),
+     message: `გადახდა წარმატებით შესრულდა (საქართველოს ბანკი - ${priceGel} GEL). რეკლამა გააქტიურებულია ${durationDays} დღით.`,
+   });
+ });
 diff --git a/src/screens/RegistrationWizard.tsx b/src/screens/RegistrationWizard.tsx
-index 7cfcd88..6452b68 100644
+index 7cfcd88..e1bc98b 100644
 --- a/src/screens/RegistrationWizard.tsx
 +++ b/src/screens/RegistrationWizard.tsx
+@@ -133,7 +133,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
+         setErrorMsg(lang === 'ka' ? 'შეიყვანეთ ვალიდური ტელეფონის ნომერი (მინ. 8 ციფრი)' : 'Enter valid phone number');
+         return;
+       }
+-      if (!api.getToken() && (!formData.password || formData.password.length < 6)) {
++      if (!api.getToken() && (!formData.password || formData.password.length < 12)) {
+         setErrorMsg(lang === 'ka' ? 'პაროლი უნდა შედგებოდეს მინიმუმ 12 სიმბოლოსგან' : 'Password must be at least 12 characters');
+         return;
+       }
 @@ -148,14 +148,14 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
      autoSaveDraft(nextStep, formData);
    };
@@ -100,7 +458,15 @@ index 7cfcd88..6452b68 100644
      } finally {
        setLoading(false);
      }
-@@ -450,6 +456,14 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
+@@ -280,6 +286,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
+                     type={showPassword ? 'text' : 'password'}
+                     value={formData.password}
+                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
++                    minLength={12}
+                     placeholder="••••••••"
+                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 pr-8 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                     required={!api.getToken()}
+@@ -450,6 +457,14 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
          {/* Step 3: Subscription Payment (§3.11, §4.2, §24) */}
          {step === 3 && (
            <div className="space-y-4">
@@ -115,7 +481,7 @@ index 7cfcd88..6452b68 100644
              <div className="bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 border border-amber-500/40 rounded-3xl p-5 shadow-lg space-y-3">
                <div className="flex items-center justify-between">
                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-@@ -518,7 +532,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
+@@ -518,7 +533,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
            <div className="space-y-2">
              <button
                type="button"
@@ -124,7 +490,7 @@ index 7cfcd88..6452b68 100644
                disabled={loading}
                className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm transition-all active:scale-[0.98] disabled:opacity-50"
              >
-@@ -532,16 +546,6 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
+@@ -532,16 +547,6 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
                )}
              </button>
  
@@ -141,3 +507,4 @@ index 7cfcd88..6452b68 100644
            </div>
          )}
  
+
