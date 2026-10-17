@@ -146,4 +146,847 @@ index 8dbb752..9abd5f8 100644
 -## 🛠️ Build & Production
 -
 -```bash
--#
+-# Frontend-ის კომპილაცია dist/ დირექტორიაში
+-npm run build
+-
+-# Production სერვერის გაშვება
+-npm start
+-```
+-
+-
+-## Production safety notes
+-
+-- Cloud Run runtime state is persisted through the server-side Firestore service account. Browser/client Firestore access is denied by `firestore.rules`.
+-- Production payment endpoints do not simulate successful payments. A real BOG/TBC/Stripe gateway implementation must be connected before accepting real payments.
+-- OTP delivery requires `SMS_WEBHOOK_URL`; no OTP code is returned to clients.
+-- Production administrator/bootstrap credentials and provider secrets must be supplied through Cloud Run environment variables or Secret Manager; no real credentials are stored in source files.
+-- The deployment archive is not served by the application itself.
+-
+-
+-### Security hardening
+-- User/admin/partner passwords are stored as scrypt hashes.
+-- Session tokens expire after 12 hours.
+-- OTP challenges expire after 5 minutes and allow at most 5 attempts.
+-- Production CORS is restricted by `APP_ORIGIN`/`APP_URL`; do not leave it unset for a browser deployment.
+-- Provider credentials and unlock credentials must come from Secret Manager/environment; API responses never return provider secrets or password fields.
+-- Production payment endpoints remain disabled until a real provider + webhook verification implementation is configured.
+-
+-- `cloudrun-service.yaml` intentionally limits this Map+Firestore snapshot implementation to one Cloud Run instance with concurrency 1. For horizontal scaling, the runtime data model must be migrated to transactional Firestore/Cloud SQL before increasing `maxScale`.
+-
+-## Final architecture/security invariants
+-
+-- Anonymous customers can search, filter, view craftsman profiles, and use the map without creating an account.
+-- Registration/authentication is only for craftsmen and privileged roles; the public directory does not require authentication.
+-- OTP login never creates a new user. A craftsman account must already exist.
+-- Craftsman-only endpoints require the CRAFTSMAN role.
+-- Advertisement partner endpoints require the AD_PARTNER role.
+-- Admin and Super Admin endpoints retain their existing role boundaries.
+-- Production sessions and OTP challenges are intentionally ephemeral and are not persisted as durable application data.
+-- Production runtime data requires Cloud Firestore; the local JSON snapshot is development-only.
+-- Production payment endpoints fail closed until a real gateway integration with server-side verification/webhooks is configured.
+-- Production bootstrap credentials must be explicitly supplied through environment/Secret Manager.
+-- `role-simulation.mjs` performs the final authorization/role invariants simulation.
+-
+-## Production readiness hardening (2026-10)
+-
+-- Production starts only with durable Firestore available and with `BOOTSTRAP_PHONE`, `BOOTSTRAP_PASSWORD`, `ADMIN_PHONE`, and `ADMIN_PASSWORD` supplied as deployment secrets.
+-- Demo users, demo craftsmen, demo advertisements, demo reports, and demo audit records are not shipped as production runtime data. Legacy demo IDs are cleaned during the first production hydration.
+-- Runtime local JSON snapshots are development-only. Production never falls back to the container filesystem for runtime state.
+-- Runtime persistence is triggered only by mutating API requests; GET requests do not rewrite the Firestore snapshot.
+-- Public customer search remains anonymous: the person looking for a craftsman does not register or log in.
+-- `/search/nearby` returns only craftsmen with an active listing, matching the main search rules.
+-- Top 15 ordering is deterministically reshuffled every 30 minutes.
+-- Payment endpoints fail closed in production until a real gateway adapter/webhook verification is configured. No endpoint may fabricate a successful payment.
+-- Supabase is not the runtime application database in this release. Its direct client table access is locked down with RLS and revoked `anon`/`authenticated` table privileges; payment secrets previously present in `system_config` were cleared. Do not put provider secrets back into database tables.
+-- A fresh dependency installation/build must still be executed in a networked build environment (Google Cloud Build/Cloud Shell/CI). The source was syntax-validated here, but this environment could not reach the npm registry to produce a fresh `package-lock.json` or a post-change Vite build.
+-
+-### External production prerequisites
+-
+-1. Configure Google Secret Manager / Cloud Run environment variables for all required secrets.
+-2. Configure a real SMS provider endpoint for OTP delivery.
+-3. Implement and verify the chosen real payment gateway adapter(s) and webhook signatures before enabling paid production flows.
+-4. Build the image in a networked Google build environment and deploy using `cloudrun-service.yaml`.
+-5. Keep Cloud Run `maxScale=1` and `containerConcurrency=1` for the current snapshot-based runtime architecture. If higher availability/concurrency is required, migrate runtime entities to transactional Firestore/Postgres before increasing these limits.
+-
+-## Final buyer-side audit hardening (2026-10-14)
+-
+-A buyer-oriented audit was performed without changing the established architecture (React/Vite frontend -> Node/Express Cloud Run backend -> Firestore durable storage, with the current single-instance constraint).
+-
+-Additional fixes:
+-- Removed the hardcoded Gorgia/demo advertisement fallback from the public home screen. Public ads are now server-authoritative.
+-- Added the active commercial advertisement placement to the craftsman cabinet.
+-- Advertisement validity now starts from confirmed payment, not from partner provisioning time.
+-- Super Admin cannot activate an unpaid advertisement through the admin update endpoint.
+-- Advertisement partner phone numbers are validated as E.164 and duplicate advertisement accounts are rejected.
+-- An existing non-advertising application account cannot be hijacked by creating an advertisement partner with the same phone number.
+-- Advertisement partner payment requests now require an Idempotency-Key and replay the original result for the same ad/key pair.
+-- Corrected the Super Admin UI password hint to the actual 12-character minimum.
+-- Removed a duplicated craftsman-dashboard timer wrapper that caused incorrect DOM nesting.
+-
+-Validation completed:
+-- 30 TypeScript/TSX files: syntax errors 0.
+-- Existing role simulation: ALL ROLE SIMULATIONS PASSED.
+-- Buyer-oriented production audit: 15/15 checks PASSED.
+-- ZIP integrity: passed.
+-
+-The project remains intentionally fail-closed for real production payments until a real payment gateway and verified webhook are integrated. The current simulation cannot create a real successful payment in production.
++- მომხმარებელი და ავტორიზაცია მხოლოდ სერვერზე მუშავდება; ბრაუზერი Supabase-ის საიდუმლო გასაღებს არ იღებს.
++- საზოგადოებრივი მომხმარებლები ხელოსნების კატალოგს ავტორიზაციის გარეშე ეძებენ.
++- RLS მომხმარებლის მონაცემებზე პირდაპირ საჯარო წვდომას კეტავს; backend-ის ცალკე PostgreSQL როლს აქვს საჭირო პოლიტიკა.
++- არსებული ბაზის ჩანაწერები გაშვებისას იკითხება და აპის ცვლილებებით განახლდება. მიგრაციები არსებულ ცხრილებსა და ჩანაწერებს არ შლის.
++- მომხმარებლის სესიები და OTP გამოწვევები მხოლოდ მეხსიერებაში რჩება; production-ში ისინი ხანმოკლე და დროებითია.
++- ადმინისტრატორის პაროლები scrypt-ით ჰეშდება.
+diff --git a/server/storage.ts b/server/storage.ts
+index fc33c9c..d8a5294 100644
+--- a/server/storage.ts
++++ b/server/storage.ts
+@@ -1,13 +1,4 @@
+-import fs from 'fs';
+-import path from 'path';
+-import { Firestore } from '@google-cloud/firestore';
+-import {
+-  ListingPrice,
+-  Top15Price,
+-  Advertisement,
+-  ProviderConfig,
+-  RecipientAccount,
+-  ConfigLock,
+-} from './types.js';
++import { Pool, PoolClient } from 'pg';
++import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, CraftsmanDraft, CraftsmanListing, ListingPrice, Profession, ProviderConfig, RecipientAccount, ConfigLock, Top15Membership, Top15Price, Top15Reservation, User } from './types.js';
+ 
+ export interface SuperAdminPersistedConfig {
+@@ -18,292 +9,209 @@ export interface SuperAdminPersistedConfig {
+   recipientAccount: RecipientAccount;
+   configLock: ConfigLock;
+-  bootstrap: {
+-    phone: string;
+-    password: string;
+-    enabled: boolean;
+-    invalidated: boolean;
+-    completedAt: string | null;
+-  };
+-  backendConfig: {
+-    baseUrl: string;
+-    issuedAt: string;
+-    signature: string;
+-  };
++  bootstrap: { phone: string; password: string; enabled: boolean; invalidated: boolean; completedAt: string | null };
++  backendConfig: { baseUrl: string; issuedAt: string; signature: string };
+   version: number;
+   lastPersistedAt: string;
+ }
+ 
+-export class StorageService {
+-  private firestore: Firestore | null = null;
+-  private isFirestoreReady: boolean = false;
+-  private storageDir: string;
+-  private snapshotFilePath: string;
+-
+-  constructor() {
+-    this.storageDir = path.resolve(process.cwd(), 'data');
+-    this.snapshotFilePath = path.join(this.storageDir, 'superadmin_config.json');
+-    this.initFirestore();
+-  }
+-
+-  private initFirestore() {
+-    try {
+-      let projectId =
+-        process.env.FIRESTORE_PROJECT_ID ||
+-        process.env.GOOGLE_CLOUD_PROJECT ||
+-        process.env.GCP_PROJECT;
+-      let databaseId: string | undefined = undefined;
++export interface RuntimeState {
++  users: Map<string, User>; craftsmen: Map<string, Craftsman>; craftsmanDrafts: Map<string, CraftsmanDraft>;
++  top15Prices: Map<string, Top15Price>; top15Reservations: Map<string, Top15Reservation>;
++  top15Memberships: Map<string, Top15Membership>; paymentIntents: Map<string, any>;
++  craftsmanListings: Map<string, CraftsmanListing>; advertisements: Map<string, Advertisement>;
++  supportMessages: ChatMessage[]; aiReports: AiReport[]; auditLog: AdminAuditLog[];
++  listingPurgeLog: Array<{ id: string; craftsmanId: string; cityId: string; professionId: string; purgedAt: string; reason: string }>;
++}
+ 
+-      const firebaseConfigPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+-      if (fs.existsSync(firebaseConfigPath)) {
+-        try {
+-          const cfg = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+-          if (cfg.projectId) projectId = cfg.projectId;
+-          if (cfg.firestoreDatabaseId) databaseId = cfg.firestoreDatabaseId;
+-        } catch {
+-          // Ignore JSON parse errors
+-        }
+-      }
++const date = (value: any): string => value instanceof Date ? value.toISOString() : String(value || new Date().toISOString());
++const local = (row: any) => ({ ka: row.name_ka, ru: row.name_ru, en: row.name_en });
+ 
+-      const options: any = {};
+-      if (projectId) options.projectId = projectId;
+-      if (databaseId) options.databaseId = databaseId;
++export class StorageService {
++  private pool: Pool | null = null;
++  private connected = false;
++  private connectionError: string | null = null;
++  private saveQueue: Promise<void> = Promise.resolve();
+ 
+-      this.firestore = new Firestore(options);
+-    } catch (err: any) {
+-      console.warn('[STORAGE] Firestore client init skipped (using snapshot fallback):', err?.message || err);
+-      this.firestore = null;
++  constructor() {
++    const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
++    if (connectionString) {
++      this.pool = new Pool({ connectionString, max: Number(process.env.DB_POOL_MAX || 4), connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000, ssl: { rejectUnauthorized: true }, application_name: 'master-boy-api' });
++      this.pool.on('error', (e) => { this.connected = false; this.connectionError = e.message; });
+     }
+   }
+ 
+-  /**
+-   * Hydrate configuration on startup.
+-   * Checks Cloud Firestore first; falls back to local snapshot file.
+-   */
+-  async loadSuperAdminConfig(): Promise<SuperAdminPersistedConfig | null> {
+-    if (this.firestore) {
+-      try {
+-        const metaDoc = await this.firestore.collection('superadmin_config').doc('meta').get();
+-        if (metaDoc.exists) {
+-          const [
+-            listingPriceDoc,
+-            top15PricesDoc,
+-            adsDoc,
+-            providerConfigDoc,
+-            recipientAccountDoc,
+-            configLockDoc,
+-            bootstrapDoc,
+-            backendConfigDoc,
+-          ] = await Promise.all([
+-            this.firestore.collection('superadmin_config').doc('listing_price').get(),
+-            this.firestore.collection('superadmin_config').doc('top15_prices').get(),
+-            this.firestore.collection('superadmin_config').doc('advertisements').get(),
+-            this.firestore.collection('superadmin_config').doc('provider_config').get(),
+-            this.firestore.collection('superadmin_config').doc('recipient_account').get(),
+-            this.firestore.collection('superadmin_config').doc('config_lock').get(),
+-            this.firestore.collection('superadmin_config').doc('bootstrap').get(),
+-            this.firestore.collection('superadmin_config').doc('backend_config').get(),
+-          ]);
+-
+-          const metaData = metaDoc.data() || {};
+-          const loadedConfig: SuperAdminPersistedConfig = {
+-            listingPrice: (listingPriceDoc.data() as ListingPrice) || {
+-              amountMinor: 1000,
+-              currency: 'GEL',
+-              updatedAt: new Date().toISOString(),
+-              updatedBy: 'system',
+-            },
+-            top15Prices: (top15PricesDoc.data()?.prices as Record<string, Top15Price>) || {},
+-            advertisements: (adsDoc.data()?.ads as Advertisement[]) || [],
+-            providerConfig: (providerConfigDoc.data() as ProviderConfig) || ({} as any),
+-            recipientAccount: (recipientAccountDoc.data() as RecipientAccount) || ({} as any),
+-            configLock: (configLockDoc.data() as ConfigLock) || ({} as any),
+-            bootstrap: (bootstrapDoc.data() as any) || ({} as any),
+-            backendConfig: (backendConfigDoc.data() as any) || ({} as any),
+-            version: metaData.version || 1,
+-            lastPersistedAt: metaData.lastPersistedAt || new Date().toISOString(),
+-          };
+-
+-          this.isFirestoreReady = true;
+-          console.log('[STORAGE] SuperAdmin configuration loaded from Cloud Firestore.');
+-
+-          // Sync local snapshot for redundancy
+-          this.saveLocalSnapshot(loadedConfig);
+-          return loadedConfig;
+-        }
+-      } catch (err: any) {
+-        console.warn('[STORAGE] Firestore read attempt failed, checking local snapshot:', err.message);
+-        this.isFirestoreReady = false;
+-      }
+-    }
+-
+-    // Local snapshot is development-only. Cloud Run production must fail closed.
+-    if (process.env.NODE_ENV === 'production') return null;
+-    return this.loadLocalSnapshot();
++  private db(): Pool {
++    if (!this.pool) throw new Error('DATABASE_URL is required for Supabase Postgres storage.');
++    return this.pool;
+   }
+ 
+-  /**
+-   * Persists superadmin configuration across restarts.
+-   * Atomically writes to local snapshot file AND saves batch to Cloud Firestore.
+-   */
+-  async saveSuperAdminConfig(
+-    config: SuperAdminPersistedConfig
+-  ): Promise<{ success: boolean; firestore: boolean; snapshot: boolean; error?: string }> {
+-    let snapshotSaved = false;
+-    let firestoreSaved = false;
+-    let errorDetail: string | undefined;
+-
+-    // 1. Atomic local snapshot
+-    if (process.env.NODE_ENV !== 'production') {
+-      try {
+-        this.saveLocalSnapshot(config);
+-        snapshotSaved = true;
+-      } catch (err: any) {
+-        console.error('[STORAGE] Failed to write local snapshot file:', err);
+-        errorDetail = err.message;
+-      }
+-    }
+-
+-    // 2. Cloud Firestore batch write
+-    if (this.firestore) {
+-      try {
+-        const batch = this.firestore.batch();
+-        const col = this.firestore.collection('superadmin_config');
+-
+-        batch.set(col.doc('listing_price'), config.listingPrice);
+-        batch.set(col.doc('top15_prices'), { prices: config.top15Prices });
+-        batch.set(col.doc('advertisements'), { ads: config.advertisements });
+-        batch.set(col.doc('provider_config'), config.providerConfig);
+-        batch.set(col.doc('recipient_account'), config.recipientAccount);
+-        batch.set(col.doc('config_lock'), config.configLock);
+-        batch.set(col.doc('bootstrap'), config.bootstrap);
+-        batch.set(col.doc('backend_config'), config.backendConfig);
+-        batch.set(col.doc('meta'), {
+-          version: config.version,
+-          lastPersistedAt: config.lastPersistedAt,
+-        });
+-
+-        await batch.commit();
+-        firestoreSaved = true;
+-        this.isFirestoreReady = true;
+-      } catch (err: any) {
+-        console.warn('[STORAGE] Firestore write failed:', err.message);
+-        this.isFirestoreReady = false;
+-        if (!errorDetail) errorDetail = err.message;
+-      }
+-    }
++  async connect(): Promise<void> {
++    if (!this.pool && process.env.NODE_ENV !== 'production') return;
++    try { await this.db().query('SELECT 1'); this.connected = true; this.connectionError = null; }
++    catch (e: any) { this.connected = false; this.connectionError = e.message; throw e; }
++  }
+ 
++  async loadCatalogs(): Promise<{ cities: City[]; professions: Profession[] }> {
++    if (!this.pool && process.env.NODE_ENV !== 'production') return { cities: [], professions: [] };
++    const [c, p] = await Promise.all([
++      this.db().query('SELECT id,name_ka,name_ru,name_en,is_active,lat,lng FROM public.cities ORDER BY display_order,id'),
++      this.db().query('SELECT id,name_ka,name_ru,name_en FROM public.professions WHERE is_active=true ORDER BY display_order,id'),
++    ]);
++    this.connected = true;
+     return {
+-      success: snapshotSaved || firestoreSaved,
+-      firestore: firestoreSaved,
+-      snapshot: snapshotSaved,
+-      error: errorDetail,
++      cities: c.rows.map((r) => ({ id:r.id, name:local(r), isActive:r.is_active, lat:Number(r.lat), lng:Number(r.lng) })),
++      professions: p.rows.map((r) => ({ id:r.id, name:local(r) })),
+     };
+   }
+ 
+-  private loadLocalSnapshot(): SuperAdminPersistedConfig | null {
+-    try {
+-      if (fs.existsSync(this.snapshotFilePath)) {
+-        const data = fs.readFileSync(this.snapshotFilePath, 'utf-8');
+-        const parsed = JSON.parse(data) as SuperAdminPersistedConfig;
+-        console.log('[STORAGE] SuperAdmin configuration loaded from local snapshot file.');
+-        return parsed;
+-      }
+-    } catch (err: any) {
+-      console.error('[STORAGE] Error reading local snapshot file:', err);
+-    }
+-    return null;
++  async loadSuperAdminConfig(): Promise<SuperAdminPersistedConfig | null> {
++    if (!this.pool && process.env.NODE_ENV !== 'production') return null;
++    const [c, p] = await Promise.all([
++      this.db().query("SELECT id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at FROM public.system_config WHERE id='global_config' LIMIT 1"),
++      this.db().query('SELECT * FROM public.top15_prices'),
++    ]);
++    const r = c.rows[0];
++    if (!r) return null;
++    const prices: Record<string, Top15Price> = {};
++    for (const x of p.rows) prices[x.id] = { cityId:x.city_id, professionId:x.profession_id, amountMinor:Number(x.amount_minor), currency:x.currency, updatedAt:date(x.updated_at), updatedBy:x.updated_by || 'system' };
++    const env = process.env;
++    const payment = [
++      { id:'prov-bog', name:'საქართველოს ბანკი (Bank of Georgia iPay)', apiKeyMasked:'not configured', clientId:env.BOG_MERCHANT_ID || '', secretKey:env.BOG_SECRET || '', isActive:Boolean(r.bog_active && env.BOG_SECRET) },
++      { id:'prov-tbc', name:'თიბისი ბანკი (TBC Bank Checkout / Pay)', apiKeyMasked:'not configured', clientId:env.TBC_CLIENT_ID || '', secretKey:env.TBC_CLIENT_SECRET || '', isActive:Boolean(r.tbc_active && env.TBC_CLIENT_SECRET) },
++      { id:'prov-stripe', name:'Stripe (საგადახდო სისტემა / Card Payments)', apiKeyMasked:'not configured', apiKey:env.STRIPE_PUBLISHABLE_KEY || '', secretKey:env.STRIPE_SECRET_KEY || '', webhookSecret:env.STRIPE_WEBHOOK_SECRET || '', isActive:Boolean(r.stripe_active && env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) },
++    ];
++    this.connected = true;
++    return {
++      listingPrice:{ amountMinor:Number(r.standard_listing_price_minor), currency:'GEL', updatedAt:date(r.updated_at), updatedBy:'system' },
++      top15Prices:prices, advertisements:[], providerConfig:{ payment, sms:[
++        { id:'sms-magti', provider:'Magti SMS Gateway', senderId:'MASTER_BOY', isActive:Boolean(env.SMS_WEBHOOK_URL) },
++        { id:'sms-geocell', provider:'Silknet/Geocell Direct', senderId:'MASTERBOY', isActive:false },
++      ], email:[{ id:'email-ses', provider:'AWS SES / Sendgrid', host:env.SMTP_HOST || '', isActive:Boolean(env.SMTP_HOST) }],
++      ai:{ configured:Boolean(env.GEMINI_API_KEY), verifiedAt:null, lastCallOk:false, provider:'Google Gemini Pro / Flash' } },
++      recipientAccount:{ iban:r.recipient_iban || '', bankName:r.recipient_bank_name || '', beneficiary:r.recipient_company_name || '', taxNumber:r.recipient_tax_id || '', updatedAt:date(r.updated_at) },
++      configLock:{ locked:Boolean(r.config_locked), lockedUntil:r.lock_expires_at ? date(r.lock_expires_at) : null, lockedAt:null, unlockCredentialHash:r.config_unlock_hash || undefined },
++      bootstrap:{ phone:env.BOOTSTRAP_PHONE || '', password:'', enabled:Boolean(env.BOOTSTRAP_PASSWORD), invalidated:false, completedAt:null },
++      backendConfig:{ baseUrl:env.APP_URL || '', issuedAt:date(r.updated_at), signature:'' }, version:1, lastPersistedAt:date(r.updated_at),
++    };
+   }
+ 
+-  private saveLocalSnapshot(config: SuperAdminPersistedConfig): void {
+-    if (!fs.existsSync(this.storageDir)) {
+-      fs.mkdirSync(this.storageDir, { recursive: true });
+-    }
+-    const tempFile = `${this.snapshotFilePath}.${Date.now()}.tmp`;
+-    fs.writeFileSync(tempFile, JSON.stringify(config, null, 2), 'utf-8');
+-    fs.renameSync(tempFile, this.snapshotFilePath);
++  async saveSuperAdminConfig(config: SuperAdminPersistedConfig): Promise<{ success:boolean; database:boolean; snapshot:boolean; error?:string }> {
++    if (!this.pool && process.env.NODE_ENV !== 'production') return { success:false,database:false,snapshot:false };
++    try {
++      const p = config.providerConfig.payment || [];
++      const val = (id:string) => p.find((x) => x.id===id)?.isActive || false;
++      await this.db().query(
++        "INSERT INTO public.system_config (id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at) VALUES ('global_config',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) ON CONFLICT(id) DO UPDATE SET config_locked=EXCLUDED.config_locked,lock_expires_at=EXCLUDED.lock_expires_at,config_unlock_hash=EXCLUDED.config_unlock_hash,recipient_bank_name=EXCLUDED.recipient_bank_name,recipient_iban=EXCLUDED.recipient_iban,recipient_tax_id=EXCLUDED.recipient_tax_id,recipient_company_name=EXCLUDED.recipient_company_name,standard_listing_price_minor=EXCLUDED.standard_listing_price_minor,gemini_api_key_configured=EXCLUDED.gemini_api_key_configured,bog_active=EXCLUDED.bog_active,tbc_active=EXCLUDED.tbc_active,stripe_active=EXCLUDED.stripe_active,updated_at=NOW()",
++        [config.configLock.locked,config.configLock.lockedUntil,config.configLock.unlockCredentialHash || null,config.recipientAccount.bankName,config.recipientAccount.iban,config.recipientAccount.taxNumber,config.recipientAccount.beneficiary,config.listingPrice.amountMinor,Boolean(process.env.GEMINI_API_KEY),val('prov-bog'),val('prov-tbc'),val('prov-stripe')]);
++      this.connected=true; return { success:true,database:true,snapshot:false };
++    } catch(e:any) { this.connected=false; return { success:false,database:false,snapshot:false,error:e.message }; }
+   }
+ 
+-  async loadRuntimeCollection<T = any>(collectionName: string): Promise<Record<string, T>> {
+-    const result: Record<string, T> = {};
+-    if (this.firestore) {
+-      try {
+-        const snap = await this.firestore.collection('masterboy_runtime').doc(collectionName).collection('items').get();
+-        snap.forEach((doc) => { result[doc.id] = (doc.data().value as T); });
+-        this.isFirestoreReady = true;
+-        return result;
+-      } catch (err: any) {
+-        console.warn(`[STORAGE] Runtime collection ${collectionName} load failed:`, err?.message || err);
++  async loadRuntimeCollection<T=any>(name:string): Promise<Record<string,T>> {
++    const out:Record<string,T> = {};
++    if (!this.pool && process.env.NODE_ENV !== 'production') return out;
++    const arrayTable:Record<string,string> = { __array_supportMessages:'support_messages',__array_aiReports:'ai_reports',__array_auditLog:'audit_logs',__array_listingPurgeLog:'listing_purge_logs' };
++    if(arrayTable[name]) {
++      const table=arrayTable[name];
++      const result=await this.db().query('SELECT * FROM public.'+table+' ORDER BY id');
++      for(const r of result.rows) {
++        let v:any;
++        if(table==='support_messages') v={id:r.id,craftsmanId:r.craftsman_id,sender:r.sender,body:r.body,flaggedForHuman:r.flagged_for_human,createdAt:date(r.created_at)};
++        else if(table==='ai_reports') v={id:r.id,type:r.report_type,craftsmanId:r.craftsman_id,craftsmanName:r.craftsman_name,periodFrom:r.period_from?date(r.period_from):null,periodTo:r.period_to?date(r.period_to):null,content:r.content||{},createdAt:date(r.created_at)};
++        else if(table==='audit_logs') v={id:r.id,actorType:r.actor_type,actorId:r.actor_id,action:r.action,targetType:r.target_type,targetId:r.target_id,reason:r.reason,createdAt:date(r.created_at)};
++        else v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,purgedAt:date(r.purged_at),reason:r.reason};
++        out[r.id]=v;
+       }
++      this.connected=true; return out;
+     }
+-    // Never fall back to a local runtime snapshot in production. Cloud Run's
+-    // filesystem is ephemeral and using it as a fallback can silently create
+-    // divergent state between instances.
+-    if (process.env.NODE_ENV === 'production') return result;
+-    try {
+-      const file = path.join(this.storageDir, `runtime_${collectionName}.json`);
+-      if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, T>;
+-    } catch (err: any) {
+-      console.warn(`[STORAGE] Runtime snapshot ${collectionName} load failed:`, err?.message || err);
++    const queries:Record<string,string> = {
++      users:'SELECT * FROM public.users',
++      craftsmen:"SELECT c.*,COALESCE(jsonb_agg(jsonb_build_object('id',p.id,'craftsmanId',p.craftsman_id,'url',p.url,'displayOrder',p.display_order,'isPrimary',p.is_primary,'createdAt',p.created_at,'updatedAt',p.updated_at) ORDER BY p.display_order) FILTER(WHERE p.id IS NOT NULL),'[]'::jsonb) photos FROM public.craftsmen c LEFT JOIN public.craftsman_photos p ON p.craftsman_id=c.id GROUP BY c.id",
++      craftsmanDrafts:'SELECT * FROM public.craftsman_drafts',
++      top15Prices:'SELECT * FROM public.top15_prices',
++      top15Reservations:'SELECT * FROM public.top15_reservations',
++      top15Memberships:'SELECT m.*,c.name_ka city_name,p.name_ka profession_name FROM public.top15_memberships m JOIN public.cities c ON c.id=m.city_id JOIN public.professions p ON p.id=m.profession_id',
++      paymentIntents:'SELECT * FROM public.payment_intents',
++      craftsmanListings:'SELECT * FROM public.craftsman_listings',
++      advertisements:'SELECT * FROM public.advertisements',
++    };
++    const q=queries[name]; if(!q) throw new Error('Unsupported Supabase collection '+name);
++    const rs=await this.db().query(q);
++    for(const r of rs.rows) {
++      let k=r.id,v:any;
++      if(name==='users') v={id:r.id,phone:r.phone,password:r.password_hash,roles:r.roles,status:r.status,createdAt:date(r.created_at)};
++      else if(name==='craftsmen') v={id:r.id,userId:r.user_id,name:r.name,description:r.description||'',phone:r.phone,phoneVisible:r.phone_visible,latitude:r.latitude==null?null:Number(r.latitude),longitude:r.longitude==null?null:Number(r.longitude),workingHours:r.working_hours,status:r.status,cityId:r.city_id,professionId:r.profession_id,bankAccount:r.bank_account,createdAt:date(r.created_at),updatedAt:date(r.updated_at),photos:r.photos||[]};
++      else if(name==='craftsmanDrafts'){k=r.user_id;v={step:r.step,data:r.data||{},updatedAt:date(r.updated_at)};}
++      else if(name==='top15Prices') v={cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,updatedAt:date(r.updated_at),updatedBy:r.updated_by||'system'};
++      else if(name==='top15Reservations') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,expiresAt:new Date(r.expires_at).getTime(),status:r.status==='CONFIRMED'?'PAID':r.status==='EXPIRED'?'EXPIRED':'HELD'};
++      else if(name==='top15Memberships') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,cityName:r.city_name,professionId:r.profession_id,professionName:r.profession_name,startsAt:date(r.starts_at),expiresAt:date(r.expires_at),status:r.status==='ACTIVE'?'ACTIVE':'EXPIRED'};
++      else if(name==='paymentIntents') v={id:r.id,reservationId:r.reservation_id,craftsmanId:r.craftsman_id,providerId:r.provider,amountMinor:Number(r.amount_minor),currency:r.currency,idempotencyKey:r.idempotency_key,status:r.status,createdAt:date(r.created_at)};
++      else if(name==='craftsmanListings') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,status:r.status,startsAt:r.starts_at?date(r.starts_at):null,expiresAt:r.expires_at?date(r.expires_at):null,graceEndsAt:r.grace_ends_at?date(r.grace_ends_at):null,lastPaymentId:r.last_payment_id,createdAt:date(r.created_at),updatedAt:date(r.updated_at)};
++      else v={id:r.id,company_name:r.company_name,phone_number:r.phone_number,password:r.password,expires_at:date(r.expires_at),image_url:r.image_url||'',target_url:r.target_url||'',is_active:r.is_active,payment_status:r.payment_status,terms_accepted:r.terms_accepted,price_gel:Number(r.price_gel),days_duration:r.days_duration,created_at:date(r.created_at),updated_at:date(r.updated_at)};
++      out[k]=v;
+     }
+-    return result;
++    this.connected=true; return out;
+   }
+ 
+-  async saveRuntimeCollection<T = any>(collectionName: string, values: Map<string, T>): Promise<void> {
+-    const entries = Array.from(values.entries());
+-    if (this.firestore) {
+-      try {
+-        const col = this.firestore.collection('masterboy_runtime').doc(collectionName).collection('items');
+-        const existing = await col.get();
+-        const ops: Array<{ type: 'delete' | 'set'; ref: any; value?: any }> = [];
+-        existing.forEach((doc) => { if (!values.has(doc.id)) ops.push({ type: 'delete', ref: doc.ref }); });
+-        for (const [id, value] of entries) ops.push({ type: 'set', ref: col.doc(id), value: { value, updatedAt: new Date().toISOString() } });
+-        for (let i = 0; i < ops.length; i += 450) {
+-          const batch = this.firestore.batch();
+-          for (const op of ops.slice(i, i + 450)) {
+-            if (op.type === 'delete') batch.delete(op.ref);
+-            else batch.set(op.ref, op.value);
+-          }
+-          await batch.commit();
+-        }
+-        this.isFirestoreReady = true;
+-        return;
+-      } catch (err: any) {
+-        console.warn(`[STORAGE] Runtime collection ${collectionName} save failed:`, err?.message || err);
+-      }
+-    }
+-    if (process.env.NODE_ENV === 'production') return;
+-    try {
+-      if (!fs.existsSync(this.storageDir)) fs.mkdirSync(this.storageDir, { recursive: true });
+-      const file = path.join(this.storageDir, `runtime_${collectionName}.json`);
+-      const temp = `${file}.${Date.now()}.tmp`;
+-      fs.writeFileSync(temp, JSON.stringify(Object.fromEntries(values), null, 2), 'utf8');
+-      fs.renameSync(temp, file);
+-    } catch (err: any) {
+-      console.warn(`[STORAGE] Runtime snapshot ${collectionName} save failed:`, err?.message || err);
+-    }
++  async loadRuntimeArray<T=any>(name:string):Promise<T[]> {
++    const map=await this.loadRuntimeCollection<T>('__array_'+name); return Object.keys(map).sort().map((k)=>map[k]);
+   }
+ 
+-  async loadRuntimeArray<T = any>(name: string): Promise<T[]> {
+-    const collection = await this.loadRuntimeCollection<T>(`__array_${name}`);
+-    return Object.keys(collection).sort().map((k) => collection[k]);
++  async saveRuntimeCollection<T>(_name:string,_values:Map<string,T>):Promise<void> {
++    throw new Error('Use transactional saveRuntimeState.');
++  }
++  async saveRuntimeArray<T>(_name:string,_values:T[]):Promise<void> {
++    throw new Error('Use transactional saveRuntimeState.');
+   }
+ 
+-  async saveRuntimeArray<T = any>(name: string, values: T[]): Promise<void> {
+-    const map = new Map<string, T>();
+-    values.forEach((value, index) => {
+-      const id = (value && typeof value === 'object' && 'id' in (value as any)) ? String((value as any).id) : String(index).padStart(12, '0');
+-      map.set(id, value);
+-    });
+-    await this.saveRuntimeCollection(`__array_${name}`, map);
++  async saveRuntimeState(state:RuntimeState):Promise<void> {
++    if (!this.pool && process.env.NODE_ENV !== 'production') return;
++    const next=this.saveQueue.then(()=>this.persist(state)); this.saveQueue=next.catch(()=>undefined); return next;
+   }
+ 
+-  getStatus() {
+-    return {
+-      firestoreConfigured: !!this.firestore,
+-      firestoreConnected: this.isFirestoreReady,
+-      snapshotFileExists: fs.existsSync(this.snapshotFilePath),
+-      snapshotPath: this.snapshotFilePath,
+-    };
++  private async persist(s:RuntimeState):Promise<void> {
++    const client=await this.db().connect();
++    const up=async(sql:string,args:any[])=>client.query(sql,args);
++    const sync=async(table:string,key:string,ids:string[])=>client.query('DELETE FROM public.'+table+' WHERE NOT ('+key+'=ANY($1::text[]))',[ids]);
++    try {
++      await client.query('BEGIN');
++      for(const x of s.users.values()) await up("INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,NOW()) ON CONFLICT(id) DO UPDATE SET phone=EXCLUDED.phone,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,status=EXCLUDED.status,updated_at=NOW()",[x.id,x.phone,x.password||'',(x.roles||[]).filter((r)=>r!=='AI_ADMIN'),x.status,x.createdAt]);
++      await sync('users','id',[...s.users.keys()]);
++      const photoIds:string[]=[];
++      for(const x of s.craftsmen.values()){
++        await up("INSERT INTO public.craftsmen(id,user_id,name,description,phone,phone_visible,city_id,profession_id,latitude,longitude,working_hours,status,bank_account,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::craftsman_status,$13,$14,$15) ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id,name=EXCLUDED.name,description=EXCLUDED.description,phone=EXCLUDED.phone,phone_visible=EXCLUDED.phone_visible,city_id=EXCLUDED.city_id,profession_id=EXCLUDED.profession_id,latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,working_hours=EXCLUDED.working_hours,status=EXCLUDED.status,bank_account=EXCLUDED.bank_account,updated_at=EXCLUDED.updated_at",[x.id,x.userId,x.name,x.description||'',x.phone,x.phoneVisible,x.cityId,x.professionId,x.latitude,x.longitude,JSON.stringify(x.workingHours||{}),x.status,x.bankAccount||null,x.createdAt,x.updatedAt]);
++        for(const p of x.photos||[]){photoIds.push(p.id);await up("INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET craftsman_id=EXCLUDED.craftsman_id,url=EXCLUDED.url,is_primary=EXCLUDED.is_primary,display_order=EXCLUDED.display_order,updated_at=EXCLUDED.updated_at",[p.id,x.id,p.url,p.isPrimary,p.displayOrder,p.createdAt,p.updatedAt]);}
++      }
++      await sync('craftsmen','id',[...s.craftsmen.keys()]); await sync('craftsman_photos','id',photoIds);
++      for(const [id,x] of s.craftsmanDrafts) await up("INSERT INTO public.craftsman_drafts(user_id,step,data,updated_at) VALUES($1,$2,$3::jsonb,$4) ON CONFLICT(user_id) DO UPDATE SET step=EXCLUDED.step,data=EXCLUDED.data,updated_at=EXCLUDED.updated_at",[id,x.step,JSON.stringify(x.data||{}),x.updatedAt]);
++      await sync('craftsman_drafts','user_id',[...s.craftsmanDrafts.keys()]);
++      for(const [id,x] of s.top15Prices) await up("INSERT INTO public.top15_prices(id,city_id,profession_id,amount_minor,currency,updated_at,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET city_id=EXCLUDED.city_id,profession_id=EXCLUDED.profession_id,amount_minor=EXCLUDED.amount_minor,currency=EXCLUDED.currency,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by",[id,x.cityId,x.professionId,x.amountMinor,x.currency,x.updatedAt,s.users.has(x.updatedBy)?x.updatedBy:null]);
++      await sync('top15_prices','id',[...s.top15Prices.keys()]);
++      for(const x of s.craftsmanListings.values()) await up("INSERT INTO public.craftsman_listings(id,craftsman_id,city_id,profession_id,status,starts_at,expires_at,grace_ends_at,last_payment_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5::craftsman_status,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO UPDATE SET craftsman_id=EXCLUDED.craftsman_id,city_id=EXCLUDED.city_id,profession_id=EXCLUDED.profession_id,status=EXCLUDED.status,starts_at=EXCLUDED.starts_at,expires_at=EXCLUDED.expires_at,grace_ends_at=EXCLUDED.grace_ends_at,last_payment_id=EXCLUDED.last_payment_id,updated_at=EXCLUDED.updated_at",[x.id,x.craftsmanId,x.cityId,x.professionId,x.status,x.startsAt||null,x.expiresAt||null,x.graceEndsAt||null,x.lastPaymentId||null,x.createdAt,x.updatedAt]);
++      await sync('craftsman_listings','id',[...s.craftsmanListings.keys()]);
++      for(const x of s.top15Reservations.values()) await up("INSERT INTO public.top15_reservations(id,city_id,profession_id,craftsman_id,amount_minor,currency,reserved_at,expires_at,status) VALUES($1,$2,$3,$4,$5,$6,NOW(),to_timestamp($7/1000.0),$8::reservation_status) ON CONFLICT(id) DO UPDATE SET city_id=EXCLUDED.city_id,profession_id=EXCLUDED.profession_id,craftsman_id=EXCLUDED.craftsman_id,amount_minor=EXCLUDED.amount_minor,currency=EXCLUDED.currency,expires_at=EXCLUDED.expires_at,status=EXCLUDED.status",[x.id,x.cityId,x.professionId,x.craftsmanId,x.amountMinor,x.currency,x.expiresAt,x.status==='PAID'?'CONFIRMED':x.status==='EXPIRED'?'EXPIRED':'PENDING']);
++      await sync('top15_reservations','id',[...s.top15Reservations.keys()]);
++      for(const x of s.top15Memberships.values()) await up("INSERT INTO public.top15_memberships(id,city_id,profession_id,craftsman_id,status,starts_at,expires_at,created_at) VALUES($1,$2,$3,$4,$5::membership_status,$6,$7,$6) ON CONFLICT(id) DO UPDATE SET city_id=EXCLUDED.city_id,profession_id=EXCLUDED.profession_id,craftsman_id=EXCLUDED.craftsman_id,status=EXCLUDED.status,starts_at=EXCLUDED.starts_at,expires_at=EXCLUDED.expires_at",[x.id,x.cityId,x.professionId,x.craftsmanId,x.status,x.startsAt,x.expiresAt]);
++      await sync('top15_memberships','id',[...s.top15Memberships.keys()]);
++      for(const x of s.paymentIntents.values()) await up("INSERT INTO public.payment_intents(id,reservation_id,craftsman_id,provider,amount_minor,currency,idempotency_key,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8::payment_status,$9,$9) ON CONFLICT(id) DO UPDATE SET reservation_id=EXCLUDED.reservation_id,craftsman_id=EXCLUDED.craftsman_id,provider=EXCLUDED.provider,amount_minor=EXCLUDED.amount_minor,currency=EXCLUDED.currency,idempotency_key=EXCLUDED.idempotency_key,status=EXCLUDED.status,updated_at=NOW()",[x.id,x.reservationId||null,x.craftsmanId,x.providerId,x.amountMinor,x.currency,x.idempotencyKey,x.status,x.createdAt]);
++      await sync('payment_intents','id',[...s.paymentIntents.keys()]);
++      for(const x of s.advertisements.values()) await up("INSERT INTO public.advertisements(id,company_name,phone_number,password,expires_at,image_url,target_url,is_active,payment_status,terms_accepted,price_gel,days_duration,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(id) DO UPDATE SET company_name=EXCLUDED.company_name,phone_number=EXCLUDED.phone_number,password=EXCLUDED.password,expires_at=EXCLUDED.expires_at,image_url=EXCLUDED.image_url,target_url=EXCLUDED.target_url,is_active=EXCLUDED.is_active,payment_status=EXCLUDED.payment_status,terms_accepted=EXCLUDED.terms_accepted,price_gel=EXCLUDED.price_gel,days_duration=EXCLUDED.days_duration,updated_at=EXCLUDED.updated_at",[x.id,x.company_name,x.phone_number,x.password||'',x.expires_at,x.image_url||'',x.target_url||'',x.is_active,x.payment_status,x.terms_accepted,x.price_gel||0,x.days_duration||30,x.created_at,x.updated_at]);
++      await sync('advertisements','id',[...s.advertisements.keys()]);
++      await this.saveRows(client,'support_messages',s.supportMessages,(x)=>[x.id,x.craftsmanId,x.sender,x.body,x.flaggedForHuman,x.createdAt],"INSERT INTO public.support_messages(id,craftsman_id,sender,body,flagged_for_human,created_at) VALUES($1,$2,$3::chat_sender_type,$4,$5,$6) ON CONFLICT(id) DO UPDATE SET body=EXCLUDED.body,flagged_for_human=EXCLUDED.flagged_for_human");
++      await this.saveRows(client,'ai_reports',s.aiReports,(x)=>[x.id,x.type,x.craftsmanId||null,x.craftsmanName||null,x.periodFrom||null,x.periodTo||null,JSON.stringify(x.content||{}),x.createdAt],"INSERT INTO public.ai_reports(id,report_type,craftsman_id,craftsman_name,period_from,period_to,content,created_at) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8) ON CONFLICT(id) DO UPDATE SET content=EXCLUDED.content,report_type=EXCLUDED.report_type");
++      await this.saveRows(client,'audit_logs',s.auditLog,(x)=>[x.id,x.actorType,x.actorId,x.action,x.targetType,x.targetId||null,x.reason||null,x.createdAt],"INSERT INTO public.audit_logs(id,actor_type,actor_id,action,target_type,target_id,reason,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO UPDATE SET action=EXCLUDED.action,reason=EXCLUDED.reason");
++      await this.saveRows(client,'listing_purge_logs',s.listingPurgeLog,(x)=>[x.id,x.craftsmanId,x.cityId,x.professionId,x.purgedAt,x.reason],"INSERT INTO public.listing_purge_logs(id,craftsman_id,city_id,profession_id,purged_at,reason) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO UPDATE SET reason=EXCLUDED.reason");
++      this.connected=true; this.connectionError=null; await client.query('COMMIT');
++    } catch(e:any) { await client.query('ROLLBACK').catch(()=>undefined); this.connected=false; this.connectionError=e.message; throw e; }
++    finally { client.release(); }
+   }
++
++  private async saveRows<T extends {id:string}>(client:PoolClient,table:string,rows:T[],values:(x:T)=>any[],sql:string):Promise<void> {
++    for(const row of rows) await client.query(sql,values(row));
++    await client.query('DELETE FROM public.'+table+' WHERE NOT (id=ANY($1::text[]))',[rows.map((x)=>x.id)]);
++  }
++
++  getStatus() { return { databaseConfigured:Boolean(this.pool), databaseConnected:this.connected, databaseError:this.connectionError }; }
++  async close() { await this.pool?.end(); }
+ }
+ 
+diff --git a/server/db.ts b/server/db.ts
+index a66c58c..4e65687 100644
+--- a/server/db.ts
++++ b/server/db.ts
+@@ -991,6 +991,6 @@ class Database {
+     try {
+       if (process.env.NODE_ENV === 'production') {
+-        if (!process.env.FIRESTORE_PROJECT_ID && !process.env.GOOGLE_CLOUD_PROJECT && !process.env.GCP_PROJECT) {
+-          throw new Error('FIRESTORE_PROJECT_ID (or Google Cloud project environment) is required in production.');
++        if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
++          throw new Error('DATABASE_URL is required in production for Supabase Postgres storage.');
+         }
+         if (!process.env.BOOTSTRAP_PHONE || !process.env.BOOTSTRAP_PASSWORD) {
+@@ -1002,4 +1002,14 @@ class Database {
+       }
+ 
++      if (storage.getStatus().databaseConfigured || process.env.NODE_ENV === 'production') {
++        await storage.connect();
++        const catalogs = await storage.loadCatalogs();
++        if (!catalogs.cities.length || !catalogs.professions.length) {
++          throw new Error('Supabase cities and professions catalogs must be seeded before the application can start.');
++        }
++        this.cities = catalogs.cities;
++        this.professions = catalogs.professions;
++      }
++
+       // Production identities come only from deployment secrets; never from demo seed data.
+       if (process.env.NODE_ENV === 'production') {
+@@ -1091,24 +1101,8 @@ class Database {
+       const storedSupport = await storage.loadRuntimeArray<ChatMessage>('supportMessages');
+       const storedReports = await storage.loadRuntimeArray<AiReport>('aiReports');
++      const storedPurgeLog = await storage.loadRuntimeArray<ListingPurgeLog>('listingPurgeLog');
+       if (process.env.NODE_ENV === 'production') {
+-        // Remove legacy demo identities/data that may have been persisted by an earlier
+-        // pre-production build. This is a one-time safety cleanup and does not affect
+-        // real accounts created after deployment.
+-        for (const [id] of this.users) {
+-          if (/^usr-cm-\d+$/.test(id) || id === 'usr-ad-gorgia') this.users.delete(id);
+-        }
+-        for (const [id] of this.craftsmen) {
+-          if (/^cm-\d+$/.test(id)) this.craftsmen.delete(id);
+-        }
+-        for (const [id] of this.craftsmanListings) {
+-          if (/^cm-\d+$/.test(id)) this.craftsmanListings.delete(id);
+-        }
+-        for (const [id, ad] of this.advertisements) {
+-          if (id === 'ad-gorgia-1' || ad.company_name?.includes('გორგია')) this.advertisements.delete(id);
+-        }
+-        for (const [id] of this.top15Memberships) {
+-          if (/^mem-cm-\d+$/.test(id)) this.top15Memberships.delete(id);
+-        }
+-        // Deployment secrets remain authoritative even when a previous runtime snapshot exists.
++        // Database records are authoritative. Keep existing identities and data intact;
++        // deployment secrets only replace the two configured administrator credentials.
+         const now = new Date().toISOString();
+         this.users.set('usr-admin', {
+@@ -1126,7 +1120,8 @@ class Database {
+       if (storedReports.length) this.aiReports = storedReports;
+       if (storedAudit.length) this.auditLog = storedAudit;
++      if (storedPurgeLog.length) this.listingPurgeLog = storedPurgeLog;
+       const requireDurable = process.env.REQUIRE_DURABLE_STORAGE !== 'false' && process.env.NODE_ENV === 'production';
+-      if (requireDurable && !storage.getStatus().firestoreConnected) {
+-        throw new Error('Durable Firestore storage is required in production but is not connected. Refusing to start with ephemeral-only persistence.');
++      if (requireDurable && !storage.getStatus().databaseConnected) {
++        throw new Error('Supabase Postgres is required in production but is not connected. Refusing to start with ephemeral-only persistence.');
+       }
+       if (process.env.NODE_ENV === 'production') {
+@@ -1141,24 +1136,22 @@ class Database {
+ 
+   async persistRuntimeState(): Promise<void> {
+-    const runtimeMaps: Array<[string, Map<string, any>]> = [
+-      ['users', this.users],
+-      ['craftsmen', this.craftsmen],
+-      ['craftsmanDrafts', this.craftsmanDrafts],
+-      ['top15Prices', this.top15Prices],
+-      ['top15Reservations', this.top15Reservations],
+-      ['top15Memberships', this.top15Memberships],
+-      ['paymentIntents', this.paymentIntents],
+-      ['craftsmanListings', this.craftsmanListings],
+-      ['advertisements', this.advertisements],
+-    ];
+-    await Promise.all([
+-      ...runtimeMaps.map(([name, map]) => storage.saveRuntimeCollection(name, map)),
+-      storage.saveRuntimeArray('supportMessages', this.supportMessages),
+-      storage.saveRuntimeArray('aiReports', this.aiReports),
+-      storage.saveRuntimeArray('auditLog', this.auditLog),
+-    ]);
++    await storage.saveRuntimeState({
++      users: this.users,
++      craftsmen: this.craftsmen,
++      craftsmanDrafts: this.craftsmanDrafts,
++      top15Prices: this.top15Prices,
++      top15Reservations: this.top15Reservations,
++      top15Memberships: this.top15Memberships,
++      paymentIntents: this.paymentIntents,
++      craftsmanListings: this.craftsmanListings,
++      advertisements: this.advertisements,
++      supportMessages: this.supportMessages,
++      aiReports: this.aiReports,
++      auditLog: this.auditLog,
++      listingPurgeLog: this.listingPurgeLog,
++    });
+   }
+ 
+-  async persistSuperAdminConfig(): Promise<{ success: boolean; firestore: boolean; snapshot: boolean; error?: string }> {
++  async persistSuperAdminConfig(): Promise<{ success: boolean; database: boolean; snapshot: boolean; error?: string }> {
+     const configToSave: SuperAdminPersistedConfig = {
+       listingPrice: this.listingPrice,
+diff --git a/server/routes.ts b/server/routes.ts
+index 121c524..3470858 100644
+--- a/server/routes.ts
++++ b/server/routes.ts
+@@ -203,5 +203,5 @@ function checkConfigLock(req: Request, res: Response, next: NextFunction) {
+ apiRouter.get('/health', (req, res) => {
+   const durableRequired = process.env.NODE_ENV === 'production' && process.env.REQUIRE_DURABLE_STORAGE !== 'false';
+-  const durableReady = storage.getStatus().firestoreConnected;
++  const durableReady = storage.getStatus().databaseConnected;
+   if (durableRequired && !durableReady) {
+     return res.status(503).json({ status: 'NOT_READY', service: 'MASTER_BOY API Server', version: 'v1.4.0', durableStorage: false });
+@@ -498,5 +498,4 @@ apiRouter.post('/auth/otp/verify', (req, res) => {
+       roles: user.roles,
+     },
+-    isNewUser,
+   });
+ });
+@@ -1762,5 +1761,5 @@ apiRouter.put(['/admin/users/:id/block', '/admin/craftsmen/:id/block'], requireA
+   });
+ 
+-  res.json({ success: true, user: safeUser(user), craftsman });
++  res.json({ success: true, user: user ? safeUser(user) : null, craftsman });
+ });
+ 
+@@ -1798,5 +1797,5 @@ apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requ
+   });
+ 
+-  res.json({ success: true, user: safeUser(user), craftsman });
++  res.json({ success: true, user: user ? safeUser(user) : null, craftsman });
+ });
+ 
+diff --git a/server.ts b/server.ts
+index e2ddcf6..da07c03 100644
+--- a/server.ts
++++ b/server.ts
+@@ -60,5 +60,5 @@ async function startServer() {
+ 
+   // Persist only mutating API requests. GET requests must never rewrite the entire
+-  // runtime snapshot: that creates unnecessary Firestore traffic and can overwrite
++  // runtime state: that creates unnecessary database traffic and can overwrite
+   // a newer snapshot after a read.
+   const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+@@ -78,5 +78,5 @@ async function startServer() {
+   app.get('/health', (req, res) => {
+     const durableRequired = process.env.NODE_ENV === 'production' && process.env.REQUIRE_DURABLE_STORAGE !== 'false';
+-    const durableReady = storage.getStatus().firestoreConnected;
++    const durableReady = storage.getStatus().databaseConnected;
+     if (durableRequired && !durableReady) {
+       return res.status(503).json({ status: 'NOT_READY', service: 'MASTER_BOY API Server', version: 'v1.4.0', durableStorage: false, timestamp: new Date().toISOString() });
+diff --git a/migrations/run-migrations.ts b/migrations/run-migrations.ts
+index a477841..236238b 100644
+--- a/migrations/run-migrations.ts
++++ b/migrations/run-migrations.ts
+@@ -59,4 +59,5 @@ async function runMigrations() {
+     '002_seed_data.sql',
+     '003_advertisements_schema.sql',
++    '004_runtime_storage.sql',
+   ];
+ 
+diff --git a/migrations/004_runtime_storage.sql b/migrations/004_runtime_storage.sql
+new file mode 100644
+index 0000000..df21c80
+--- /dev/null
++++ b/migrations/004_runtime_storage.sql
+@@ -0,0 +1,96 @@
++-- Runtime fields used by the Express application, plus a server-only DB role.
++-- Existing business data is preserved; no tables or rows are dropped.
++
++ALTER TABLE public.craftsmen
++  ADD COLUMN IF NOT EXISTS bank_account TEXT;
++
++ALTER TABLE public.top15_reservations
++  ADD COLUMN IF NOT EXISTS amount_minor INTEGER NOT NULL DEFAULT 0,
++  ADD COLUMN IF NOT EXISTS currency VARCHAR(8) NOT NULL DEFAULT 'GEL';
++
++ALTER TABLE public.system_config
++  ADD COLUMN IF NOT EXISTS config_unlock_hash TEXT;
++
++CREATE TABLE IF NOT EXISTS public.ai_reports (
++  id VARCHAR(64) PRIMARY KEY,
++  report_type VARCHAR(32) NOT NULL,
++  craftsman_id VARCHAR(64),
++  craftsman_name VARCHAR(150),
++  period_from TIMESTAMPTZ,
++  period_to TIMESTAMPTZ,
++  content JSONB NOT NULL DEFAULT '{}'::jsonb,
++  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++
++CREATE TABLE IF NOT EXISTS public.listing_purge_logs (
++  id VARCHAR(64) PRIMARY KEY,
++  craftsman_id VARCHAR(64) NOT NULL,
++  city_id VARCHAR(64) NOT NULL,
++  profession_id VARCHAR(64) NOT NULL,
++  purged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++  reason TEXT NOT NULL
++);
++
++DO $$ BEGIN
++  CREATE ROLE masterboy_app NOLOGIN;
++EXCEPTION WHEN duplicate_object THEN NULL;
++END $$;
++
++GRANT USAGE ON SCHEMA public TO masterboy_app;
++GRANT SELECT, INSERT, UPDATE, DELETE ON
++  public.cities,
++  public.professions,
++  public.users,
++  public.user_sessions,
++  public.otp_challenges,
++  public.craftsmen,
++  public.craftsman_photos,
++  public.craftsman_drafts,
++  public.craftsman_listings,
++  public.top15_prices,
++  public.top15_reservations,
++  public.top15_memberships,
++  public.payment_intents,
++  public.support_messages,
++  public.audit_logs,
++  public.advertisements,
++  public.ai_reports,
++  public.listing_purge_logs
++TO masterboy_app;
++
++-- The application may update non-secret settings but cannot read or change
++-- provider credential columns kept for legacy schema compatibility.
++GRANT SELECT (id, config_locked, lock_expires_at, config_unlock_hash,
++  recipient_bank_name, recipient_iban, recipient_tax_id, recipient_company_name,
++  standard_listing_price_minor, gemini_api_key_configured,
++  bog_active, tbc_active, stripe_active, updated_at)
++ON public.system_config TO masterboy_app;
++GRANT INSERT (id, config_locked, lock_expires_at, config_unlock_hash,
++  recipient_bank_name, recipient_iban, recipient_tax_id, recipient_company_name,
++  standard_listing_price_minor, gemini_api_key_configured,
++  bog_active, tbc_active, stripe_active, updated_at)
++ON public.system_config TO masterboy_app;
++GRANT UPDATE (config_locked, lock_expires_at, config_unlock_hash,
++  recipient_bank_name, recipient_iban, recipient_tax_id, recipient_company_name,
++  standard_listing_price_minor, gemini_api_key_configured,
++  bog_active, tbc_active, stripe_active, updated_at)
++ON public.system_config TO masterboy_app;
++
++DO $$
++DECLARE table_name TEXT;
++BEGIN
++  FOREACH table_name IN ARRAY ARRAY[
++    'cities', 'professions', 'users', 'user_sessions', 'otp_challenges',
++    'craftsmen', 'craftsman_photos', 'craftsman_drafts', 'craftsman_listings',
++    'top15_prices', 'top15_reservations', 'top15_memberships', 'payment_intents',
++    'support_messages', 'audit_logs', 'system_config', 'advertisements',
++    'ai_reports', 'listing_purge_logs'
++  ] LOOP
++    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
++    EXECUTE format('DROP POLICY IF EXISTS masterboy_server_access ON public.%I', table_name);
++    EXECUTE format(
++      'CREATE POLICY masterboy_server_access ON public.%I FOR ALL TO masterboy_app USING (true) WITH CHECK (true)',
++      table_name
++    );
++  END LOOP;
++END $$;
