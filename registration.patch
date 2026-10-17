@@ -1,5 +1,5 @@
 diff --git a/server/routes.ts b/server/routes.ts
-index 3470858..b2b27e9 100644
+index 3470858..2e48810 100644
 --- a/server/routes.ts
 +++ b/server/routes.ts
 @@ -18,12 +18,20 @@ export const apiRouter = Router();
@@ -394,7 +394,15 @@ index 3470858..b2b27e9 100644
    if (webhookSecret !== undefined) item.webhookSecret = webhookSecret.trim();
  
    db.auditLog.unshift({
-@@ -2587,7 +2677,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
+@@ -2312,6 +2402,7 @@ apiRouter.post('/admin/bootstrap/migrate', requireSuperAdmin, async (req: AuthRe
+   });
+ 
+   await db.persistSuperAdminConfig();
++  await db.persistRuntimeState();
+ 
+   res.json({
+     success: true,
+@@ -2587,7 +2678,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
    }
    for (const intent of db.paymentIntents.values()) {
      if (intent.idempotencyKey === idempotencyKey && intent.reservationId === ad.id) {
@@ -403,7 +411,7 @@ index 3470858..b2b27e9 100644
      }
    }
  
-@@ -2621,7 +2711,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
+@@ -2621,7 +2712,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
    res.json({
      success: true,
      paymentIntentId,
@@ -507,4 +515,130 @@ index 7cfcd88..e1bc98b 100644
            </div>
          )}
  
+diff --git a/server/db.ts b/server/db.ts
+index 4e65687..f62d0be 100644
+--- a/server/db.ts
++++ b/server/db.ts
+@@ -210,7 +210,7 @@ class Database {
+   bootstrap = {
+     phone: process.env.BOOTSTRAP_PHONE || '+995000000000',
+     password: process.env.BOOTSTRAP_PASSWORD || '',
+-    enabled: true,
++    enabled: Boolean(process.env.BOOTSTRAP_PASSWORD),
+     invalidated: false,
+     completedAt: null as string | null,
+   };
+@@ -993,12 +993,6 @@ class Database {
+         if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
+           throw new Error('DATABASE_URL is required in production for Supabase Postgres storage.');
+         }
+-        if (!process.env.BOOTSTRAP_PHONE || !process.env.BOOTSTRAP_PASSWORD) {
+-          throw new Error('BOOTSTRAP_PHONE and BOOTSTRAP_PASSWORD are required in production.');
+-        }
+-        if (!process.env.ADMIN_PHONE || !process.env.ADMIN_PASSWORD) {
+-          throw new Error('ADMIN_PHONE and ADMIN_PASSWORD are required in production.');
+-        }
+       }
+ 
+       if (storage.getStatus().databaseConfigured || process.env.NODE_ENV === 'production') {
+@@ -1013,16 +1007,17 @@ class Database {
+ 
+       // Production identities come only from deployment secrets; never from demo seed data.
+       if (process.env.NODE_ENV === 'production') {
++        this.users.clear();
+         const now = new Date().toISOString();
+         const adminPhone = process.env.ADMIN_PHONE!;
+         const adminPassword = process.env.ADMIN_PASSWORD!;
+         const bootstrapPhone = process.env.BOOTSTRAP_PHONE!;
+         const bootstrapPassword = process.env.BOOTSTRAP_PASSWORD!;
+-        this.users.set('usr-admin', {
++        if (adminPhone && adminPassword) this.users.set('usr-admin', {
+           id: 'usr-admin', phone: adminPhone, password: hashPassword(adminPassword),
+           roles: ['ADMIN'], status: 'ACTIVE', createdAt: now,
+         });
+-        this.users.set('usr-superadmin', {
++        if (bootstrapPhone && bootstrapPassword) this.users.set('usr-superadmin', {
+           id: 'usr-superadmin', phone: bootstrapPhone, password: hashPassword(bootstrapPassword),
+           roles: ['SUPER_ADMIN'], status: 'ACTIVE', createdAt: now,
+         });
+@@ -1068,8 +1063,8 @@ class Database {
+           this.bootstrap = {
+             ...this.bootstrap,
+             ...persisted.bootstrap,
+-            phone: process.env.NODE_ENV === 'production' ? process.env.BOOTSTRAP_PHONE! : (persisted.bootstrap.phone || this.bootstrap.phone),
+-            password: process.env.BOOTSTRAP_PASSWORD || '',
++            phone: process.env.NODE_ENV === 'production' ? (process.env.BOOTSTRAP_PHONE || persisted.bootstrap.phone || '') : (persisted.bootstrap.phone || this.bootstrap.phone),
++            password: process.env.NODE_ENV === 'production' ? (process.env.BOOTSTRAP_PASSWORD || '') : (this.bootstrap.password || ''),
+           };
+         }
+         if (persisted.backendConfig) {
+@@ -1101,26 +1096,54 @@ class Database {
+       const storedSupport = await storage.loadRuntimeArray<ChatMessage>('supportMessages');
+       const storedReports = await storage.loadRuntimeArray<AiReport>('aiReports');
+       const storedPurgeLog = await storage.loadRuntimeArray<ListingPurgeLog>('listingPurgeLog');
+-      if (process.env.NODE_ENV === 'production') {
+-        // Database records are authoritative. Keep existing identities and data intact;
+-        // deployment secrets only replace the two configured administrator credentials.
+-        const now = new Date().toISOString();
+-        this.users.set('usr-admin', {
+-          id: 'usr-admin', phone: process.env.ADMIN_PHONE!, password: hashPassword(process.env.ADMIN_PASSWORD!),
+-          roles: ['ADMIN'], status: 'ACTIVE', createdAt: now,
+-        });
+-        this.users.set('usr-superadmin', {
+-          id: 'usr-superadmin', phone: process.env.BOOTSTRAP_PHONE!, password: hashPassword(process.env.BOOTSTRAP_PASSWORD!),
+-          roles: ['SUPER_ADMIN'], status: 'ACTIVE', createdAt: now,
+-        });
+-      }
+-
+       const storedAudit = await storage.loadRuntimeArray<AdminAuditLog>('auditLog');
+       if (storedSupport.length) this.supportMessages = storedSupport;
+       if (storedReports.length) this.aiReports = storedReports;
+       if (storedAudit.length) this.auditLog = storedAudit;
+       if (storedPurgeLog.length) this.listingPurgeLog = storedPurgeLog;
+       const requireDurable = process.env.REQUIRE_DURABLE_STORAGE !== 'false' && process.env.NODE_ENV === 'production';
++
++      if (process.env.NODE_ENV === 'production') {
++        // Supabase is authoritative after the first boot. Environment credentials
++        // initialize missing administrator roles once and never reset saved passwords.
++        const storedUsers = Array.from(this.users.values());
++        if (!storedUsers.some(user => user.roles.includes('ADMIN'))) {
++          if (!process.env.ADMIN_PHONE || !process.env.ADMIN_PASSWORD) {
++            throw new Error('No active administrator exists. Set ADMIN_PHONE and ADMIN_PASSWORD in Render secrets for one-time initialization.');
++          }
++          this.users.set('usr-admin', {
++            id: 'usr-admin', phone: process.env.ADMIN_PHONE, password: hashPassword(process.env.ADMIN_PASSWORD),
++            roles: ['ADMIN'], status: 'ACTIVE', createdAt: new Date().toISOString(),
++          });
++        }
++        if (!storedUsers.some(user => user.roles.includes('SUPER_ADMIN'))) {
++          if (!process.env.BOOTSTRAP_PHONE || !process.env.BOOTSTRAP_PASSWORD) {
++            throw new Error('No active super administrator exists. Set BOOTSTRAP_PHONE and BOOTSTRAP_PASSWORD in Render secrets for one-time initialization.');
++          }
++          this.users.set('usr-superadmin', {
++            id: 'usr-superadmin', phone: process.env.BOOTSTRAP_PHONE, password: hashPassword(process.env.BOOTSTRAP_PASSWORD),
++            roles: ['SUPER_ADMIN'], status: 'ACTIVE', createdAt: new Date().toISOString(),
++          });
++        }
++
++        const bootstrapCompletion = this.auditLog.find(entry => entry.action === 'BOOTSTRAP_MIGRATION_COMPLETED');
++        if (bootstrapCompletion) {
++          this.bootstrap = {
++            phone: '', password: '', enabled: false, invalidated: true,
++            completedAt: bootstrapCompletion.createdAt,
++          };
++        } else if (process.env.BOOTSTRAP_PHONE && process.env.BOOTSTRAP_PASSWORD) {
++          this.bootstrap = {
++            ...this.bootstrap,
++            phone: process.env.BOOTSTRAP_PHONE,
++            password: process.env.BOOTSTRAP_PASSWORD,
++            enabled: true,
++            invalidated: false,
++          };
++        } else {
++          this.bootstrap = { ...this.bootstrap, phone: '', password: '', enabled: false };
++        }
++      }
+       if (requireDurable && !storage.getStatus().databaseConnected) {
+         throw new Error('Supabase Postgres is required in production but is not connected. Refusing to start with ephemeral-only persistence.');
+       }
 
