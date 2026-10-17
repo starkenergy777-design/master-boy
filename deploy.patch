@@ -400,7 +400,7 @@ index fc33c9c..d8a5294 100644
 +    const rs=await this.db().query(q);
 +    for(const r of rs.rows) {
 +      let k=r.id,v:any;
-+      if(name==='users') v={id:r.id,phone:r.phone,password:r.password_hash,roles:r.roles,status:r.status,createdAt:date(r.created_at)};
++      if(name==='users') v={id:r.id,phone:r.phone,password:r.password_hash,roles:Array.isArray(r.roles)?r.roles:String(r.roles||'{}').slice(1,-1).split(',').filter(Boolean),status:r.status,createdAt:date(r.created_at)};
 +      else if(name==='craftsmen') v={id:r.id,userId:r.user_id,name:r.name,description:r.description||'',phone:r.phone,phoneVisible:r.phone_visible,latitude:r.latitude==null?null:Number(r.latitude),longitude:r.longitude==null?null:Number(r.longitude),workingHours:r.working_hours,status:r.status,cityId:r.city_id,professionId:r.profession_id,bankAccount:r.bank_account,createdAt:date(r.created_at),updatedAt:date(r.updated_at),photos:r.photos||[]};
 +      else if(name==='craftsmanDrafts'){k=r.user_id;v={step:r.step,data:r.data||{},updatedAt:date(r.updated_at)};}
 +      else if(name==='top15Prices') v={cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,updatedAt:date(r.updated_at),updatedBy:r.updated_by||'system'};
