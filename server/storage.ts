@@ -141,7 +141,8 @@ export class StorageService {
       this.connected=true; return out;
     }
     const queries:Record<string,string> = {
-      users:'SELECT * FROM public.users',
+      // Convert the custom enum array to JSON so node-postgres decodes it as a JS array.
+      users:'SELECT id,phone,password_hash,array_to_json(roles) AS roles,status,created_at FROM public.users',
       craftsmen:"SELECT c.*,COALESCE(jsonb_agg(jsonb_build_object('id',p.id,'craftsmanId',p.craftsman_id,'url',p.url,'displayOrder',p.display_order,'isPrimary',p.is_primary,'createdAt',p.created_at,'updatedAt',p.updated_at) ORDER BY p.display_order) FILTER(WHERE p.id IS NOT NULL),'[]'::jsonb) photos FROM public.craftsmen c LEFT JOIN public.craftsman_photos p ON p.craftsman_id=c.id GROUP BY c.id",
       craftsmanDrafts:'SELECT * FROM public.craftsman_drafts',
       top15Prices:'SELECT * FROM public.top15_prices',
@@ -191,7 +192,10 @@ export class StorageService {
     const sync=async(table:string,key:string,ids:string[])=>client.query('DELETE FROM public.'+table+' WHERE NOT ('+key+'=ANY($1::text[]))',[ids]);
     try {
       await client.query('BEGIN');
-      for(const x of s.users.values()) await up("INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,NOW()) ON CONFLICT(id) DO UPDATE SET phone=EXCLUDED.phone,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,status=EXCLUDED.status,updated_at=NOW()",[x.id,x.phone,x.password||'',(x.roles||[]).filter((r)=>r!=='AI_ADMIN'),x.status,x.createdAt]);
+      for(const x of s.users.values()) {
+        if (!Array.isArray(x.roles)) throw new Error('User roles must be an array before persistence.');
+        await up("INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,NOW()) ON CONFLICT(id) DO UPDATE SET phone=EXCLUDED.phone,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,status=EXCLUDED.status,updated_at=NOW()",[x.id,x.phone,x.password||'',x.roles.filter((r)=>r!=='AI_ADMIN'),x.status,x.createdAt]);
+      }
       await sync('users','id',[...s.users.keys()]);
       const photoIds:string[]=[];
       for(const x of s.craftsmen.values()){
