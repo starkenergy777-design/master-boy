@@ -35,7 +35,23 @@ export class StorageService {
   constructor() {
     const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
     if (connectionString) {
-      this.pool = new Pool({ connectionString, max: Number(process.env.DB_POOL_MAX || 4), connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000, ssl: { rejectUnauthorized: true }, application_name: 'master-boy-api' });
+      const caCertificate = process.env.SUPABASE_DB_CA_CERT?.replace(/\\n/g, '\n').trim();
+      if (process.env.NODE_ENV === 'production' && !caCertificate) {
+        throw new Error('SUPABASE_DB_CA_CERT is required in production to verify the Supabase TLS certificate.');
+      }
+
+      // node-postgres lets ssl query parameters override the explicit `ssl` option.
+      // Remove them so the Supabase CA below is always used for strict verification.
+      const databaseUrl = new URL(connectionString);
+      ['sslmode', 'sslrootcert', 'sslcert', 'sslkey'].forEach((key) => databaseUrl.searchParams.delete(key));
+      this.pool = new Pool({
+        connectionString: databaseUrl.toString(),
+        max: Number(process.env.DB_POOL_MAX || 4),
+        connectionTimeoutMillis: 10000,
+        idleTimeoutMillis: 30000,
+        ssl: { ca: caCertificate, rejectUnauthorized: true },
+        application_name: 'master-boy-api',
+      });
       this.pool.on('error', (e) => { this.connected = false; this.connectionError = e.message; });
     }
   }

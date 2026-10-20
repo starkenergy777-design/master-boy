@@ -30,12 +30,13 @@ node role-simulation.mjs
 Render Web Service აწყობს აპს root `Dockerfile`-ით. წარმოებაში აუცილებელია შემდეგი ცვლადების Render-ის **Environment / Secrets** განყოფილებაში დამატება:
 
 - `DATABASE_URL` — Supabase PostgreSQL connection string.
+- `SUPABASE_DB_CA_CERT` — CA certificate downloaded from Supabase **Database Settings → SSL Configuration**. Store its PEM text only in Render Environment; the server verifies the database certificate and hostname.
 - `ADMIN_PHONE`, `ADMIN_PASSWORD` — ადმინისტრატორის საწყისი მონაცემები.
 - `BOOTSTRAP_PHONE`, `BOOTSTRAP_PASSWORD` — სუპერადმინისტრატორის საწყისი მონაცემები.
 - `APP_URL` ან `APP_ORIGIN` — საჯარო Render მისამართი, CORS-ის შესაზღუდად.
 - სხვა პროვაიდერის გასაღებები (`GEMINI_API_KEY`, `BOG_*`, `TBC_*`, `STRIPE_*`, `SMS_WEBHOOK_URL`) — მხოლოდ თუ შესაბამისი ინტეგრაცია ჩართულია.
 
-ამ მნიშვნელობების ნაწილი GitHub-ზე არ უნდა აიტვირთოს. `.env.example` შეიცავს მხოლოდ ცვლადების სახელებს; რეალური მნიშვნელობები შეინახეთ Render-ის Secrets-ში. არ დაამატოთ `.env` ფაილები, პაროლები, მონაცემთა ბაზის ბმულები, API გასაღებები, service-account ფაილები ან მომხმარებლის მონაცემები GitHub-ში.
+ამ მნიშვნელობების ნაწილი GitHub-ზე არ უნდა აიტვირთოს. `.env.example` შეიცავს მხოლოდ ცვლადების სახელებს; რეალური მნიშვნელობები შეინახეთ Render-ის Secrets-ში. არ დაამატოთ `.env` ფაილები, პაროლები, მონაცემთა ბაზის ბმულები, CA სერტიფიკატის ტექსტი, API გასაღებები, service-account ფაილები ან მომხმარებლის მონაცემები GitHub-ში.
 
 ## Supabase-ის დაცვა
 
@@ -46,3 +47,4 @@ Render Web Service აწყობს აპს root `Dockerfile`-ით. წა
 - გადახდა წარმატებულად არ ჩაითვლება, სანამ შესაბამისი გადახდის პროვაიდერი და სერვერული callback-ის შემოწმება რეალურად არ არის კონფიგურირებული.
 
 `/health` და `/api/v1/health` აჩვენებს მხოლოდ სერვისისა და მდგრადი საცავის მზადყოფნის სტატუსს; გარემოს საიდუმლო მნიშვნელობებს არ აბრუნებს.
+
