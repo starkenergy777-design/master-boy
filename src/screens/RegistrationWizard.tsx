@@ -389,7 +389,11 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
 
             <div className="space-y-1.5">
               <label className="text-[11px] font-medium text-slate-400 px-1">
-                საბანკო ანგარიში / IBAN (საქართველოს ბანკი) <span className="text-rose-400" aria-hidden="true">*</span>
+                {lang === 'ka'
+                  ? 'საბანკო ანგარიში / IBAN (საქართველოს ბანკი)'
+                  : lang === 'ru'
+                    ? 'Банковский счёт / IBAN (Банк Грузии)'
+                    : 'Bank account / IBAN (Bank of Georgia)'} <span className="text-rose-400" aria-hidden="true">*</span>
               </label>
               <input
                 type="text"
