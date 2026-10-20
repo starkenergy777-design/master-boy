@@ -229,7 +229,9 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
             <span className="text-xs font-semibold text-slate-300">
               {step === 1 && (lang === 'ka' ? 'პირადი მონაცემები' : 'Personal Info')}
               {step === 2 && (lang === 'ka' ? 'სამუშაო გრაფიკი' : 'Working Hours')}
-              {step === 3 && (lang === 'ka' ? 'გამოწერა (10 GEL)' : 'Subscription (10 GEL)')}
+              {step === 3 && (isFreeRegistration
+                ? (lang === 'ka' ? 'უფასო რეგისტრაცია' : lang === 'ru' ? 'Бесплатная регистрация' : 'Free registration')
+                : lang === 'ka' ? `გამოწერა (${registrationPriceLabel})` : lang === 'ru' ? `Подписка (${registrationPriceLabel})` : `Subscription (${registrationPriceLabel})`)}
             </span>
           </div>
           {step > 1 && (
