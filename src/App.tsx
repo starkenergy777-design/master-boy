@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { AndroidFrame } from './components/AndroidFrame.js';
 import { TopAppBar } from './components/TopAppBar.js';
 import { Navbar, NavTab } from './components/Navbar.js';
-import { DialerModal } from './components/DialerModal.js';
 import { MainScreen } from './screens/MainScreen.js';
 import { SearchResultsScreen } from './screens/SearchResultsScreen.js';
 import { CraftsmanDetailScreen } from './screens/CraftsmanDetailScreen.js';
@@ -54,9 +53,6 @@ export default function App() {
   const [selectedCityId, setSelectedCityId] = useState<string | undefined>();
   const [selectedProfessionId, setSelectedProfessionId] = useState<string | undefined>();
   const [selectedCraftsman, setSelectedCraftsman] = useState<CraftsmanPublic | null>(null);
-
-  // Active Calling Dialer Simulation (§3.2 & §3.3)
-  const [callingCraftsman, setCallingCraftsman] = useState<{ name: string; phone: string } | null>(null);
 
   // Push new screen to history stack
   const pushScreen = (
@@ -198,9 +194,28 @@ export default function App() {
   };
 
   const handleCall = (c: CraftsmanPublic) => {
-    if (c.phoneVisible && c.phone) {
-      setCallingCraftsman({ name: c.name, phone: c.phone });
+    if (!c.phoneVisible || !c.phone) return;
+
+    const rawPhone = c.phone.trim();
+    const digits = rawPhone.replace(/\D/g, '');
+    if (!digits) return;
+
+    let dialNumber: string;
+    if (rawPhone.startsWith('+')) {
+      dialNumber = `+${digits}`;
+    } else if (digits.startsWith('00')) {
+      dialNumber = `+${digits.slice(2)}`;
+    } else if (digits.startsWith('995')) {
+      dialNumber = `+${digits}`;
+    } else if (digits.length === 10 && digits.startsWith('0')) {
+      dialNumber = `+995${digits.slice(1)}`;
+    } else if (digits.length === 9) {
+      dialNumber = `+995${digits}`;
+    } else {
+      dialNumber = digits;
     }
+
+    window.location.href = `tel:${dialNumber}`;
   };
 
   const handleLoginSuccess = (user: User, isNewUser: boolean) => {
@@ -388,15 +403,6 @@ export default function App() {
           currentUser={currentUser}
         />
 
-        {/* Android Native Dialer Modal Simulation (§3.2 & §3.4) */}
-        {callingCraftsman && (
-          <DialerModal
-            craftsmanName={callingCraftsman.name}
-            phone={callingCraftsman.phone}
-            lang={lang}
-            onClose={() => setCallingCraftsman(null)}
-          />
-        )}
       </div>
     </AndroidFrame>
   );
