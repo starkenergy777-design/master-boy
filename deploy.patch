@@ -796,3 +796,19 @@ index 0000000..df21c80
 +    );
 +  END LOOP;
 +END $$;
+diff --git a/src/screens/SettingsScreen.tsx b/src/screens/SettingsScreen.tsx
+--- a/src/screens/SettingsScreen.tsx
++++ b/src/screens/SettingsScreen.tsx
+@@ -67,5 +67,10 @@
+         <h3 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+           <Shield className="w-3.5 h-3.5 text-amber-400" />
+-          <span>{lang === 'ka' ? 'პლატფორმის შესახებ' : 'About Platform'}</span>
++          <span>
++            {lang === 'ka'
++              ? 'პლატფორმის შესახებ'
++              : lang === 'ru'
++                ? 'О платформе'
++                : 'About the platform'}
++          </span>
+         </h3>
+         <ul className="space-y-1.5 text-slate-300 text-xs">
