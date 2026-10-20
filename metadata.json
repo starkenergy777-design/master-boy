@@ -1,6 +1,0 @@
-{
-  "name": "MASTER_BOY",
-  "description": "Multilingual craftsman directory and management application using a React client, Render-hosted Node.js API, and Supabase PostgreSQL.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["SERVER_SIDE_API", "SUPABASE_POSTGRES_BACKEND"]
-}
