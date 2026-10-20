@@ -2082,8 +2082,8 @@ apiRouter.get('/admin/listing/price', requireSuperAdmin, (req, res) => {
 // PUT /admin/listing/price (Protected by config lock!) (§6.6, R-25)
 apiRouter.put('/admin/listing/price', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
   const { amountMinor } = req.body;
-  if (typeof amountMinor !== 'number' || amountMinor <= 0) {
-    return res.status(400).json({ code: 'INVALID_AMOUNT', message: 'Positive amountMinor required' });
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
+    return res.status(400).json({ code: 'INVALID_AMOUNT', message: 'Non-negative integer amountMinor required' });
   }
 
   db.listingPrice.amountMinor = amountMinor;
