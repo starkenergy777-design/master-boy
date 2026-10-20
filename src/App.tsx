@@ -276,19 +276,6 @@ export default function App() {
             <MainScreen
               lang={lang}
               onSearch={handleSearch}
-              onOpenCraftsmanLogin={() => {
-                if (!currentUser) {
-                  pushScreen('login', 'craftsman');
-                } else if (currentUser.roles.includes('SUPER_ADMIN')) {
-                  pushScreen('superadmin', 'craftsman');
-                } else if (currentUser.roles.includes('ADMIN')) {
-                  pushScreen('admin', 'craftsman');
-                } else if (currentUser.roles.includes('AD_PARTNER')) {
-                  pushScreen('adpartner', 'craftsman');
-                } else {
-                  pushScreen('dashboard', 'craftsman');
-                }
-              }}
               onSelectCraftsman={handleSelectCraftsman}
             />
           )}
