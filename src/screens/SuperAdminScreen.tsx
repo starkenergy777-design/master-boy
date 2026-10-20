@@ -230,8 +230,8 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     try {
       setLoading(true);
       const val = parseFloat(newListingPriceGEL);
-      if (isNaN(val) || val <= 0) {
-        setErrorMsg('Enter valid positive price');
+      if (!Number.isFinite(val) || val < 0) {
+        setErrorMsg('Enter a valid price of 0 GEL or more');
         return;
       }
       const res = await api.updateListingPrice(Math.round(val * 100));
@@ -573,11 +573,11 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
         <form onSubmit={handleUpdateListingPrice} className="space-y-2 text-xs">
           <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Price in GEL (Default: 10 GEL)</label>
+            <label className="text-[10px] text-slate-400">Price in GEL (0 GEL enables free registration)</label>
             <input
               type="number"
-              step="1"
-              min="1"
+              step="0.01"
+              min="0"
               value={newListingPriceGEL}
               onChange={(e) => setNewListingPriceGEL(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
