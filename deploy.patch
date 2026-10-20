@@ -830,11 +830,9 @@ diff --git a/src/screens/SettingsScreen.tsx b/src/screens/SettingsScreen.tsx
            </li>
          </ul>
        </div>
-+
 diff --git a/src/components/TopAppBar.tsx b/src/components/TopAppBar.tsx
 --- a/src/components/TopAppBar.tsx
 +++ b/src/components/TopAppBar.tsx
-+@@ -89,1 +89,1 @@
-+-          subtitle: lang === 'ka' ? 'ენები და პროფილი' : 'Languages & Profile',
-++          subtitle: lang === 'ka' ? 'ენები და პროფილი' : lang === 'ru' ? 'Язык и профиль' : 'Languages & Profile',
-+
+@@ -89,1 +89,1 @@
+-          subtitle: lang === 'ka' ? 'ენები და პროფილი' : 'Languages & Profile',
++          subtitle: lang === 'ka' ? 'ენები და პროფილი' : lang === 'ru' ? 'Язык и профиль' : 'Languages & Profile',
