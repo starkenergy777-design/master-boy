@@ -633,3 +633,875 @@ index 4e65687..f62d0be 100644
          throw new Error('Supabase Postgres is required in production but is not connected. Refusing to start with ephemeral-only persistence.');
        }
 
+diff --git a/src/App.tsx b/src/App.tsx
+index 18f264c..0585274 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -5,7 +5,6 @@ import { Navbar, NavTab } from './components/Navbar.js';
+ import { DialerModal } from './components/DialerModal.js';
+ import { MainScreen } from './screens/MainScreen.js';
+ import { SearchResultsScreen } from './screens/SearchResultsScreen.js';
+-import { MapSearchScreen } from './screens/MapSearchScreen.js';
+ import { CraftsmanDetailScreen } from './screens/CraftsmanDetailScreen.js';
+ import { LoginScreen } from './screens/LoginScreen.js';
+ import { RegistrationWizard } from './screens/RegistrationWizard.js';
+@@ -22,7 +21,6 @@ import { api } from './api.js';
+ type ScreenName =
+   | 'main'
+   | 'results'
+-  | 'map'
+   | 'detail'
+   | 'login'
+   | 'wizard'
+@@ -40,7 +38,6 @@ interface HistoryItem {
+   cityId?: string;
+   professionId?: string;
+   craftsman?: CraftsmanPublic | null;
+-  mapCoord?: { lat: number; lng: number } | null;
+ }
+ 
+ export default function App() {
+@@ -57,7 +54,6 @@ export default function App() {
+   const [selectedCityId, setSelectedCityId] = useState<string | undefined>();
+   const [selectedProfessionId, setSelectedProfessionId] = useState<string | undefined>();
+   const [selectedCraftsman, setSelectedCraftsman] = useState<CraftsmanPublic | null>(null);
+-  const [mapTargetCoord, setMapTargetCoord] = useState<{ lat: number; lng: number } | null>(null);
+ 
+   // Active Calling Dialer Simulation (§3.2 & §3.3)
+   const [callingCraftsman, setCallingCraftsman] = useState<{ name: string; phone: string } | null>(null);
+@@ -70,7 +66,6 @@ export default function App() {
+       cityId?: string;
+       professionId?: string;
+       craftsman?: CraftsmanPublic | null;
+-      mapCoord?: { lat: number; lng: number } | null;
+     }
+   ) => {
+     // Avoid duplicate consecutive history pushes
+@@ -96,7 +91,6 @@ export default function App() {
+         cityId: selectedCityId,
+         professionId: selectedProfessionId,
+         craftsman: selectedCraftsman,
+-        mapCoord: mapTargetCoord,
+       },
+     ]);
+ 
+@@ -105,7 +99,6 @@ export default function App() {
+     if (params?.cityId !== undefined) setSelectedCityId(params.cityId);
+     if (params?.professionId !== undefined) setSelectedProfessionId(params.professionId);
+     if (params?.craftsman !== undefined) setSelectedCraftsman(params.craftsman);
+-    if (params?.mapCoord !== undefined) setMapTargetCoord(params.mapCoord);
+ 
+     try {
+       window.history.pushState({ screen: nextScreen }, '');
+@@ -128,7 +121,6 @@ export default function App() {
+       setSelectedCityId(prev.cityId);
+       setSelectedProfessionId(prev.professionId);
+       setSelectedCraftsman(prev.craftsman || null);
+-      setMapTargetCoord(prev.mapCoord || null);
+     } else {
+       setActiveScreen('main');
+       setCurrentTab('search');
+@@ -176,8 +168,6 @@ export default function App() {
+   const handleTabChange = (tab: NavTab) => {
+     if (tab === 'search') {
+       pushScreen('main', 'search');
+-    } else if (tab === 'map') {
+-      pushScreen('map', 'map');
+     } else if (tab === 'craftsman') {
+       if (!currentUser) {
+         pushScreen('login', 'craftsman');
+@@ -209,10 +199,6 @@ export default function App() {
+     }
+   };
+ 
+-  const handleOpenMapCoordinates = (lat: number, lng: number) => {
+-    pushScreen('map', 'map', { mapCoord: { lat, lng } });
+-  };
+-
+   const handleLoginSuccess = (user: User, isNewUser: boolean) => {
+     setCurrentUser(user);
+     if (user.roles.includes('SUPER_ADMIN')) {
+@@ -271,7 +257,6 @@ export default function App() {
+             <MainScreen
+               lang={lang}
+               onSearch={handleSearch}
+-              onOpenMap={() => pushScreen('map', 'map')}
+               onOpenCraftsmanLogin={() => {
+                 if (!currentUser) {
+                   pushScreen('login', 'craftsman');
+@@ -297,18 +282,6 @@ export default function App() {
+               onBack={goBack}
+               onSelectCraftsman={handleSelectCraftsman}
+               onCall={handleCall}
+-              onOpenMapCoordinates={handleOpenMapCoordinates}
+-            />
+-          )}
+-
+-          {activeScreen === 'map' && (
+-            <MapSearchScreen
+-              lang={lang}
+-              onBack={goBack}
+-              onSelectCraftsman={handleSelectCraftsman}
+-              onCall={handleCall}
+-              presetLat={mapTargetCoord?.lat}
+-              presetLng={mapTargetCoord?.lng}
+             />
+           )}
+ 
+@@ -318,7 +291,6 @@ export default function App() {
+               lang={lang}
+               onBack={goBack}
+               onCall={handleCall}
+-              onOpenMapCoordinates={handleOpenMapCoordinates}
+             />
+           )}
+ 
+diff --git a/src/components/Navbar.tsx b/src/components/Navbar.tsx
+index 92885cd..6102732 100644
+--- a/src/components/Navbar.tsx
++++ b/src/components/Navbar.tsx
+@@ -1,9 +1,9 @@
+ import React from 'react';
+-import { Search, MapPin, Wrench, Settings } from 'lucide-react';
++import { Search, Wrench, Settings } from 'lucide-react';
+ import { translations } from '../i18n.js';
+ import { Language, User } from '../types.js';
+ 
+-export type NavTab = 'search' | 'map' | 'craftsman' | 'settings';
++export type NavTab = 'search' | 'craftsman' | 'settings';
+ 
+ interface NavbarProps {
+   currentTab: NavTab;
+@@ -34,18 +34,6 @@ export const Navbar: React.FC<NavbarProps> = ({
+         <span className="text-[10px] tracking-tight">{t.searchCraftsmen.split(' ')[0]}</span>
+       </button>
+ 
+-      <button
+-        onClick={() => onTabChange('map')}
+-        className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
+-          currentTab === 'map'
+-            ? 'text-amber-400 font-semibold'
+-            : 'text-slate-400 hover:text-slate-200'
+-        }`}
+-      >
+-        <MapPin className={`w-5 h-5 mb-0.5 ${currentTab === 'map' ? 'stroke-[2.5]' : 'stroke-2'}`} />
+-        <span className="text-[10px] tracking-tight">{lang === 'ka' ? 'რუკა' : lang === 'ru' ? 'Карта' : 'Map'}</span>
+-      </button>
+-
+       <button
+         onClick={() => onTabChange('craftsman')}
+         className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all relative ${
+diff --git a/src/screens/MainScreen.tsx b/src/screens/MainScreen.tsx
+index e48425f..9fcc915 100644
+--- a/src/screens/MainScreen.tsx
++++ b/src/screens/MainScreen.tsx
+@@ -1,7 +1,6 @@
+ import React, { useState, useEffect } from 'react';
+ import {
+   Search,
+-  MapPin,
+   ExternalLink,
+ } from 'lucide-react';
+ import { translations } from '../i18n.js';
+@@ -11,7 +10,6 @@ import { api } from '../api.js';
+ interface MainScreenProps {
+   lang: Language;
+   onSearch: (cityId?: string, professionId?: string) => void;
+-  onOpenMap: () => void;
+   onOpenCraftsmanLogin: () => void;
+   onSelectCraftsman: (craftsman: CraftsmanPublic) => void;
+ }
+@@ -19,7 +17,6 @@ interface MainScreenProps {
+ export const MainScreen: React.FC<MainScreenProps> = ({
+   lang,
+   onSearch,
+-  onOpenMap,
+   onOpenCraftsmanLogin,
+ }) => {
+   const t = translations[lang] || translations.ka;
+@@ -152,7 +149,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
+             </select>
+           </div>
+ 
+-          <div className="pt-1 grid grid-cols-2 gap-1.5">
++          <div className="pt-1 grid grid-cols-1 gap-1.5">
+             <button
+               onClick={handleSearchClick}
+               className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold py-2 px-3 rounded-lg shadow-sm shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] text-xs"
+@@ -161,13 +158,6 @@ export const MainScreen: React.FC<MainScreenProps> = ({
+               <span className="truncate">{t.searchCraftsmen}</span>
+             </button>
+ 
+-            <button
+-              onClick={onOpenMap}
+-              className="w-full bg-slate-800/80 hover:bg-slate-800 text-slate-200 font-semibold py-2 px-3 rounded-lg border border-slate-700/70 flex items-center justify-center gap-1.5 text-xs transition-colors"
+-            >
+-              <MapPin className="w-3.5 h-3.5 text-amber-400" />
+-              <span className="truncate">{t.mapSearch}</span>
+-            </button>
+           </div>
+         </div>
+ 
+diff --git a/src/screens/CraftsmanDetailScreen.tsx b/src/screens/CraftsmanDetailScreen.tsx
+index 0af7e45..fe90b27 100644
+--- a/src/screens/CraftsmanDetailScreen.tsx
++++ b/src/screens/CraftsmanDetailScreen.tsx
+@@ -1,5 +1,5 @@
+ import React, { useState } from 'react';
+-import { ArrowLeft, Phone, MapPin, Clock, ShieldCheck, Star, EyeOff, Info, Share2, MessageSquare, Check, Navigation, MessageCircle } from 'lucide-react';
++import { ArrowLeft, Phone, MapPin, Clock, ShieldCheck, Star, EyeOff, Info, Share2, MessageSquare, Check, MessageCircle } from 'lucide-react';
+ import { translations } from '../i18n.js';
+ import { Language, CraftsmanPublic } from '../types.js';
+ 
+@@ -8,7 +8,6 @@ interface CraftsmanDetailScreenProps {
+   lang: Language;
+   onBack: () => void;
+   onCall: (craftsman: CraftsmanPublic) => void;
+-  onOpenMapCoordinates: (lat: number, lng: number) => void;
+ }
+ 
+ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
+@@ -16,7 +15,6 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
+   lang,
+   onBack,
+   onCall,
+-  onOpenMapCoordinates,
+ }) => {
+   const t = translations[lang] || translations.ka;
+   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+@@ -216,15 +214,6 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
+             <span>{craftsman.cityName}</span>
+           </span>
+ 
+-          {craftsman.latitude !== null && craftsman.longitude !== null && (
+-            <button
+-              onClick={() => onOpenMapCoordinates(craftsman.latitude!, craftsman.longitude!)}
+-              className="flex items-center gap-1 bg-slate-950 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-800 text-amber-400 text-xs font-semibold transition-colors"
+-            >
+-              <Navigation className="w-3 h-3" />
+-              <span>რუკაზე ნახვა (GPS)</span>
+-            </button>
+-          )}
+         </div>
+ 
+         {/* Quick Georgian Contact Channels (WhatsApp, Viber, SMS) */}
+diff --git a/src/screens/SearchResultsScreen.tsx b/src/screens/SearchResultsScreen.tsx
+index 9ab9787..abbb2e5 100644
+--- a/src/screens/SearchResultsScreen.tsx
++++ b/src/screens/SearchResultsScreen.tsx
+@@ -1,5 +1,5 @@
+ import React, { useState, useEffect } from 'react';
+-import { Star, Phone, MapPin, EyeOff, Search, Clock, Users, ChevronDown, ChevronUp } from 'lucide-react';
++import { Star, Phone, EyeOff, Search, Clock, Users, ChevronDown, ChevronUp } from 'lucide-react';
+ import { translations } from '../i18n.js';
+ import { Language, CraftsmanPublic, City, Profession } from '../types.js';
+ import { api } from '../api.js';
+@@ -11,7 +11,6 @@ interface SearchResultsScreenProps {
+   onBack: () => void;
+   onSelectCraftsman: (craftsman: CraftsmanPublic) => void;
+   onCall: (craftsman: CraftsmanPublic) => void;
+-  onOpenMapCoordinates: (lat: number, lng: number) => void;
+ }
+ 
+ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
+@@ -21,7 +20,6 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
+   onBack,
+   onSelectCraftsman,
+   onCall,
+-  onOpenMapCoordinates,
+ }) => {
+   const t = translations[lang] || translations.ka;
+   const [top15, setTop15] = useState<CraftsmanPublic[]>([]);
+@@ -126,22 +124,8 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
+         </div>
+       </div>
+ 
+-      {/* Action Row: [Call] & [Map] */}
+-      <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 mt-1">
+-        <div className="flex items-center gap-2">
+-          {c.latitude !== null && c.longitude !== null && (
+-            <button
+-              onClick={(e) => {
+-                e.stopPropagation();
+-                onOpenMapCoordinates(c.latitude!, c.longitude!);
+-              }}
+-              className="flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-amber-400 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60 transition-colors"
+-            >
+-              <MapPin className="w-3.5 h-3.5 text-amber-400" />
+-              <span>{lang === 'ka' ? 'რუკა' : lang === 'ru' ? 'Карта' : 'Map'}</span>
+-            </button>
+-          )}
+-        </div>
++      {/* Action Row: Contact */}
++      <div className="flex items-center justify-end pt-2 border-t border-slate-800/80 mt-1">
+ 
+         {/* Call Button logic per §3.4: Hide completely if phoneVisible is false! */}
+         {c.phoneVisible && c.phone ? (
+diff --git a/src/screens/CraftsmanDashboard.tsx b/src/screens/CraftsmanDashboard.tsx
+index 4ef2bf8..bfe53cf 100644
+--- a/src/screens/CraftsmanDashboard.tsx
++++ b/src/screens/CraftsmanDashboard.tsx
+@@ -1,5 +1,5 @@
+ import React, { useState, useEffect } from 'react';
+-import { UserCheck, Star, MessageSquare, Settings, Eye, EyeOff, Plus, Clock, MapPin, LogOut, CheckCircle2, AlertTriangle, ShieldAlert, CreditCard, RefreshCw, X, AlertCircle, Trash2, Camera } from 'lucide-react';
++import { UserCheck, Star, MessageSquare, Settings, Eye, EyeOff, Plus, Clock, LogOut, CheckCircle2, AlertTriangle, ShieldAlert, CreditCard, RefreshCw, X, AlertCircle, Trash2, Camera } from 'lucide-react';
+ import { translations } from '../i18n.js';
+ import { Language, User, Top15Membership, CraftsmanListingInfo, AdvertisementPublic } from '../types.js';
+ import { api } from '../api.js';
+@@ -511,12 +511,6 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
+               {craftsman?.description || 'აღწერა არ არის მითითებული.'}
+             </p>
+ 
+-            <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-slate-400 text-[11px]">
+-              <span>GPS Coordinates:</span>
+-              <span className="font-mono text-slate-200">
+-                {craftsman?.latitude?.toFixed(4)}, {craftsman?.longitude?.toFixed(4)}
+-              </span>
+-            </div>
+           </div>
+         </div>
+       )}
+diff --git a/src/screens/RegistrationWizard.tsx b/src/screens/RegistrationWizard.tsx
+index 7cfcd88..d895b25 100644
+--- a/src/screens/RegistrationWizard.tsx
++++ b/src/screens/RegistrationWizard.tsx
+@@ -50,8 +50,6 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
+     bankAccount: '',
+     cityId: '',
+     professionId: '',
+-    latitude: 41.7151,
+-    longitude: 44.8271,
+     phoneVisible: true,
+     photoUrl: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=800&auto=format&fit=crop&q=80',
+     workingHours: {
+@@ -406,29 +404,6 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
+               </button>
+             </div>
+ 
+-            <div className="grid grid-cols-2 gap-3">
+-              <div className="space-y-1">
+-                <label className="text-[10px] text-slate-400">Latitude</label>
+-                <input
+-                  type="number"
+-                  step="0.0001"
+-                  value={formData.latitude}
+-                  onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) })}
+-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono"
+-                />
+-              </div>
+-              <div className="space-y-1">
+-                <label className="text-[10px] text-slate-400">Longitude</label>
+-                <input
+-                  type="number"
+-                  step="0.0001"
+-                  value={formData.longitude}
+-                  onChange={(e) => setFormData({ ...formData, longitude: parseFloat(e.target.value) })}
+-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono"
+-                />
+-              </div>
+-            </div>
+-
+             <div className="space-y-2">
+               <label className="text-[11px] font-medium text-slate-400 px-1">
+                 {t.workingHours}
+diff --git a/src/api.ts b/src/api.ts
+index 72a2ca8..63ec879 100644
+--- a/src/api.ts
++++ b/src/api.ts
+@@ -120,16 +120,6 @@ class ApiClient {
+     return this.request(`/search?${params.toString()}`);
+   }
+ 
+-  searchNearby(lat: number, lng: number, radiusKm = 10, page = 1, size = 20) {
+-    const params = new URLSearchParams();
+-    params.append('lat', lat.toString());
+-    params.append('lng', lng.toString());
+-    params.append('radiusKm', radiusKm.toString());
+-    params.append('page', page.toString());
+-    params.append('size', size.toString());
+-    return this.request(`/search/nearby?${params.toString()}`);
+-  }
+-
+   getCraftsman(id: string) {
+     return this.request(`/craftsmen/${id}`);
+   }
+diff --git a/src/types.ts b/src/types.ts
+index 930b8f0..5623762 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -80,8 +80,6 @@ export interface CraftsmanPublic {
+   description: string;
+   phone?: string | null;
+   phoneVisible: boolean;
+-  latitude: number | null;
+-  longitude: number | null;
+   workingHours: WorkingHours | null;
+   cityId: string;
+   cityName: string;
+@@ -92,7 +90,6 @@ export interface CraftsmanPublic {
+   photos: CraftsmanPhoto[];
+   primaryPhotoUrl?: string;
+   isTop15?: boolean;
+-  distanceKm?: number;
+ }
+ 
+ export interface User {
+diff --git a/src/screens/MapSearchScreen.tsx b/src/screens/MapSearchScreen.tsx
+deleted file mode 100644
+index 099338c..e69de29 100644
+--- a/src/screens/MapSearchScreen.tsx
++++ /dev/null
+@@ -1,293 +0,0 @@
+-import React, { useState, useEffect } from 'react';
+-import { MapPin, Navigation, Phone, Sliders, EyeOff, Star } from 'lucide-react';
+-import { translations } from '../i18n.js';
+-import { Language, CraftsmanPublic } from '../types.js';
+-import { api } from '../api.js';
+-
+-interface MapSearchScreenProps {
+-  lang: Language;
+-  onSelectCraftsman: (craftsman: CraftsmanPublic) => void;
+-  onCall: (craftsman: CraftsmanPublic) => void;
+-  onBack?: () => void;
+-  presetLat?: number | null;
+-  presetLng?: number | null;
+-}
+-
+-export const MapSearchScreen: React.FC<MapSearchScreenProps> = ({
+-  lang,
+-  onSelectCraftsman,
+-  onCall,
+-  onBack,
+-  presetLat,
+-  presetLng,
+-}) => {
+-  const t = translations[lang] || translations.ka;
+-  const [lat, setLat] = useState<number>(presetLat || 41.7151); // Tbilisi default
+-  const [lng, setLng] = useState<number>(presetLng || 44.8271);
+-  const [radiusKm, setRadiusKm] = useState<number>(15);
+-  const [craftsmen, setCraftsmen] = useState<CraftsmanPublic[]>([]);
+-  const [loading, setLoading] = useState(false);
+-  const [activePin, setActivePin] = useState<CraftsmanPublic | null>(null);
+-
+-  const fetchNearby = async (targetLat: number, targetLng: number, radius: number) => {
+-    try {
+-      setLoading(true);
+-      const res = await api.searchNearby(targetLat, targetLng, radius, 1, 30);
+-      setCraftsmen(res.content || []);
+-    } catch (err) {
+-      console.error('Failed to load nearby craftsmen:', err);
+-    } finally {
+-      setLoading(false);
+-    }
+-  };
+-
+-  useEffect(() => {
+-    fetchNearby(lat, lng, radiusKm);
+-  }, [lat, lng, radiusKm, lang]);
+-
+-  const setCityPreset = (cityLat: number, cityLng: number) => {
+-    setLat(cityLat);
+-    setLng(cityLng);
+-  };
+-
+-  return (
+-    <div className="flex-1 flex flex-col p-4 pb-20 space-y-4 animate-fade-in text-slate-100">
+-      <div className="flex items-center justify-between">
+-        <div className="flex items-center gap-2">
+-          <div>
+-            <h2 className="text-base font-bold text-white flex items-center gap-1.5">
+-              <MapPin className="w-4 h-4 text-amber-400" />
+-              <span>{t.mapSearch}</span>
+-            </h2>
+-            <p className="text-[11px] text-slate-400">
+-              {lang === 'ka'
+-                ? 'რუკაზე ძიება და ოსტატების ლოკაცია'
+-                : 'Nearby craftsmen on map'}
+-            </p>
+-          </div>
+-        </div>
+-      </div>
+-
+-      {/* Georgia Map Canvas Simulation */}
+-      <div className="relative w-full h-56 bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-inner flex items-center justify-center">
+-        {/* Subtle grid background */}
+-        <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#f59e0b_1px,transparent_1px)] [background-size:16px_16px]" />
+-
+-        {/* Outline of Georgia representation */}
+-        <svg
+-          className="absolute inset-0 w-full h-full opacity-30 pointer-events-none p-4"
+-          viewBox="0 0 100 60"
+-          preserveAspectRatio="none"
+-        >
+-          <path
+-            d="M 10 30 Q 30 15, 60 20 T 90 35 Q 80 50, 40 45 Z"
+-            fill="none"
+-            stroke="#f59e0b"
+-            strokeWidth="0.8"
+-            strokeDasharray="2,2"
+-          />
+-        </svg>
+-
+-        {/* Center Target (User Location) */}
+-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center pointer-events-none">
+-          <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-400 animate-ping absolute" />
+-          <div className="w-4 h-4 rounded-full bg-amber-400 border-2 border-slate-950 flex items-center justify-center shadow-lg">
+-            <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />
+-          </div>
+-          <span className="text-[9px] font-bold text-amber-300 bg-slate-950/80 px-1.5 py-0.2 rounded mt-1 border border-slate-800">
+-            GPS: {lat.toFixed(2)}, {lng.toFixed(2)}
+-          </span>
+-        </div>
+-
+-        {/* Pins for Craftsmen */}
+-        {craftsmen.map((c, idx) => {
+-          // Compute pseudo offset on canvas relative to center
+-          const dLat = (c.latitude || 41.7) - lat;
+-          const dLng = (c.longitude || 44.8) - lng;
+-          const topPercent = Math.min(Math.max(50 - dLat * 180, 15), 85);
+-          const leftPercent = Math.min(Math.max(50 + dLng * 140, 15), 85);
+-
+-          return (
+-            <button
+-              key={c.id}
+-              onClick={() => setActivePin(c)}
+-              style={{ top: `${topPercent}%`, left: `${leftPercent}%` }}
+-              className={`absolute -translate-x-1/2 -translate-y-1/2 z-30 transition-transform hover:scale-125 ${
+-                activePin?.id === c.id ? 'scale-125 z-40' : ''
+-              }`}
+-            >
+-              <div
+-                className={`p-1.5 rounded-full border shadow-md flex items-center justify-center ${
+-                  c.isTop15
+-                    ? 'bg-amber-500 border-amber-300 text-slate-950'
+-                    : 'bg-slate-800 border-slate-600 text-amber-400'
+-                }`}
+-              >
+-                <MapPin className="w-3.5 h-3.5 fill-current" />
+-              </div>
+-            </button>
+-          );
+-        })}
+-
+-        {/* Map Legend */}
+-        <div className="absolute bottom-2 left-2 z-20 bg-slate-950/80 backdrop-blur-sm border border-slate-800 px-2 py-1 rounded-md text-[9px] text-slate-400 flex items-center gap-2">
+-          <span className="flex items-center gap-1">
+-            <span className="w-2 h-2 rounded-full bg-amber-500" /> TOP 15
+-          </span>
+-          <span className="flex items-center gap-1">
+-            <span className="w-2 h-2 rounded-full bg-slate-700" /> Regular
+-          </span>
+-        </div>
+-      </div>
+-
+-      {/* Location Presets & Radius Controls */}
+-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-3">
+-        <div className="flex items-center justify-between text-xs">
+-          <span className="text-slate-400 font-medium">
+-            {lang === 'ka' ? 'რადიუსი' : 'Radius'}: <strong className="text-amber-400">{radiusKm} km</strong>
+-          </span>
+-          <div className="flex items-center gap-1.5">
+-            <button
+-              onClick={() => setCityPreset(41.7151, 44.8271)}
+-              className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+-                Math.abs(lat - 41.7151) < 0.05
+-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+-                  : 'bg-slate-800 border-slate-700 text-slate-400'
+-              }`}
+-            >
+-              თბილისი
+-            </button>
+-            <button
+-              onClick={() => setCityPreset(41.6168, 41.6367)}
+-              className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+-                Math.abs(lat - 41.6168) < 0.05
+-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+-                  : 'bg-slate-800 border-slate-700 text-slate-400'
+-              }`}
+-            >
+-              ბათუმი
+-            </button>
+-            <button
+-              onClick={() => setCityPreset(42.2679, 42.6946)}
+-              className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+-                Math.abs(lat - 42.2679) < 0.05
+-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+-                  : 'bg-slate-800 border-slate-700 text-slate-400'
+-              }`}
+-            >
+-              ქუთაისი
+-            </button>
+-          </div>
+-        </div>
+-
+-        <input
+-          type="range"
+-          min="5"
+-          max="50"
+-          value={radiusKm}
+-          onChange={(e) => setRadiusKm(parseInt(e.target.value))}
+-          className="w-full accent-amber-500 cursor-pointer"
+-        />
+-      </div>
+-
+-      {/* Selected Pin Popover Preview */}
+-      {activePin && (
+-        <div className="bg-gradient-to-r from-slate-900 to-amber-950/40 border border-amber-500/60 rounded-2xl p-3 flex items-center justify-between gap-3 animate-fade-in">
+-          <div
+-            className="flex-1 cursor-pointer"
+-            onClick={() => onSelectCraftsman(activePin)}
+-          >
+-            <div className="flex items-center gap-1.5">
+-              <h4 className="text-xs font-bold text-white">{activePin.name}</h4>
+-              {activePin.isTop15 && (
+-                <span className="text-[9px] bg-amber-500 text-slate-950 font-bold px-1 rounded">
+-                  TOP 15
+-                </span>
+-              )}
+-            </div>
+-            <p className="text-[11px] text-amber-300">
+-              {activePin.professionName} • {activePin.cityName}
+-            </p>
+-            {activePin.distanceKm !== undefined && (
+-              <p className="text-[10px] text-slate-400">
+-                {activePin.distanceKm} km away
+-              </p>
+-            )}
+-          </div>
+-
+-          {activePin.phoneVisible && activePin.phone ? (
+-            <button
+-              onClick={() => onCall(activePin)}
+-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow flex items-center gap-1"
+-            >
+-              <Phone className="w-3.5 h-3.5" />
+-              <span>{t.call}</span>
+-            </button>
+-          ) : (
+-            <span className="text-[10px] text-slate-500 italic">{t.phoneHidden}</span>
+-          )}
+-        </div>
+-      )}
+-
+-      {/* Craftsmen list sorted by distance */}
+-      <div className="space-y-2 pt-2">
+-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
+-          {lang === 'ka' ? 'უახლოესი ხელოსნები' : 'Nearby Craftsmen'} ({craftsmen.length})
+-        </h3>
+-
+-        {loading ? (
+-          <div className="py-8 text-center text-xs text-slate-500">
+-            {lang === 'ka' ? 'იტვირთება...' : 'Locating...'}
+-          </div>
+-        ) : craftsmen.length === 0 ? (
+-          <div className="py-6 text-center text-xs text-slate-500 bg-slate-900/50 rounded-xl border border-dashed border-slate-800">
+-            {lang === 'ka'
+-              ? 'არცერთი ხელოსანი არ მოიძებნა ამ რადიუსში. გაზარდეთ რადიუსი.'
+-              : 'No craftsmen found in this radius. Try increasing the radius slider.'}
+-          </div>
+-        ) : (
+-          craftsmen.map((c) => (
+-            <div
+-              key={c.id}
+-              onClick={() => onSelectCraftsman(c)}
+-              className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between hover:border-slate-700 cursor-pointer transition-colors"
+-            >
+-              <div className="flex items-center gap-3">
+-                <div className="w-10 h-10 rounded-lg bg-slate-800 overflow-hidden shrink-0 border border-slate-700">
+-                  {c.primaryPhotoUrl ? (
+-                    <img src={c.primaryPhotoUrl} alt={c.name} className="w-full h-full object-cover" />
+-                  ) : (
+-                    <div className="w-full h-full flex items-center justify-center text-amber-400 font-bold">
+-                      {c.name.charAt(0)}
+-                    </div>
+-                  )}
+-                </div>
+-                <div>
+-                  <h4 className="text-xs font-bold text-white">{c.name}</h4>
+-                  <p className="text-[11px] text-slate-400">{c.professionName}</p>
+-                </div>
+-              </div>
+-
+-              <div className="flex items-center gap-3">
+-                <span className="text-[11px] font-mono text-amber-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+-                  {c.distanceKm} km
+-                </span>
+-                {c.phoneVisible && c.phone && (
+-                  <button
+-                    onClick={(e) => {
+-                      e.stopPropagation();
+-                      onCall(c);
+-                    }}
+-                    className="p-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white"
+-                  >
+-                    <Phone className="w-3.5 h-3.5" />
+-                  </button>
+-                )}
+-              </div>
+-            </div>
+-          ))
+-        )}
+-      </div>
+-    </div>
+-  );
+-};
+diff --git a/server/routes.ts b/server/routes.ts
+index 121c524..9f8fd75 100644
+--- a/server/routes.ts
++++ b/server/routes.ts
+@@ -91,21 +91,6 @@ function getLang(req: Request): Language {
+   return 'ka';
+ }
+ 
+-// Distance calculation between coordinates in km (Haversine)
+-function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+-  const R = 6371; // Radius of Earth in km
+-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+-  const a =
+-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+-    Math.cos((lat1 * Math.PI) / 180) *
+-      Math.cos((lat2 * Math.PI) / 180) *
+-      Math.sin(dLon / 2) *
+-      Math.sin(dLon / 2);
+-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+-  return Math.round(R * c * 10) / 10;
+-}
+-
+ // Authentication middleware
+ interface AuthRequest extends Request {
+   user?: User;
+@@ -325,52 +310,6 @@ apiRouter.get('/search', (req, res) => {
+   });
+ });
+ 
+-// GET /search/nearby?lat=&lng=&radiusKm=&page=&size= (also /nearby alias)
+-apiRouter.get(['/search/nearby', '/nearby'], (req, res) => {
+-  const lang = getLang(req);
+-  const lat = parseFloat(req.query.lat as string);
+-  const lng = parseFloat(req.query.lng as string);
+-  const radiusKm = Math.min(parseFloat(req.query.radiusKm as string) || 10, 50);
+-  const page = parseInt(req.query.page as string) || 1;
+-  const size = Math.min(parseInt(req.query.size as string) || 20, 50);
+-
+-  if (isNaN(lat) || isNaN(lng)) {
+-    return res.status(400).json({ code: 'INVALID_COORDINATES', message: 'Valid lat and lng required' });
+-  }
+-
+-  // Validate Georgia bounds (~40.5 to 44.0 Lat, ~39.5 to 47.0 Lng)
+-  if (lat < 40.5 || lat > 44.0 || lng < 39.5 || lng > 47.0) {
+-    return res.status(422).json({ code: 'OUT_OF_BOUNDS', message: 'Location outside of Georgia territory' });
+-  }
+-
+-  const matched: any[] = [];
+-  for (const c of db.craftsmen.values()) {
+-    const listing = db.getCraftsmanListing(c.id);
+-    if (c.status === 'ACTIVE' && listing?.status === 'ACTIVE' && c.latitude !== null && c.longitude !== null) {
+-      const dist = getDistanceKm(lat, lng, c.latitude, c.longitude);
+-      if (dist <= radiusKm) {
+-        const pub = db.toPublicCraftsman(c, lang);
+-        pub.distanceKm = dist;
+-        matched.push(pub);
+-      }
+-    }
+-  }
+-
+-  matched.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+-
+-  const offset = (page - 1) * size;
+-  const paginated = matched.slice(offset, offset + size);
+-
+-  res.json({
+-    content: paginated,
+-    items: paginated,
+-    page,
+-    size,
+-    totalElements: matched.length,
+-    totalPages: Math.ceil(matched.length / size),
+-  });
+-});
+-
+ // GET /craftsmen/:id (and /craftsman/:id alias)
+ apiRouter.get(['/craftsmen/:id', '/craftsman/:id'], (req, res, next) => {
+   if (req.params.id === 'me' || req.params.id === 'register') {
+@@ -639,8 +578,6 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
+     workingHours,
+     paid,
+     providerId,
+-    latitude,
+-    longitude,
+     bankAccount,
+   } = req.body;
+ 
+@@ -730,8 +667,8 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
+     description: description || '',
+     phone: user.phone,
+     phoneVisible: phoneVisible !== false,
+-    latitude: latitude || 41.7151,
+-    longitude: longitude || 44.8271,
++    latitude: null,
++    longitude: null,
+     workingHours: workingHours || {
+       monday: '09:00-18:00',
+       tuesday: '09:00-18:00',
+@@ -893,8 +830,8 @@ apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res)
+     description: data.description || '',
+     phone: req.user!.phone,
+     phoneVisible: data.phoneVisible !== false,
+-    latitude: data.latitude || null,
+-    longitude: data.longitude || null,
++    latitude: null,
++    longitude: null,
+     workingHours: data.workingHours || { monday: '09:00-18:00', friday: '09:00-18:00' },
+     status: initialStatus,
+     cityId: data.cityId,
+@@ -988,13 +925,11 @@ apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibili
+     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
+   }
+ 
+-  const { name, description, workingHours, latitude, longitude, phoneVisible, isPhoneHidden, bankAccount } = req.body;
++  const { name, description, workingHours, phoneVisible, isPhoneHidden, bankAccount } = req.body;
+ 
+   if (name !== undefined) c.name = name;
+   if (description !== undefined) c.description = description;
+   if (workingHours !== undefined) c.workingHours = workingHours;
+-  if (latitude !== undefined) c.latitude = latitude;
+-  if (longitude !== undefined) c.longitude = longitude;
+   if (phoneVisible !== undefined) c.phoneVisible = !!phoneVisible;
+   if (isPhoneHidden !== undefined) c.phoneVisible = !isPhoneHidden;
+   if (bankAccount !== undefined) c.bankAccount = bankAccount;
+diff --git a/server/db.ts b/server/db.ts
+index a66c58c..69d33ea 100644
+--- a/server/db.ts
++++ b/server/db.ts
+@@ -922,8 +922,6 @@ class Database {
+       description: c.description,
+       phone: c.phoneVisible ? c.phone : null,
+       phoneVisible: c.phoneVisible,
+-      latitude: this.roundCoord(c.latitude),
+-      longitude: this.roundCoord(c.longitude),
+       workingHours: c.workingHours,
+       cityId: c.cityId,
+       cityName: city ? this.getLocalizedName(city, lang) : '',
+diff --git a/server/types.ts b/server/types.ts
+index 092e582..95e98d1 100644
+--- a/server/types.ts
++++ b/server/types.ts
+@@ -124,8 +124,6 @@ export interface CraftsmanPublic {
+   description: string;
+   phone?: string | null;
+   phoneVisible: boolean;
+-  latitude: number | null;
+-  longitude: number | null;
+   workingHours: WorkingHours | null;
+   cityId: string;
+   cityName: string;
+@@ -136,7 +134,6 @@ export interface CraftsmanPublic {
+   photos: CraftsmanPhoto[];
+   primaryPhotoUrl?: string;
+   isTop15?: boolean;
+-  distanceKm?: number;
+ }
+ 
+ export interface CraftsmanDraft {
+
