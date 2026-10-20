@@ -1,7 +1,7 @@
 import fs from 'fs';
-import assert from 'assert';
 
 const routes = fs.readFileSync('./server/routes.ts', 'utf8');
+const manifest = JSON.parse(fs.readFileSync('./public/manifest.json', 'utf8'));
 
 function has(pattern) { return pattern.test(routes); }
 function check(name, condition) {
@@ -13,7 +13,9 @@ function check(name, condition) {
 check('anonymous customer can list cities', has(/get\('\/cities'/));
 check('anonymous customer can list professions', has(/get\('\/professions'/));
 check('anonymous customer can search craftsmen', has(/get\('\/search'/));
-check('anonymous customer can search nearby', has(/get\(\['\/search\/nearby', '\/nearby'\]/));
+check('GPS-based nearby search is removed', !has(/get\(\['\/search\/nearby', '\/nearby'\]/));
+check('map search screen is removed', !fs.existsSync('./src/screens/MapSearchScreen.tsx'));
+check('PWA map shortcut is removed', !manifest.shortcuts?.some((shortcut) => /map|რუკ/i.test(`${shortcut.name} ${shortcut.url}`)));
 check('anonymous customer can open craftsman detail', has(/get\(\['\/craftsmen\/:id', '\/craftsman\/:id'\]/));
 check('anonymous customer does not have a registration requirement in public routes', !/apiRouter\.(get|post|put|delete)\('\/(cities|professions|search|advertisements\/active)'[^\n]*requireAuth/.test(routes));
 

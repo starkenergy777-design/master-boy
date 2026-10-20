@@ -59,7 +59,7 @@ async function startServer() {
   });
 
   // Persist only mutating API requests. GET requests must never rewrite the entire
-  // runtime snapshot: that creates unnecessary Firestore traffic and can overwrite
+  // runtime state: that creates unnecessary database traffic and can overwrite
   // a newer snapshot after a read.
   const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   app.use((req, res, next) => {
@@ -77,7 +77,7 @@ async function startServer() {
   // Health check and cold-start wake-up endpoints
   app.get('/health', (req, res) => {
     const durableRequired = process.env.NODE_ENV === 'production' && process.env.REQUIRE_DURABLE_STORAGE !== 'false';
-    const durableReady = storage.getStatus().firestoreConnected;
+    const durableReady = storage.getStatus().databaseConnected;
     if (durableRequired && !durableReady) {
       return res.status(503).json({ status: 'NOT_READY', service: 'MASTER_BOY API Server', version: 'v1.4.0', durableStorage: false, timestamp: new Date().toISOString() });
     }

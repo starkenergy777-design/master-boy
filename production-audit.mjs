@@ -4,10 +4,14 @@ import assert from 'node:assert/strict';
 const read = (f) => fs.readFileSync(f, 'utf8');
 const routes = read('server/routes.ts');
 const db = read('server/db.ts');
+const seed = read('migrations/002_seed_data.sql');
+const cityOrderMigration = read('migrations/006_georgian_alphabetical_city_order.sql');
 const main = read('src/screens/MainScreen.tsx');
 const craftsman = read('src/screens/CraftsmanDashboard.tsx');
 const api = read('src/api.ts');
 const sim = read('role-simulation.mjs');
+const wizard = read('src/screens/RegistrationWizard.tsx');
+const superAdmin = read('src/screens/SuperAdminScreen.tsx');
 
 const checks = [];
 function check(name, fn) { try { fn(); checks.push(`PASS: ${name}`); } catch (e) { checks.push(`FAIL: ${name} — ${e.message}`); } }
@@ -42,6 +46,69 @@ check('craftsman cabinet displays active advertisement', () => assert.match(craf
 check('ad credentials are not returned by safe advertisement serializer', () => assert.match(routes, /function safeAdvertisement/));
 check('production durable storage remains mandatory', () => assert.match(db, /REQUIRE_DURABLE_STORAGE/));
 check('source archive endpoint is absent', () => assert.doesNotMatch(routes, /zip|source archive/i));
+check('admin user list never returns password hashes', () => assert.match(routes, /list\.slice\(offset, offset \+ size\)\.map\(safeUser\)/));
+check('admin craftsman output omits bank account details', () => {
+  assert.match(routes, /function safeAdminCraftsman/);
+  assert.match(routes, /safeAdminCraftsman\(craftsman\)/);
+});
+check('admin cannot block or delete itself or privileged accounts', () => {
+  assert.match(routes, /function canManageAccount/);
+  assert.match(routes, /CANNOT_MANAGE_SELF/);
+  assert.match(routes, /STAFF_ACCOUNT_REQUIRES_SUPER_ADMIN/);
+  assert.match(routes, /LAST_SUPER_ADMIN/);
+});
+check('blocked-user sessions are revoked', () => assert.match(routes, /function revokeUserSessions/));
+check('unauthenticated registration cannot reset an existing account', () => {
+  assert.match(routes, /An unauthenticated, paid registration must never reset an existing account/);
+  assert.match(routes, /PHONE_ALREADY_REGISTERED/);
+});
+check('registration frontend enforces the server 12-character password minimum', () => {
+  assert.match(wizard, /formData\.password\.length < 12/);
+  assert.match(wizard, /minLength=\{12\}/);
+});
+check('SMS login does not claim to send an undelivered code', () => {
+  assert.match(routes, /OTP_DELIVERY_NOT_IMPLEMENTED/);
+  assert.match(routes, /OTP_PROVIDER_NOT_CONFIGURED/);
+});
+check('provider API responses omit secret values', () => {
+  assert.match(routes, /function safeProvider/);
+  assert.match(routes, /delete clone\[field\]/);
+  assert.match(routes, /res\.json\(safeProvider\(newItem\)\)/);
+});
+check('provider editor leaves saved credentials blank to avoid overwriting them with masks', () => {
+  assert.match(superAdmin, /Secret values are never returned by the API/);
+  assert.match(superAdmin, /secretKey: ''/);
+});
+check('saved administrator passwords are not reset from deployment secrets at startup', () => {
+  assert.match(db, /Supabase is authoritative after the first boot/);
+  assert.match(db, /if \(!storedUsers\.some\(user => user\.roles\.includes\('ADMIN'\)\)\)/);
+  assert.match(db, /if \(!storedUsers\.some\(user => user\.roles\.includes\('SUPER_ADMIN'\)\)\)/);
+  assert.doesNotMatch(db, /deployment secrets only replace the two configured administrator credentials/);
+});
+check('bootstrap password retirement survives a restart', () => {
+  assert.match(db, /BOOTSTRAP_MIGRATION_COMPLETED/);
+  assert.match(db, /bootstrapCompletion\)\s*\{/);
+  assert.match(db, /invalidated: true/);
+  assert.match(routes, /await db\.persistRuntimeState\(\);/);
+});
+check('development fallback catalog includes the latest cities and professions', () => {
+  assert.match(db, /id: 'city-svaneti'/);
+  assert.match(db, /id: 'city-khashuri'/);
+  assert.match(db, /id: 'prof-demolition-drill'/);
+  assert.match(db, /id: 'prof-waste-removal'/);
+});
+check('cities keep major centers first, then follow Georgian alphabetical order', () => {
+  const expected = ['city-tbilisi', 'city-batumi', 'city-kutaisi', 'city-rustavi', 'city-akhaltsikhe', 'city-borjomi', 'city-gori', 'city-zestafoni', 'city-zugdidi', 'city-telavi', 'city-martvili', 'city-samtredia', 'city-svaneti', 'city-poti', 'city-kobuleti', 'city-tskaltubo', 'city-khashuri'];
+  const cityBlock = db.match(/cities: City\[\] = \[([\s\S]*?)\n  \];/)?.[1] || '';
+  const seedBlock = seed.match(/INSERT INTO cities[\s\S]*?VALUES([\s\S]*?)ON CONFLICT/)?.[1] || '';
+  assert.deepEqual([...cityBlock.matchAll(/id: '(city-[^']+)'/g)].map(x => x[1]), expected);
+  assert.deepEqual([...seedBlock.matchAll(/\('(city-[^']+)'/g)].map(x => x[1]), expected);
+  assert.match(cityOrderMigration, /city-telavi', 10/);
+  assert.match(cityOrderMigration, /city-poti', 14/);
+});
+check('fresh-install seed has no placeholder credentials or demo accounts', () => {
+  assert.doesNotMatch(seed, /UNUSABLE_SEED_PASSWORD|INSERT INTO users|INSERT INTO craftsmen|Demo Craftsman/i);
+});
 
 const failed = checks.filter(x => x.startsWith('FAIL:'));
 console.log(checks.join('\n'));
