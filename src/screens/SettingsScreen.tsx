@@ -1,8 +1,9 @@
 import { localizeTree } from '../i18n.js';
 import React from 'react';
-import { Globe, Shield, LogOut, Check, Copy, Link2 } from 'lucide-react';
+import { Globe, Shield, LogOut, Check, Copy, Link2, Download } from 'lucide-react';
 import { translations } from '../i18n.js';
 import { Language, User } from '../types.js';
+import { getPwaInstallState, promptPwaInstall, subscribePwaInstallState, PwaInstallState } from '../pwaInstall.js';
 
 interface SettingsScreenProps {
   lang: Language;
@@ -24,6 +25,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     ? new URL('/', window.location.origin).toString()
     : 'https://master-boy.onrender.com/';
   const [linkCopyStatus, setLinkCopyStatus] = React.useState<'idle' | 'copied' | 'error'>('idle');
+  const [installState, setInstallState] = React.useState<PwaInstallState>(getPwaInstallState);
+  const [showInstallInstructions, setShowInstallInstructions] = React.useState(false);
+
+  React.useEffect(() => subscribePwaInstallState(setInstallState), []);
+
+  const handleInstallApp = async () => {
+    try {
+      const outcome = await promptPwaInstall();
+      setShowInstallInstructions(outcome === 'unavailable');
+    } catch {
+      setShowInstallInstructions(true);
+    }
+  };
 
   const handleCopyAppLink = async () => {
     let copied = false;
@@ -142,6 +156,45 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 ? 'Не удалось скопировать ссылку. Выделите её в поле и скопируйте вручную.'
                 : 'Could not copy the link. Select it in the field and copy it manually.'}
           </p>
+        )}
+        <button
+          type="button"
+          onClick={handleInstallApp}
+          disabled={installState === 'installed'}
+          className="w-full bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800/60 disabled:text-slate-500 text-white font-bold py-2.5 px-4 rounded-xl border border-slate-700 flex items-center justify-center gap-2 text-xs transition-colors"
+        >
+          {installState === 'installed' ? <Check className="w-4 h-4 text-emerald-400" /> : <Download className="w-4 h-4 text-amber-400" />}
+          <span aria-live="polite">
+            {installState === 'installed'
+              ? lang === 'ka' ? 'აპი უკვე დაყენებულია' : lang === 'ru' ? 'Приложение уже установлено' : 'App is already installed'
+              : lang === 'ka' ? 'აპის ინსტალაცია' : lang === 'ru' ? 'Установить приложение' : 'Install app'}
+          </span>
+        </button>
+
+        {showInstallInstructions && (
+          <div role="status" className="rounded-xl border border-slate-700 bg-slate-950/70 p-3 space-y-2 text-[11px] leading-relaxed text-slate-300">
+            <p>
+              {lang === 'ka'
+                ? 'Android / Chrome: გახსენით ⋮ მენიუ და აირჩიეთ „აპის ინსტალაცია“ ან „მთავარ ეკრანზე დამატება“.'
+                : lang === 'ru'
+                  ? 'Android / Chrome: откройте меню ⋮ и выберите «Установить и создать ярлык» или «Добавить на главный экран».'
+                  : 'Android / Chrome: open the ⋮ menu and choose “Install app” or “Add to Home screen”.'}
+            </p>
+            <p>
+              {lang === 'ka'
+                ? 'iPhone / iPad: Safari-ში დააჭირეთ „გაზიარებას“ → „მთავარ ეკრანზე დამატება“. თუ ბმული სხვა აპში გაიხსნა, ჯერ Safari-ში გახსენით.'
+                : lang === 'ru'
+                  ? 'iPhone / iPad: в Safari нажмите «Поделиться» → «На экран „Домой“». Если ссылка открылась в другом приложении, сначала откройте её в Safari.'
+                  : 'iPhone / iPad: in Safari, tap “Share” → “Add to Home Screen”. If the link opened inside another app, open it in Safari first.'}
+            </p>
+            <p>
+              {lang === 'ka'
+                ? 'კომპიუტერზე: ბრაუზერის მენიუში მოძებნეთ „აპის ინსტალაცია“ ან მისამართის ველთან არსებული ინსტალაციის ხატულა.'
+                : lang === 'ru'
+                  ? 'На компьютере: найдите «Установить приложение» в меню браузера или нажмите значок установки рядом с адресной строкой.'
+                  : 'On a computer: look for “Install app” in the browser menu or select the install icon beside the address bar.'}
+            </p>
+          </div>
         )}
       </div>
 
