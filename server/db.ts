@@ -208,4 +208,938 @@ class Database {
     const demoCraftsmen = [
       {
         id: 'cm-1',
-  
+        phone: '+995599112233',
+        name: 'გიორგი ბერიძე',
+        description: 'პროფესიონალი სანტექნიკოსი 12 წლიანი გამოცდილებით. ნებისმიერი სირთულის სანტექნიკური სამუშაოები, მილების მონტაჟი, ონკანების შეცვლა.',
+        phoneVisible: true,
+        latitude: 41.7225,
+        longitude: 44.7788,
+        cityId: 'city-tbilisi',
+        professionId: 'prof-plumber',
+        workingHours: {
+          monday: '09:00-19:00',
+          tuesday: '09:00-19:00',
+          wednesday: '09:00-19:00',
+          thursday: '09:00-19:00',
+          friday: '09:00-19:00',
+          saturday: '10:00-17:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-1',
+            craftsmanId: 'cm-1',
+            url: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-2',
+        phone: '+995577445566',
+        name: 'დავით კაპანაძე',
+        description: 'მაღალი კვალიფიკაციის ელექტრიკოსი. ელექტროგაყვანილობის სრული მონტაჟი, ავტომატების დაყენება, ჭაღების მონტაჟი, დამიწება.',
+        phoneVisible: true,
+        latitude: 41.7112,
+        longitude: 44.8015,
+        cityId: 'city-tbilisi',
+        professionId: 'prof-electrician',
+        workingHours: {
+          monday: '08:00-20:00',
+          tuesday: '08:00-20:00',
+          wednesday: '08:00-20:00',
+          thursday: '08:00-20:00',
+          friday: '08:00-20:00',
+          saturday: '09:00-18:00',
+          sunday: '10:00-15:00',
+        },
+        photos: [
+          {
+            id: 'ph-2',
+            craftsmanId: 'cm-2',
+            url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-3',
+        phone: '+995555889900',
+        name: 'ლევან მაისურაძე',
+        description: 'კონდიციონერების მონტაჟი, დემონტაჟი, ფრეონის დატუმბვა და სრული სერვისი გარანტიით. ბათუმი და შემოგარენი.',
+        phoneVisible: true,
+        latitude: 41.6210,
+        longitude: 41.6250,
+        cityId: 'city-batumi',
+        professionId: 'prof-ac',
+        workingHours: {
+          monday: '09:00-18:00',
+          tuesday: '09:00-18:00',
+          wednesday: '09:00-18:00',
+          thursday: '09:00-18:00',
+          friday: '09:00-18:00',
+          saturday: '09:00-15:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-3',
+            craftsmanId: 'cm-3',
+            url: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-4',
+        phone: '+995593123456',
+        name: 'ალექსანდრე ნოზაძე',
+        description: 'კაფელისა და მეტლახის დაგება ლაზერული სიზუსტით. აბაზანების სრული რემონტი, მოზაიკა, ჰიდროიზოლაცია.',
+        phoneVisible: false, // Testing phoneVisible = false (§3.4)
+        latitude: 41.7310,
+        longitude: 44.7520,
+        cityId: 'city-tbilisi',
+        professionId: 'prof-tiler',
+        workingHours: {
+          monday: '09:00-18:00',
+          tuesday: '09:00-18:00',
+          wednesday: '09:00-18:00',
+          thursday: '09:00-18:00',
+          friday: '09:00-18:00',
+          saturday: null,
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-4',
+            craftsmanId: 'cm-4',
+            url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: false,
+      },
+      {
+        id: 'cm-5',
+        phone: '+995577112244',
+        name: 'თორნიკე გელაშვილი',
+        description: 'მალიარი და სამღებრო სამუშაოების ოსტატი. კედლების დაჭიმვა, შპაკლი, ემულსია, შპალერის გაკვრა უმაღლესი ხარისხით.',
+        phoneVisible: true,
+        latitude: 41.7190,
+        longitude: 44.7890,
+        cityId: 'city-tbilisi',
+        professionId: 'prof-painter',
+        workingHours: {
+          monday: '09:00-19:00',
+          tuesday: '09:00-19:00',
+          wednesday: '09:00-19:00',
+          thursday: '09:00-19:00',
+          friday: '09:00-19:00',
+          saturday: '10:00-16:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-5',
+            craftsmanId: 'cm-5',
+            url: 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-6',
+        phone: '+995591998877',
+        name: 'ვახტანგ ჯაფარიძე',
+        description: 'საკეტების პროფესიონალი ოსტატი. ნებისმიერი ტიპის საკეტის გაღება დაზიანების გარეშე, ახლის ჩაყენება, შეკეთება.',
+        phoneVisible: true,
+        latitude: 41.7050,
+        longitude: 44.8120,
+        cityId: 'city-tbilisi',
+        professionId: 'prof-locksmith',
+        workingHours: {
+          monday: '08:00-22:00',
+          tuesday: '08:00-22:00',
+          wednesday: '08:00-22:00',
+          thursday: '08:00-22:00',
+          friday: '08:00-22:00',
+          saturday: '09:00-20:00',
+          sunday: '10:00-18:00',
+        },
+        photos: [
+          {
+            id: 'ph-6',
+            craftsmanId: 'cm-6',
+            url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-7',
+        phone: '+995558334455',
+        name: 'ზურაბ ხუციშვილი',
+        description: 'გათბობის სისტემების სრული მონტაჟი: ცენტრალური გათბობის ქვაბები, იატაკქვეშა გათბობა, რადიატორების შეცვლა და დიაგნოსტიკა.',
+        phoneVisible: true,
+        latitude: 41.7280,
+        longitude: 44.7650,
+        cityId: 'city-tbilisi',
+        professionId: 'prof-heating',
+        workingHours: {
+          monday: '09:00-19:00',
+          tuesday: '09:00-19:00',
+          wednesday: '09:00-19:00',
+          thursday: '09:00-19:00',
+          friday: '09:00-19:00',
+          saturday: '10:00-16:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-7',
+            craftsmanId: 'cm-7',
+            url: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-8',
+        phone: '+995574556677',
+        name: 'გოჩა დოლიძე',
+        description: 'ავეჯის ოსტატი და დურგალი. სამზარეულოს, საძინებლისა და ოფისის ავეჯის აწყობა-დაშლა, რესტავრაცია და მონტაჟი.',
+        phoneVisible: true,
+        latitude: 41.7150,
+        longitude: 44.7700,
+        cityId: 'city-tbilisi',
+        professionId: 'prof-carpenter',
+        workingHours: {
+          monday: '09:00-18:00',
+          tuesday: '09:00-18:00',
+          wednesday: '09:00-18:00',
+          thursday: '09:00-18:00',
+          friday: '09:00-18:00',
+          saturday: '10:00-15:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-8',
+            craftsmanId: 'cm-8',
+            url: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-9',
+        phone: '+995568123789',
+        name: 'ირაკლი კვირიკაშვილი',
+        description: 'სანტექნიკოსი ბათუმში. მილების შეცვლა, საშხაპე კაბინების მონტაჟი, კანალიზაციის გაწმენდა.',
+        phoneVisible: true,
+        latitude: 41.6350,
+        longitude: 41.6280,
+        cityId: 'city-batumi',
+        professionId: 'prof-plumber',
+        workingHours: {
+          monday: '09:00-20:00',
+          tuesday: '09:00-20:00',
+          wednesday: '09:00-20:00',
+          thursday: '09:00-20:00',
+          friday: '09:00-20:00',
+          saturday: '09:00-17:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-9',
+            craftsmanId: 'cm-9',
+            url: 'https://images.unsplash.com/photo-1505798577917-a65157d3320a?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-10',
+        phone: '+995598443322',
+        name: 'მამუკა ჩხეიძე',
+        description: 'ელექტრიკოსი ქუთაისში. ელექტრობის სრული მონტაჟი და დიაგნოსტიკა სახლებსა და კომერციულ ობიექტებში.',
+        phoneVisible: true,
+        latitude: 42.2660,
+        longitude: 42.7100,
+        cityId: 'city-kutaisi',
+        professionId: 'prof-electrician',
+        workingHours: {
+          monday: '09:00-19:00',
+          tuesday: '09:00-19:00',
+          wednesday: '09:00-19:00',
+          thursday: '09:00-19:00',
+          friday: '09:00-19:00',
+          saturday: '10:00-16:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-10',
+            craftsmanId: 'cm-10',
+            url: 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-11',
+        phone: '+995577665544',
+        name: 'ნიკოლოზ წიკლაური',
+        description: 'კონდიციონერების ხელოსანი თბილისში. ყველა ბრენდის კონდიციონერის მონტაჟი, შეკეთება, გაწმენდა.',
+        phoneVisible: true,
+        latitude: 41.7350,
+        longitude: 44.8200,
+        cityId: 'city-tbilisi',
+        professionId: 'prof-ac',
+        workingHours: {
+          monday: '09:00-19:00',
+          tuesday: '09:00-19:00',
+          wednesday: '09:00-19:00',
+          thursday: '09:00-19:00',
+          friday: '09:00-19:00',
+          saturday: '10:00-15:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-11',
+            craftsmanId: 'cm-11',
+            url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+      {
+        id: 'cm-12',
+        phone: '+995593887766',
+        name: 'ოთარ გიორგაძე',
+        description: 'კაფელ-მეტლახის ოსტატი რუსთავში და თბილისში. იატაკის და კედლის მოპირკეთება, გრანიტი, მარმარილო.',
+        phoneVisible: true,
+        latitude: 41.5520,
+        longitude: 45.0010,
+        cityId: 'city-rustavi',
+        professionId: 'prof-tiler',
+        workingHours: {
+          monday: '09:00-18:00',
+          tuesday: '09:00-18:00',
+          wednesday: '09:00-18:00',
+          thursday: '09:00-18:00',
+          friday: '09:00-18:00',
+          saturday: '10:00-16:00',
+          sunday: null,
+        },
+        photos: [
+          {
+            id: 'ph-12',
+            craftsmanId: 'cm-12',
+            url: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=800&auto=format&fit=crop&q=80',
+            displayOrder: 0,
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        isTop15: true,
+      },
+    ];
+
+    for (const c of demoCraftsmen) {
+      const userId = `usr-${c.id}`;
+      const user: User = {
+        id: userId,
+        phone: c.phone,
+        password: hashPassword(process.env.DEMO_PASSWORD || crypto.randomBytes(24).toString('base64url')),
+        roles: ['CRAFTSMAN'],
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+      this.users.set(userId, user);
+
+      const craftsman: Craftsman = {
+        id: c.id,
+        userId: userId,
+        name: c.name,
+        description: c.description,
+        phone: c.phone,
+        phoneVisible: c.phoneVisible,
+        latitude: c.latitude,
+        longitude: c.longitude,
+        workingHours: c.workingHours,
+        status: 'ACTIVE',
+        cityId: c.cityId,
+        professionId: c.professionId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        photos: c.photos,
+      };
+      this.craftsmen.set(c.id, craftsman);
+
+      if (c.isTop15) {
+        const memId = `mem-${c.id}`;
+        const city = this.cities.find(ct => ct.id === c.cityId)!;
+        const prof = this.professions.find(pr => pr.id === c.professionId)!;
+        const startsAt = new Date();
+        const expiresAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        this.top15Memberships.set(memId, {
+          id: memId,
+          craftsmanId: c.id,
+          cityId: c.cityId,
+          cityName: city.name.ka,
+          professionId: c.professionId,
+          professionName: prof.name.ka,
+          startsAt: startsAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          status: 'ACTIVE',
+        });
+      }
+
+      // Seed 6-month listing subscription (§3.11, §24)
+      const listStartsAt = new Date();
+      const listExpiresAt = new Date(listStartsAt.getTime() + 180 * 24 * 60 * 60 * 1000);
+      const listGraceEndsAt = new Date(listExpiresAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+      this.craftsmanListings.set(c.id, {
+        id: `list-${c.id}`,
+        craftsmanId: c.id,
+        cityId: c.cityId,
+        professionId: c.professionId,
+        status: 'ACTIVE',
+        startsAt: listStartsAt.toISOString(),
+        expiresAt: listExpiresAt.toISOString(),
+        graceEndsAt: listGraceEndsAt.toISOString(),
+        createdAt: listStartsAt.toISOString(),
+        updatedAt: listStartsAt.toISOString(),
+      });
+    }
+
+    // Pre-seed Secret Administrator credentials
+    const adminPhone = process.env.ADMIN_PHONE || '+995999000000';
+    const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(32).toString('base64url');
+    const adminUser: User = {
+      id: 'usr-admin',
+      phone: adminPhone,
+      password: hashPassword(adminPassword),
+      roles: ['ADMIN'],
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    };
+    this.users.set(adminUser.id, adminUser);
+
+    // Pre-seed Secret Super Administrator credentials
+    const superAdminUser: User = {
+      id: 'usr-superadmin',
+      phone: this.bootstrap.phone,
+      password: this.bootstrap.password ? hashPassword(this.bootstrap.password) : undefined,
+      roles: ['SUPER_ADMIN'],
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    };
+    this.users.set(superAdminUser.id, superAdminUser);
+
+    // Check Gemini API key from env
+    if (this.geminiApiKey) {
+      this.providerConfig.ai.configured = true;
+      this.providerConfig.ai.verifiedAt = new Date().toISOString();
+      this.providerConfig.ai.lastCallOk = true;
+    }
+
+    // Seed sample Gemini reports
+    this.aiReports.push({
+      id: 'rep-initial-accounting',
+      type: 'ACCOUNTING',
+      periodFrom: '2026-09-01',
+      periodTo: '2026-09-30',
+      content: {
+        summary: 'Monthly automated revenue audit across all regions',
+        totalRevenueGEL: 3450.0,
+        activeTop15Slots: 4,
+        refundsCount: 0,
+        topCities: [
+          { city: 'Tbilisi', revenueGEL: 2450.0, slots: 3 },
+          { city: 'Batumi', revenueGEL: 1000.0, slots: 1 },
+        ],
+        payoutsPendingGEL: 0,
+        status: 'BALANCED_OK',
+      },
+      createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    });
+
+    this.aiReports.push({
+      id: 'rep-initial-recommendations',
+      type: 'RECOMMENDATIONS',
+      periodFrom: '2026-09-15',
+      periodTo: '2026-09-30',
+      content: {
+        title: 'Platform Utilization & Slot Pricing Strategy',
+        observations: [
+          'High demand for Air Conditioning technicians in Batumi with 100% Top 15 occupancy.',
+          'Average response time in support chat: 1.4 seconds.',
+          'Zero payment drop-offs observed across Bank of Georgia (BoG iPay) gateway.',
+        ],
+        actionableAdvice: [
+          'Consider enabling Top 15 slots for Kutaisi Plumbers as search volume grew 24% this week.',
+          'Keep current 3-minute reservation lock timeout as it minimizes slot hoards.',
+        ],
+      },
+      createdAt: new Date(Date.now() - 86400000).toISOString(),
+    });
+
+    // Seed verified commercial advertisement (Gorgia Construction Hypermarket Chain)
+    const seedAdId = 'ad-gorgia-1';
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    this.advertisements.set(seedAdId, {
+      id: seedAdId,
+      company_name: '„გორგია“ - სამშენებლო ჰიპერმარკეტი (Gorgia)',
+      phone_number: '+995599001122',
+      password: hashPassword(process.env.DEMO_AD_PASSWORD || crypto.randomBytes(24).toString('base64url')),
+      expires_at: thirtyDaysFromNow,
+      image_url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1200&q=80',
+      target_url: 'https://gorgia.ge',
+      is_active: true,
+      payment_status: 'paid',
+      terms_accepted: true,
+      price_gel: 50,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    // Register ad partner as user for direct login
+    this.users.set('usr-ad-gorgia', {
+      id: 'usr-ad-gorgia',
+      phone: '+995599001122',
+      password: hashPassword(process.env.DEMO_AD_PASSWORD || crypto.randomBytes(24).toString('base64url')),
+      roles: ['AD_PARTNER'],
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    });
+
+    // Seed audit log
+    this.auditLog.push({
+      id: 'audit-0',
+      actorType: 'AI_ADMIN',
+      actorId: 'gemini-autonomous-agent',
+      action: 'SYSTEM_BOOTSTRAP_AUDIT',
+      targetType: 'SYSTEM',
+      targetId: null,
+      reason: 'Automated health verification of database schema v2.8.0',
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  getActiveAdvertisement(): Advertisement | null {
+    const now = new Date();
+    for (const ad of this.advertisements.values()) {
+      if (
+        ad.is_active &&
+        ad.payment_status === 'paid' &&
+        ad.company_name &&
+        ad.company_name.trim().length > 0 &&
+        ad.image_url &&
+        ad.image_url.trim().length > 0 &&
+        new Date(ad.expires_at) > now
+      ) {
+        return ad;
+      }
+    }
+    return null;
+  }
+
+  // --- Localization helper ---
+  getLocalizedName(item: { name: { ka: string; ru: string; en: string } }, lang: Language): string {
+    return item.name[lang] || item.name.ka;
+  }
+
+  // --- Top 15 availability & hold cleanup (§4.2, §6.1, §6.3) ---
+  getActiveTop15Count(cityId: string, professionId: string): number {
+    const now = new Date().toISOString();
+    let count = 0;
+    for (const mem of this.top15Memberships.values()) {
+      if (mem.cityId === cityId && mem.professionId === professionId && mem.status === 'ACTIVE' && mem.expiresAt > now) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  getActiveHoldCount(cityId: string, professionId: string): number {
+    const now = Date.now();
+    let count = 0;
+    for (const res of this.top15Reservations.values()) {
+      if (res.cityId === cityId && res.professionId === professionId && res.status === 'HELD') {
+        if (res.expiresAt > now) {
+          count++;
+        } else {
+          res.status = 'EXPIRED';
+        }
+      }
+    }
+    return count;
+  }
+
+  getTop15Availability(cityId: string, professionId: string): { freeSlots: number; price: Top15Price | null } {
+    const price = this.top15Prices.get(`${cityId}:${professionId}`) || null;
+    const active = this.getActiveTop15Count(cityId, professionId);
+    const held = this.getActiveHoldCount(cityId, professionId);
+    const freeSlots = Math.max(0, 15 - active - held);
+    return { freeSlots, price };
+  }
+
+  // Convert craftsman to public format with localization & phone visibility
+  toPublicCraftsman(c: Craftsman, lang: Language): CraftsmanPublic {
+    const city = this.cities.find(ct => ct.id === c.cityId);
+    const prof = this.professions.find(pr => pr.id === c.professionId);
+    const primary = c.photos.find(p => p.isPrimary) || c.photos[0];
+
+    // Check if currently top 15
+    const now = new Date().toISOString();
+    let isTop15 = false;
+    for (const mem of this.top15Memberships.values()) {
+      if (mem.craftsmanId === c.id && mem.status === 'ACTIVE' && mem.expiresAt > now) {
+        isTop15 = true;
+        break;
+      }
+    }
+
+    return {
+      id: c.id,
+      name: c.name,
+      fullName: c.name,
+      description: c.description,
+      phone: c.phoneVisible ? c.phone : null,
+      phoneVisible: c.phoneVisible,
+      workingHours: c.workingHours,
+      cityId: c.cityId,
+      cityName: city ? this.getLocalizedName(city, lang) : '',
+      professionId: c.professionId,
+      professionName: prof ? this.getLocalizedName(prof, lang) : '',
+      status: c.status,
+      photos: c.photos,
+      primaryPhotoUrl: primary ? primary.url : undefined,
+      isTop15,
+    };
+  }
+
+  getCraftsmanListing(craftsmanId: string): CraftsmanListing | undefined {
+    return this.craftsmanListings.get(craftsmanId);
+  }
+
+  // Worker logic: hourly ExpiryWorker and daily PurgeWorker (§7.8)
+  runListingWorkers(): void {
+    const nowTime = Date.now();
+    const nowIso = new Date(nowTime).toISOString();
+
+    for (const [craftsmanId, listing] of this.craftsmanListings.entries()) {
+      // 1. Expiry Worker: Transition ACTIVE -> EXPIRED when expiresAt passed
+      if (listing.status === 'ACTIVE' && listing.expiresAt && new Date(listing.expiresAt).getTime() <= nowTime) {
+        listing.status = 'EXPIRED';
+        listing.graceEndsAt = new Date(new Date(listing.expiresAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        listing.updatedAt = nowIso;
+        const cm = this.craftsmen.get(craftsmanId);
+        if (cm) cm.status = 'EXPIRED';
+      }
+
+      // 2. Purge Worker: Transition EXPIRED -> PURGED when grace window (30d) passed (§24.4, §24.7)
+      if (listing.status === 'EXPIRED' && listing.graceEndsAt && new Date(listing.graceEndsAt).getTime() <= nowTime) {
+        // Purge is deferred if Top 15 is active (§24.7)
+        let hasActiveTop15 = false;
+        for (const mem of this.top15Memberships.values()) {
+          if (mem.craftsmanId === craftsmanId && mem.status === 'ACTIVE' && new Date(mem.expiresAt).getTime() > nowTime) {
+            hasActiveTop15 = true;
+            break;
+          }
+        }
+
+        if (!hasActiveTop15) {
+          listing.status = 'PURGED';
+          listing.updatedAt = nowIso;
+          this.listingPurgeLog.push({
+            id: `purge-${Date.now()}-${craftsmanId}`,
+            craftsmanId,
+            cityId: listing.cityId,
+            professionId: listing.professionId,
+            purgedAt: nowIso,
+            reason: '30-day grace period expired without renewal (§24.4)',
+          });
+
+          // Hard-delete craftsman profile data
+          this.craftsmen.delete(craftsmanId);
+          this.craftsmanDrafts.delete(craftsmanId);
+          this.supportMessages = this.supportMessages.filter(m => m.craftsmanId !== craftsmanId);
+        }
+      }
+    }
+  }
+
+  async init(): Promise<void> {
+    try {
+      if (process.env.NODE_ENV === 'production') {
+        if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
+          throw new Error('DATABASE_URL is required in production for Supabase Postgres storage.');
+        }
+      }
+
+      if (storage.getStatus().databaseConfigured || process.env.NODE_ENV === 'production') {
+        await storage.connect();
+        const catalogs = await storage.loadCatalogs();
+        if (!catalogs.cities.length || !catalogs.professions.length) {
+          throw new Error('Supabase cities and professions catalogs must be seeded before the application can start.');
+        }
+        this.cities = catalogs.cities;
+        this.professions = catalogs.professions;
+      }
+
+      // Production identities come only from deployment secrets; never from demo seed data.
+      if (process.env.NODE_ENV === 'production') {
+        this.users.clear();
+        const now = new Date().toISOString();
+        const adminPhone = process.env.ADMIN_PHONE!;
+        const adminPassword = process.env.ADMIN_PASSWORD!;
+        const bootstrapPhone = process.env.BOOTSTRAP_PHONE!;
+        const bootstrapPassword = process.env.BOOTSTRAP_PASSWORD!;
+        if (adminPhone && adminPassword) this.users.set('usr-admin', {
+          id: 'usr-admin', phone: adminPhone, password: hashPassword(adminPassword),
+          roles: ['ADMIN'], status: 'ACTIVE', createdAt: now,
+        });
+        if (bootstrapPhone && bootstrapPassword) this.users.set('usr-superadmin', {
+          id: 'usr-superadmin', phone: bootstrapPhone, password: hashPassword(bootstrapPassword),
+          roles: ['SUPER_ADMIN'], status: 'ACTIVE', createdAt: now,
+        });
+      }
+
+      const persisted = await storage.loadSuperAdminConfig();
+      if (persisted) {
+        if (persisted.listingPrice) {
+          this.listingPrice = persisted.listingPrice;
+        }
+        if (persisted.top15Prices && Object.keys(persisted.top15Prices).length > 0) {
+          for (const [key, val] of Object.entries(persisted.top15Prices)) {
+            this.top15Prices.set(key, val);
+          }
+        }
+        if (persisted.advertisements && Array.isArray(persisted.advertisements)) {
+          for (const ad of persisted.advertisements) {
+            this.advertisements.set(ad.id, ad);
+            if (ad.phone_number && ad.password) {
+              const userId = `usr-${ad.id}`;
+              this.users.set(userId, {
+                id: userId,
+                phone: ad.phone_number,
+                password: ad.password.startsWith('scrypt$') ? ad.password : hashPassword(ad.password),
+                roles: ['AD_PARTNER'],
+                status: 'ACTIVE',
+                createdAt: ad.created_at || new Date().toISOString(),
+              });
+              if (!ad.password.startsWith('scrypt$')) ad.password = this.users.get(userId)!.password;
+            }
+          }
+        }
+        if (persisted.providerConfig) {
+          this.providerConfig = persisted.providerConfig;
+        }
+        if (persisted.recipientAccount) {
+          this.recipientAccount = persisted.recipientAccount;
+        }
+        if (persisted.configLock) {
+          this.configLock = persisted.configLock;
+        }
+        if (persisted.bootstrap) {
+          this.bootstrap = {
+            ...this.bootstrap,
+            ...persisted.bootstrap,
+            phone: process.env.NODE_ENV === 'production' ? (process.env.BOOTSTRAP_PHONE || persisted.bootstrap.phone || '') : (persisted.bootstrap.phone || this.bootstrap.phone),
+            password: process.env.NODE_ENV === 'production' ? (process.env.BOOTSTRAP_PASSWORD || '') : (this.bootstrap.password || ''),
+          };
+        }
+        if (persisted.backendConfig) {
+          this.backendConfig = persisted.backendConfig;
+        }
+        console.log('[MASTER_BOY] SuperAdmin configuration hydrated successfully.');
+      } else {
+        await this.persistSuperAdminConfig();
+      }
+
+      const runtimeMaps: Array<[string, Map<string, any>]> = [
+        ['users', this.users],
+        ['craftsmen', this.craftsmen],
+        ['craftsmanDrafts', this.craftsmanDrafts],
+        ['top15Prices', this.top15Prices],
+        ['top15Reservations', this.top15Reservations],
+        ['top15Memberships', this.top15Memberships],
+        ['paymentIntents', this.paymentIntents],
+        ['craftsmanListings', this.craftsmanListings],
+        ['advertisements', this.advertisements],
+      ];
+      for (const [name, map] of runtimeMaps) {
+        const stored = await storage.loadRuntimeCollection(name);
+        if (Object.keys(stored).length > 0) {
+          map.clear();
+          for (const [id, value] of Object.entries(stored)) map.set(id, value);
+        }
+      }
+      const storedSupport = await storage.loadRuntimeArray<ChatMessage>('supportMessages');
+      const storedReports = await storage.loadRuntimeArray<AiReport>('aiReports');
+      const storedPurgeLog = await storage.loadRuntimeArray<ListingPurgeLog>('listingPurgeLog');
+      const storedAudit = await storage.loadRuntimeArray<AdminAuditLog>('auditLog');
+      if (storedSupport.length) this.supportMessages = storedSupport;
+      if (storedReports.length) this.aiReports = storedReports;
+      if (storedAudit.length) this.auditLog = storedAudit;
+      if (storedPurgeLog.length) this.listingPurgeLog = storedPurgeLog;
+      const requireDurable = process.env.REQUIRE_DURABLE_STORAGE !== 'false' && process.env.NODE_ENV === 'production';
+
+      if (process.env.NODE_ENV === 'production') {
+        // Supabase is authoritative after the first boot. Environment credentials
+        // initialize missing administrator roles once and never reset saved passwords.
+        const storedUsers = Array.from(this.users.values());
+        if (!storedUsers.some(user => user.roles.includes('ADMIN'))) {
+          if (!process.env.ADMIN_PHONE || !process.env.ADMIN_PASSWORD) {
+            throw new Error('No active administrator exists. Set ADMIN_PHONE and ADMIN_PASSWORD in Render secrets for one-time initialization.');
+          }
+          this.users.set('usr-admin', {
+            id: 'usr-admin', phone: process.env.ADMIN_PHONE, password: hashPassword(process.env.ADMIN_PASSWORD),
+            roles: ['ADMIN'], status: 'ACTIVE', createdAt: new Date().toISOString(),
+          });
+        }
+        if (!storedUsers.some(user => user.roles.includes('SUPER_ADMIN'))) {
+          if (!process.env.BOOTSTRAP_PHONE || !process.env.BOOTSTRAP_PASSWORD) {
+            throw new Error('No active super administrator exists. Set BOOTSTRAP_PHONE and BOOTSTRAP_PASSWORD in Render secrets for one-time initialization.');
+          }
+          this.users.set('usr-superadmin', {
+            id: 'usr-superadmin', phone: process.env.BOOTSTRAP_PHONE, password: hashPassword(process.env.BOOTSTRAP_PASSWORD),
+            roles: ['SUPER_ADMIN'], status: 'ACTIVE', createdAt: new Date().toISOString(),
+          });
+        }
+
+        const bootstrapCompletion = this.auditLog.find(entry => entry.action === 'BOOTSTRAP_MIGRATION_COMPLETED');
+        if (bootstrapCompletion) {
+          this.bootstrap = {
+            phone: '', password: '', enabled: false, invalidated: true,
+            completedAt: bootstrapCompletion.createdAt,
+          };
+        } else if (process.env.BOOTSTRAP_PHONE && process.env.BOOTSTRAP_PASSWORD) {
+          this.bootstrap = {
+            ...this.bootstrap,
+            phone: process.env.BOOTSTRAP_PHONE,
+            password: process.env.BOOTSTRAP_PASSWORD,
+            enabled: true,
+            invalidated: false,
+          };
+        } else {
+          this.bootstrap = { ...this.bootstrap, phone: '', password: '', enabled: false };
+        }
+      }
+      if (requireDurable && !storage.getStatus().databaseConnected) {
+        throw new Error('Supabase Postgres is required in production but is not connected. Refusing to start with ephemeral-only persistence.');
+      }
+      if (process.env.NODE_ENV === 'production') {
+        await this.persistRuntimeState();
+      }
+      console.log('[MASTER_BOY] Runtime state hydration completed.');
+    } catch (err: any) {
+      console.error('[MASTER_BOY] Error during db.init() hydration:', err);
+      if (process.env.NODE_ENV === 'production') throw err;
+    }
+  }
+
+  async persistRuntimeState(): Promise<void> {
+    await storage.saveRuntimeState({
+      users: this.users,
+      craftsmen: this.craftsmen,
+      craftsmanDrafts: this.craftsmanDrafts,
+      top15Prices: this.top15Prices,
+      top15Reservations: this.top15Reservations,
+      top15Memberships: this.top15Memberships,
+      paymentIntents: this.paymentIntents,
+      craftsmanListings: this.craftsmanListings,
+      advertisements: this.advertisements,
+      supportMessages: this.supportMessages,
+      aiReports: this.aiReports,
+      auditLog: this.auditLog,
+      listingPurgeLog: this.listingPurgeLog,
+    });
+  }
+
+  async persistSuperAdminConfig(): Promise<{ success: boolean; database: boolean; snapshot: boolean; error?: string }> {
+    const configToSave: SuperAdminPersistedConfig = {
+      listingPrice: this.listingPrice,
+      top15Prices: Object.fromEntries(this.top15Prices.entries()),
+      advertisements: Array.from(this.advertisements.values()),
+      providerConfig: this.providerConfig,
+      recipientAccount: this.recipientAccount,
+      configLock: this.configLock,
+      bootstrap: { ...this.bootstrap, password: '' },
+      backendConfig: this.backendConfig,
+      version: 1,
+      lastPersistedAt: new Date().toISOString(),
+    };
+    return await storage.saveSuperAdminConfig(configToSave);
+  }
+}
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+}
+
+export function verifyPassword(password: string, stored: string | undefined): boolean {
+  if (!stored) return false;
+  if (!stored.startsWith('scrypt$')) return stored === password;
+  const [, salt, expected] = stored.split('$');
+  if (!salt || !expected) return false;
+  const actual = crypto.scryptSync(password, salt, 64).toString('hex');
+  const actualBuffer = Buffer.from(actual, 'hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  if (actualBuffer.length !== expectedBuffer.length) return false;
+  return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+export const db = new Database();
+

@@ -302,4 +302,103 @@ export default function App() {
             <LoginScreen
               lang={lang}
               onBack={goBack}
-              onLoginSuccess={handleLoginSucce
+              onLoginSuccess={handleLoginSuccess}
+              onOpenRegister={() => pushScreen('wizard', 'craftsman')}
+            />
+          )}
+
+          {activeScreen === 'wizard' && (
+            <RegistrationWizard
+              lang={lang}
+              step={wizardStep}
+              onStepChange={setWizardStep}
+              onCancel={goBack}
+              onComplete={() => pushScreen('dashboard', 'craftsman')}
+            />
+          )}
+
+          {activeScreen === 'dashboard' && currentUser && (
+            <CraftsmanDashboard
+              lang={lang}
+              currentUser={currentUser}
+              onBack={goBack}
+              onOpenTop15Purchase={() => pushScreen('top15', 'craftsman')}
+              onOpenSupportChat={() => pushScreen('chat', 'craftsman')}
+              onLogout={handleLogout}
+            />
+          )}
+
+          {activeScreen === 'top15' && (
+            <Top15Screen
+              lang={lang}
+              onBack={goBack}
+              onSuccess={() => pushScreen('dashboard', 'craftsman')}
+            />
+          )}
+
+          {activeScreen === 'chat' && (
+            <SupportChatScreen
+              lang={lang}
+              onBack={goBack}
+            />
+          )}
+
+          {activeScreen === 'admin' && currentUser && (
+            <AdminDashboard
+              lang={lang}
+              currentUser={currentUser}
+              onBack={goBack}
+              onOpenSuperAdmin={() => pushScreen('superadmin', 'craftsman')}
+            />
+          )}
+
+          {activeScreen === 'superadmin' && currentUser && (
+            <SuperAdminScreen
+              lang={lang}
+              currentUser={currentUser}
+              onBack={goBack}
+            />
+          )}
+
+          {activeScreen === 'adpartner' && currentUser && (
+            <AdPartnerScreen
+              lang={lang}
+              currentUser={currentUser}
+              onLogout={handleLogout}
+              onBack={goBack}
+            />
+          )}
+
+          {activeScreen === 'settings' && (
+            <SettingsScreen
+              lang={lang}
+              onLanguageChange={handleLanguageChange}
+              currentUser={currentUser}
+              onLogout={handleLogout}
+              onBack={goBack}
+            />
+          )}
+        </div>
+
+        {/* Global Bottom Navigation Bar */}
+        <Navbar
+          currentTab={currentTab}
+          onTabChange={handleTabChange}
+          lang={lang}
+          currentUser={currentUser}
+        />
+
+        {/* Android Native Dialer Modal Simulation (§3.2 & §3.4) */}
+        {callingCraftsman && (
+          <DialerModal
+            craftsmanName={callingCraftsman.name}
+            phone={callingCraftsman.phone}
+            lang={lang}
+            onClose={() => setCallingCraftsman(null)}
+          />
+        )}
+      </div>
+    </AndroidFrame>
+  );
+}
+

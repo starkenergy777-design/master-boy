@@ -290,4 +290,2438 @@ apiRouter.get('/search', (req, res) => {
   });
 
   if (cityId) {
-    activeCraftsme
+    activeCraftsmen = activeCraftsmen.filter(c => c.cityId === cityId);
+  }
+  if (professionId) {
+    activeCraftsmen = activeCraftsmen.filter(c => c.professionId === professionId);
+  }
+
+  const now = new Date().toISOString();
+  // User Rule: Top 15 craftsmen appear ONLY when BOTH cityId AND professionId are selected!
+  const hasBothFilters = !!(cityId && professionId);
+  const top15CraftsmanIds = new Set<string>();
+
+  if (hasBothFilters) {
+    const eligible = Array.from(db.top15Memberships.values())
+      .filter(mem => mem.status === 'ACTIVE' && mem.expiresAt > now && mem.cityId === cityId && mem.professionId === professionId);
+    const epoch30Min = Math.floor(Date.now() / (30 * 60 * 1000));
+    const stableHash = (id: string) => {
+      let hash = 2166136261;
+      const value = `${id}:${epoch30Min}`;
+      for (let i = 0; i < value.length; i++) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    };
+    eligible.sort((a, b) => stableHash(a.craftsmanId) - stableHash(b.craftsmanId));
+    for (const mem of eligible.slice(0, 15)) top15CraftsmanIds.add(mem.craftsmanId);
+  }
+
+  const top15List: any[] = [];
+  const regularList: any[] = [];
+
+  for (const c of activeCraftsmen) {
+    const pub = db.toPublicCraftsman(c, lang);
+    if (top15CraftsmanIds.has(c.id)) {
+      pub.isTop15 = true;
+      top15List.push(pub);
+    } else {
+      pub.isTop15 = false;
+      regularList.push(pub);
+    }
+  }
+
+  // User Rule: Other craftsmen ordering reshuffles randomly every 30 minutes!
+  const epoch30Min = Math.floor(Date.now() / (30 * 60 * 1000));
+  function get30MinHash(id: string, epoch: number): number {
+    let hash = 0;
+    const str = `${id}:${epoch}`;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    }
+    return hash;
+  }
+  regularList.sort((a, b) => get30MinHash(a.id, epoch30Min) - get30MinHash(b.id, epoch30Min));
+
+  const offset = (page - 1) * size;
+  const paginatedItems = regularList.slice(offset, offset + size);
+
+  res.json({
+    top15: top15List,
+    data: paginatedItems,
+    content: paginatedItems,
+    items: {
+      content: paginatedItems,
+      page,
+      size,
+      totalElements: regularList.length,
+      totalPages: Math.ceil(regularList.length / size),
+    },
+    page,
+    size,
+    totalElements: regularList.length,
+    totalPages: Math.ceil(regularList.length / size),
+    shuffleEpochMinutes: 30,
+    currentEpoch: epoch30Min,
+  });
+});
+
+// GET /craftsmen/:id (and /craftsman/:id alias)
+apiRouter.get(['/craftsmen/:id', '/craftsman/:id'], (req, res, next) => {
+  if (req.params.id === 'me' || req.params.id === 'register') {
+    return next();
+  }
+  const lang = getLang(req);
+  const c = db.craftsmen.get(req.params.id);
+  if (!c || c.status === 'DELETED') {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+  const pub = db.toPublicCraftsman(c, lang);
+  res.json(pub);
+});
+
+// GET /top15/price?cityId=&professionId=
+apiRouter.get('/top15/price', (req, res) => {
+  const cityId = req.query.cityId as string;
+  const professionId = req.query.professionId as string;
+  if (!cityId || !professionId) {
+    return res.status(400).json({ code: 'MISSING_PARAMS', message: 'cityId and professionId required' });
+  }
+  const key = `${cityId}:${professionId}`;
+  const price = db.top15Prices.get(key);
+  if (!price) {
+    return res.status(404).json({ code: 'PRICE_NOT_SET', message: 'Price not configured for this category' });
+  }
+  res.json({
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+  });
+});
+
+// GET /config/backend (§16.4)
+apiRouter.get('/config/backend', (req, res) => {
+  res.json(db.backendConfig);
+});
+
+// ==========================================
+// 6.2 AUTH ENDPOINTS
+// ==========================================
+
+// POST /auth/otp/request
+apiRouter.post('/auth/otp/request', (req, res) => {
+  const { phone } = req.body;
+  if (!phone || typeof phone !== 'string') {
+    return res.status(400).json({ code: 'INVALID_PHONE', message: 'E.164 phone number required' });
+  }
+  if (!rateLimit(`otp:${req.ip}:${phone.trim()}`, 5, 15 * 60 * 1000)) {
+    return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many OTP requests. Try again later.' });
+  }
+
+  // Super Admin Bootstrap check (§16.1)
+  if (db.bootstrap.enabled && phone === db.bootstrap.phone) {
+    const challengeId = `chal-bootstrap-${Date.now()}`;
+    return res.json({
+      challengeId,
+      next: 'PASSWORD',
+    });
+  }
+
+  // SMS_WEBHOOK_URL alone is not an SMS integration: this server does not have
+  // a defined provider contract or credentials to deliver the generated code.
+  // Return an explicit error instead of issuing an unusable challenge.
+  if (process.env.SMS_WEBHOOK_URL) {
+    return res.status(503).json({ code: 'OTP_DELIVERY_NOT_IMPLEMENTED', message: 'SMS provider delivery is not implemented; use phone and password login.' });
+  }
+
+  return res.status(503).json({ code: 'OTP_PROVIDER_NOT_CONFIGURED', message: 'SMS OTP provider is not configured; use phone and password login.' });
+});
+
+// POST /auth/otp/verify
+apiRouter.post('/auth/otp/verify', (req, res) => {
+  const { challengeId, code } = req.body;
+  if (!challengeId || !code) {
+    return res.status(400).json({ code: 'MISSING_FIELDS', message: 'challengeId and code are required' });
+  }
+
+  const chal = db.otpChallenges.get(challengeId) as any;
+  if (!chal || chal.expiresAt < Date.now()) {
+    return res.status(400).json({ code: 'INVALID_OTP', message: 'Invalid or expired OTP code' });
+  }
+  if (chal.code !== String(code)) {
+    chal.attempts = (chal.attempts || 0) + 1;
+    if (chal.attempts >= MAX_OTP_ATTEMPTS) db.otpChallenges.delete(challengeId);
+    return res.status(400).json({ code: 'INVALID_OTP', message: 'Invalid or expired OTP code' });
+  }
+
+  db.otpChallenges.delete(challengeId);
+
+  // Check if user already exists
+  let user: User | undefined;
+  for (const u of db.users.values()) {
+    if (u.phone === chal.phone) {
+      user = u;
+      break;
+    }
+  }
+
+  if (!user) {
+    return res.status(404).json({
+      code: 'CRAFTSMAN_NOT_REGISTERED',
+      message: 'This phone number is not registered as a craftsman account. Please complete craftsman registration first.',
+      notRegistered: true,
+    });
+  }
+
+  if (user.status !== 'ACTIVE') {
+    return res.status(403).json({ code: 'ACCOUNT_NOT_ACTIVE', message: 'Account is not active' });
+  }
+
+  const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
+  db.sessions.set(sessionToken, { userId: user.id, createdAt: Date.now() });
+
+  res.json({
+    sessionToken,
+    token: sessionToken,
+    user: {
+      id: user.id,
+      phone: user.phone,
+      roles: user.roles,
+    },
+  });
+});
+
+// POST /auth/password/login (§16.1 bootstrap & Craftsman/Admin Phone+Password, also /auth/login and /auth/phone/login)
+apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (req, res) => {
+  const { phone, password } = req.body;
+  const loginKey = `login:${req.ip}:${String(phone || '').trim()}`;
+  if (!rateLimit(loginKey, 10, 15 * 60 * 1000)) {
+    return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many login attempts. Try again later.' });
+  }
+  if (!phone || !password) {
+    return res.status(400).json({ code: 'MISSING_CREDENTIALS', message: 'Phone and password required' });
+  }
+
+  // 1. Check Super Admin Bootstrap credentials (§16.1)
+  if (db.bootstrap.enabled && phone === db.bootstrap.phone && password === db.bootstrap.password) {
+    let superAdminUser: User | undefined;
+    for (const u of db.users.values()) {
+      if (u.roles.includes('SUPER_ADMIN')) {
+        superAdminUser = u;
+        break;
+      }
+    }
+
+    if (!superAdminUser) {
+      superAdminUser = {
+        id: 'usr-superadmin',
+        phone: db.bootstrap.phone,
+        password: hashPassword(db.bootstrap.password),
+        roles: ['SUPER_ADMIN'],
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+      db.users.set(superAdminUser.id, superAdminUser);
+    }
+
+    const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
+    db.sessions.set(sessionToken, { userId: superAdminUser.id, createdAt: Date.now() });
+
+    db.auditLog.unshift({
+      id: `audit-${Date.now()}`,
+      actorType: 'USER',
+      actorId: superAdminUser.id,
+      action: 'BOOTSTRAP_LOGIN',
+      targetType: 'SYSTEM',
+      reason: 'First super admin login via bootstrap credentials',
+      createdAt: new Date().toISOString(),
+    });
+
+    return res.json({
+      sessionToken,
+      token: sessionToken,
+      user: {
+        id: superAdminUser.id,
+        phone: superAdminUser.phone,
+        roles: superAdminUser.roles,
+      },
+      hasCraftsmanProfile: false,
+      craftsmanId: null,
+      isNewUser: false,
+    });
+  }
+
+  // 2. Check Database Users (Craftsmen & Staff Admins)
+  let foundUser: User | undefined;
+  for (const u of db.users.values()) {
+    if (u.phone === phone) {
+      foundUser = u;
+      break;
+    }
+  }
+
+  if (foundUser) {
+    if (foundUser.status === 'BLOCKED') {
+      return res.status(403).json({
+        code: 'ACCOUNT_BLOCKED',
+        message: 'თქვენი ანგარიში დაბლოკილია / Your account is blocked',
+      });
+    }
+
+    // Verify the stored password hash
+    const isPasswordValid = verifyPassword(password, foundUser.password);
+    if (isPasswordValid) {
+      if (foundUser.password && !foundUser.password.startsWith('scrypt$')) {
+        foundUser.password = hashPassword(password);
+      }
+      const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
+      db.sessions.set(sessionToken, { userId: foundUser.id, createdAt: Date.now() });
+
+      let craftsman: Craftsman | undefined;
+      for (const c of db.craftsmen.values()) {
+        if (c.userId === foundUser.id) {
+          craftsman = c;
+          break;
+        }
+      }
+
+      return res.json({
+        sessionToken,
+        token: sessionToken,
+        user: {
+          id: foundUser.id,
+          phone: foundUser.phone,
+          roles: foundUser.roles,
+        },
+        hasCraftsmanProfile: !!craftsman,
+        craftsmanId: craftsman?.id || null,
+        isAdPartner: foundUser.roles.includes('AD_PARTNER'),
+        isNewUser: !craftsman && !foundUser.roles.some(r => r === 'ADMIN' || r === 'SUPER_ADMIN' || r === 'AD_PARTNER'),
+      });
+    } else {
+      return res.status(401).json({
+        code: 'INVALID_PASSWORD',
+        message: 'არასწორი პაროლი / Invalid password',
+      });
+    }
+  }
+
+  // User not found with this phone number
+  res.status(404).json({
+    code: 'USER_NOT_FOUND',
+    message: 'მომხმარებელი ამ ნომრით არ არის რეგისტრირებული. გთხოვთ გაიაროთ რეგისტრაცია.',
+    notRegistered: true,
+  });
+});
+
+// POST /auth/craftsman/register (also /auth/register and /craftsmen/register)
+apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/register'], (req, res) => {
+  const {
+    phone,
+    password,
+    name,
+    cityId,
+    professionId,
+    description,
+    photoUrl,
+    photos,
+    phoneVisible,
+    workingHours,
+    paid,
+    providerId,
+    bankAccount,
+  } = req.body;
+
+  const resolvedName = (name || req.body.fullName || '').trim() || 'ხელოსანი';
+
+  const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
+  if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
+    return res.status(400).json({ code: 'INVALID_PHONE', message: 'შეიყვანეთ ვალიდური ტელეფონის ნომერი (მინ. 8 ციფრი)' });
+  }
+
+  if (!password || password.length < 12) {
+    return res.status(400).json({ code: 'PASSWORD_TOO_SHORT', message: 'პაროლი უნდა შეიცავდეს მინიმუმ 12 სიმბოლოს' });
+  }
+
+  if (!resolvedName || !cityId || !professionId) {
+    return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'სახელი, ქალაქი და პროფესია სავალდებულოა' });
+  }
+
+  const isPaid = paid === true;
+  if (!isPaid) {
+    return res.status(402).json({ code: 'PAYMENT_REQUIRED', message: 'ხელოსნის ანგარიშის შექმნამდე საჭიროა გამოწერის გადახდა.' });
+  }
+  if (!requireRealPaymentIntegration(res)) return;
+  const provider = db.providerConfig.payment.find(p => p.id === providerId);
+  if (!provider || !provider.isActive) {
+    return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+  }
+
+  // Check if phone already registered with a craftsman profile
+  let user: User | undefined;
+  for (const u of db.users.values()) {
+    if (u.phone === normalizedPhone) {
+      user = u;
+      break;
+    }
+  }
+
+  if (user) {
+    // An unauthenticated, paid registration must never reset an existing account's
+    // password or grant a new role. Existing users should sign in to continue.
+    return res.status(409).json({
+      code: 'PHONE_ALREADY_REGISTERED',
+      message: 'ეს ნომერი უკვე რეგისტრირებულია. გთხოვთ გაიაროთ ავტორიზაცია.',
+    });
+  } else {
+    // Create new user
+    const userId = `usr-${Date.now()}`;
+    user = {
+      id: userId,
+      phone: normalizedPhone,
+      password: hashPassword(password),
+      roles: ['CRAFTSMAN'],
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    };
+    db.users.set(userId, user);
+  }
+
+  const now = new Date();
+  const startsAt = now.toISOString();
+  const craftsmanId = `cm-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const initialStatus: CraftsmanStatus = isPaid ? 'ACTIVE' : 'UNPAID_DRAFT';
+
+  // Photo handling (strictly max 1 photo)
+  const incomingPhotos = photos || (photoUrl ? [photoUrl] : []);
+  const craftsmanPhotos: CraftsmanPhoto[] = incomingPhotos.slice(0, 1).map((p: any, idx: number) => {
+    const url = typeof p === 'string' ? p : p.url;
+    return {
+      id: `ph-${craftsmanId}-${idx}`,
+      craftsmanId,
+      url,
+      displayOrder: idx,
+      isPrimary: true,
+      createdAt: startsAt,
+      updatedAt: startsAt,
+    };
+  });
+
+  const newCraftsman: Craftsman = {
+    id: craftsmanId,
+    userId: user.id,
+    name: resolvedName,
+    description: description || '',
+    phone: user.phone,
+    phoneVisible: phoneVisible !== false,
+    latitude: null,
+    longitude: null,
+    workingHours: workingHours || {
+      monday: '09:00-18:00',
+      tuesday: '09:00-18:00',
+      wednesday: '09:00-18:00',
+      thursday: '09:00-18:00',
+      friday: '09:00-18:00',
+      saturday: '10:00-15:00',
+      sunday: null,
+    },
+    status: initialStatus,
+    cityId,
+    professionId,
+    bankAccount: bankAccount || null,
+    photos: craftsmanPhotos,
+    createdAt: startsAt,
+    updatedAt: startsAt,
+  };
+
+  db.craftsmen.set(craftsmanId, newCraftsman);
+
+  // Setup 180-day listing
+  const listExpiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString();
+  const listGraceEndsAt = new Date(now.getTime() + (180 + 30) * 24 * 60 * 60 * 1000).toISOString();
+
+  let paymentIntentId: string | null = null;
+  if (isPaid) {
+    paymentIntentId = `pi-list-${Date.now()}`;
+    db.paymentIntents.set(paymentIntentId, {
+      id: paymentIntentId,
+      reservationId: craftsmanId,
+      craftsmanId,
+      providerId: providerId || 'prov-bog',
+      amountMinor: db.listingPrice.amountMinor,
+      currency: db.listingPrice.currency,
+      idempotencyKey: `init-${craftsmanId}`,
+      status: 'SUCCEEDED',
+      createdAt: startsAt,
+    });
+  }
+
+  db.craftsmanListings.set(craftsmanId, {
+    id: `list-${craftsmanId}`,
+    craftsmanId,
+    cityId,
+    professionId,
+    status: isPaid ? 'ACTIVE' : 'UNPAID_DRAFT',
+    startsAt: isPaid ? startsAt : null,
+    expiresAt: isPaid ? listExpiresAt : null,
+    graceEndsAt: isPaid ? listGraceEndsAt : null,
+    lastPaymentId: paymentIntentId,
+    createdAt: startsAt,
+    updatedAt: startsAt,
+  });
+
+  // Issue session token
+  const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
+  db.sessions.set(sessionToken, { userId: user.id, createdAt: Date.now() });
+
+  res.status(201).json({
+    sessionToken,
+    token: sessionToken,
+    user: {
+      id: user.id,
+      phone: user.phone,
+      roles: user.roles,
+    },
+    craftsman: newCraftsman,
+    isNewUser: true,
+  });
+});
+
+// POST /auth/logout
+apiRouter.post('/auth/logout', requireAuth, (req: AuthRequest, res) => {
+  if (req.sessionToken) {
+    db.sessions.delete(req.sessionToken);
+  }
+  res.json({ success: true });
+});
+
+// GET /auth/me
+apiRouter.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
+  res.json({
+    id: req.user!.id,
+    phone: req.user!.phone,
+    roles: req.user!.roles,
+    status: req.user!.status,
+  });
+});
+
+// ==========================================
+// 6.3 CRAFTSMAN (SESSION) ENDPOINTS
+// ==========================================
+
+// Helper to get craftsman for current user
+function getMyCraftsman(userId: string): Craftsman | undefined {
+  for (const c of db.craftsmen.values()) {
+    if (c.userId === userId && c.status !== 'DELETED') {
+      return c;
+    }
+  }
+  return undefined;
+}
+
+// PUT /craftsmen/me/draft (wizard auto-save)
+apiRouter.put('/craftsmen/me/draft', requireCraftsman, (req: AuthRequest, res) => {
+  const { step, data } = req.body;
+  if (typeof step !== 'number' || !data) {
+    return res.status(400).json({ code: 'INVALID_DRAFT', message: 'Valid step number and data required' });
+  }
+
+  const draft = {
+    step,
+    data,
+    updatedAt: new Date().toISOString(),
+  };
+  db.craftsmanDrafts.set(req.user!.id, draft);
+  res.json(draft);
+});
+
+// POST /craftsmen/register (draft -> ACTIVE)
+apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res) => {
+  const existing = getMyCraftsman(req.user!.id);
+  if (existing) {
+    return res.status(409).json({ code: 'ALREADY_REGISTERED', message: 'Craftsman profile already exists' });
+  }
+
+  const draft = db.craftsmanDrafts.get(req.user!.id);
+  const incoming = req.body.data || req.body || {};
+  const data = { ...(draft?.data || {}), ...incoming };
+
+  if (!data.name || !data.cityId || !data.professionId) {
+    return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'Name, City, and Profession are required' });
+  }
+
+  const isPaid = data.paid === true;
+  if (!isPaid) {
+    return res.status(402).json({ code: 'PAYMENT_REQUIRED', message: 'A subscription payment is required before the craftsman account can be created.' });
+  }
+  if (!requireRealPaymentIntegration(res)) return;
+  const provider = db.providerConfig.payment.find(p => p.id === data.providerId);
+  if (!provider || !provider.isActive) {
+    return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+  }
+
+  if (data.password && typeof data.password === 'string' && data.password.length >= 12) {
+    req.user!.password = hashPassword(data.password);
+  }
+
+  const now = new Date();
+  const startsAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString();
+  const graceEndsAt = new Date(now.getTime() + (180 + 30) * 24 * 60 * 60 * 1000).toISOString();
+
+  const craftsmanId = `cm-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const initialStatus: CraftsmanStatus = isPaid ? 'ACTIVE' : 'UNPAID_DRAFT';
+
+  const newCraftsman: Craftsman = {
+    id: craftsmanId,
+    userId: req.user!.id,
+    name: data.name,
+    description: data.description || '',
+    phone: req.user!.phone,
+    phoneVisible: data.phoneVisible !== false,
+    latitude: null,
+    longitude: null,
+    workingHours: data.workingHours || { monday: '09:00-18:00', friday: '09:00-18:00' },
+    status: initialStatus,
+    cityId: data.cityId,
+    professionId: data.professionId,
+    photos: (data.photos || []).slice(0, 1).map((p: any, idx: number) => {
+      if (typeof p === 'string') {
+        return {
+          id: `ph-${craftsmanId}-${idx}`,
+          craftsmanId,
+          url: p,
+          displayOrder: idx,
+          isPrimary: true,
+          createdAt: startsAt,
+          updatedAt: startsAt,
+        };
+      }
+      return p;
+    }),
+    createdAt: startsAt,
+    updatedAt: startsAt,
+  };
+
+  db.craftsmen.set(craftsmanId, newCraftsman);
+  db.craftsmanDrafts.delete(req.user!.id);
+
+  // Initialize craftsman listing subscription (§3.11, §7.7, §24)
+  db.craftsmanListings.set(craftsmanId, {
+    id: `list-${craftsmanId}`,
+    craftsmanId,
+    cityId: data.cityId,
+    professionId: data.professionId,
+    status: isPaid ? 'ACTIVE' : 'UNPAID_DRAFT',
+    startsAt: isPaid ? startsAt : null,
+    expiresAt: isPaid ? expiresAt : null,
+    graceEndsAt: isPaid ? graceEndsAt : null,
+    createdAt: startsAt,
+    updatedAt: startsAt,
+  });
+
+  if (isPaid) {
+    const paymentIntentId = `pi-reg-${Date.now()}`;
+    db.paymentIntents.set(paymentIntentId, {
+      id: paymentIntentId,
+      reservationId: `list-${craftsmanId}`,
+      craftsmanId,
+      providerId: data.providerId || 'prov-bog',
+      amountMinor: db.listingPrice.amountMinor,
+      currency: db.listingPrice.currency,
+      idempotencyKey: (req.headers['idempotency-key'] as string) || `idem-reg-${Date.now()}`,
+      status: 'SUCCEEDED',
+      createdAt: startsAt,
+    });
+  }
+
+  res.json({
+    ...newCraftsman,
+    listing: db.craftsmanListings.get(craftsmanId),
+  });
+});
+
+// GET /craftsmen/me (also /craftsman/profile and /craftsmen/profile)
+apiRouter.get(['/craftsmen/me', '/craftsman/profile', '/craftsmen/profile'], requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  const draft = db.craftsmanDrafts.get(req.user!.id);
+
+  if (!c) {
+    return res.json({
+      registered: false,
+      craftsman: null,
+      draft: draft || null,
+    });
+  }
+
+  const listing = db.getCraftsmanListing(c.id);
+
+  res.json({
+    registered: true,
+    craftsman: c,
+    ...c,
+    fullName: c.name,
+    listing,
+    status: listing?.status || c.status,
+    draft: draft || null,
+  });
+});
+
+// PUT /craftsmen/me (also /craftsman/profile, /craftsman/phone-visibility, /craftsmen/phone-visibility)
+apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibility', '/craftsmen/phone-visibility'], requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
+  }
+
+  const { name, description, workingHours, phoneVisible, isPhoneHidden, bankAccount } = req.body;
+
+  if (name !== undefined) c.name = name;
+  if (description !== undefined) c.description = description;
+  if (workingHours !== undefined) c.workingHours = workingHours;
+  if (phoneVisible !== undefined) c.phoneVisible = !!phoneVisible;
+  if (isPhoneHidden !== undefined) c.phoneVisible = !isPhoneHidden;
+  if (bankAccount !== undefined) c.bankAccount = bankAccount;
+  c.updatedAt = new Date().toISOString();
+
+  res.json({
+    ...c,
+    fullName: c.name,
+    isPhoneHidden: !c.phoneVisible,
+    phoneVisible: c.phoneVisible,
+    success: true,
+  });
+});
+
+// POST /craftsmen/me/photos
+apiRouter.post('/craftsmen/me/photos', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
+  }
+
+  if (c.photos.length >= 1) {
+    return res.status(422).json({
+      code: 'MAX_PHOTOS_EXCEEDED',
+      message: 'ხელოსანს აქვს მაქსიმუმ 1 ფოტოს ატვირთვის უფლება. წაშალეთ არსებული ფოტო მის შესაცვლელად. (Maximum 1 photo allowed)',
+    });
+  }
+
+  const { url, isPrimary } = req.body;
+  if (!url) {
+    return res.status(400).json({ code: 'INVALID_URL', message: 'Photo URL is required' });
+  }
+
+  const photoId = `ph-${Date.now()}-${Math.floor(Math.random() * 100)}`;
+  const shouldBePrimary = isPrimary || c.photos.length === 0;
+
+  if (shouldBePrimary) {
+    c.photos.forEach(p => (p.isPrimary = false));
+  }
+
+  const newPhoto: CraftsmanPhoto = {
+    id: photoId,
+    craftsmanId: c.id,
+    url,
+    displayOrder: c.photos.length,
+    isPrimary: shouldBePrimary,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  c.photos.push(newPhoto);
+  res.json(newPhoto);
+});
+
+// PUT /craftsmen/me/photos/:id
+apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+
+  const photo = c.photos.find(p => p.id === req.params.id);
+  if (!photo) {
+    return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
+  }
+
+  const { isPrimary, displayOrder } = req.body;
+  if (isPrimary) {
+    c.photos.forEach(p => (p.isPrimary = false));
+    photo.isPrimary = true;
+  }
+  if (typeof displayOrder === 'number') {
+    photo.displayOrder = displayOrder;
+  }
+  photo.updatedAt = new Date().toISOString();
+
+  res.json(photo);
+});
+
+// DELETE /craftsmen/me/photos/:id
+apiRouter.delete('/craftsmen/me/photos/:id', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+
+  const idx = c.photos.findIndex(p => p.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
+  }
+
+  const deleted = c.photos.splice(idx, 1)[0];
+  if (deleted.isPrimary && c.photos.length > 0) {
+    c.photos[0].isPrimary = true;
+  }
+
+  res.json({ success: true });
+});
+
+// ==========================================
+// 6.3 CRAFTSMAN LISTING SUBSCRIPTION (§3.11, §6.3, §24)
+// ==========================================
+
+// GET /craftsmen/me/listing
+apiRouter.get('/craftsmen/me/listing', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
+  }
+
+  db.runListingWorkers();
+  let listing = db.getCraftsmanListing(c.id);
+  if (!listing) {
+    return res.json({
+      status: 'UNPAID_DRAFT',
+      cityId: c.cityId,
+      professionId: c.professionId,
+      price: {
+        amountMinor: db.listingPrice.amountMinor,
+        currency: db.listingPrice.currency,
+      },
+    });
+  }
+
+  let secondsRemaining: number | undefined;
+  if (listing.status === 'ACTIVE' && listing.expiresAt) {
+    secondsRemaining = Math.max(0, Math.floor((new Date(listing.expiresAt).getTime() - Date.now()) / 1000));
+  }
+
+  res.json({
+    status: listing.status,
+    cityId: listing.cityId,
+    professionId: listing.professionId,
+    startsAt: listing.startsAt,
+    expiresAt: listing.expiresAt,
+    secondsRemaining,
+    graceEndsAt: listing.graceEndsAt,
+    price: {
+      amountMinor: db.listingPrice.amountMinor,
+      currency: db.listingPrice.currency,
+    },
+  });
+});
+
+// POST /craftsmen/me/listing/pay
+apiRouter.post('/craftsmen/me/listing/pay', requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+
+  const { providerId } = req.body;
+  const idempotencyKey = (req.headers['idempotency-key'] as string) || `idem-list-${Date.now()}`;
+
+  for (const intent of db.paymentIntents.values()) {
+    if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === c.id) {
+      return res.json({
+        status: 'SUCCEEDED',
+        paymentIntentId: intent.id,
+        alreadyProcessed: true,
+      });
+    }
+  }
+
+  const now = new Date();
+  const startsAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString(); // 180 days (6 months)
+  const graceEndsAt = new Date(now.getTime() + (180 + 30) * 24 * 60 * 60 * 1000).toISOString();
+
+  let listing = db.getCraftsmanListing(c.id);
+  if (!listing) {
+    listing = {
+      id: `list-${c.id}`,
+      craftsmanId: c.id,
+      cityId: c.cityId,
+      professionId: c.professionId,
+      status: 'ACTIVE',
+      startsAt,
+      expiresAt,
+      graceEndsAt,
+      createdAt: startsAt,
+      updatedAt: startsAt,
+    };
+    db.craftsmanListings.set(c.id, listing);
+  } else {
+    listing.status = 'ACTIVE';
+    listing.startsAt = startsAt;
+    listing.expiresAt = expiresAt;
+    listing.graceEndsAt = graceEndsAt;
+    listing.updatedAt = startsAt;
+  }
+
+  c.status = 'ACTIVE';
+  c.updatedAt = startsAt;
+
+  const paymentIntentId = `pi-list-${Date.now()}`;
+  db.paymentIntents.set(paymentIntentId, {
+    id: paymentIntentId,
+    reservationId: listing.id,
+    craftsmanId: c.id,
+    providerId: providerId || 'prov-bog',
+    amountMinor: db.listingPrice.amountMinor,
+    currency: db.listingPrice.currency,
+    idempotencyKey,
+    status: 'SUCCEEDED',
+    createdAt: startsAt,
+  });
+
+  listing.lastPaymentId = paymentIntentId;
+
+  res.json({
+    status: 'SUCCEEDED',
+    paymentIntentId,
+    listing: {
+      status: listing.status,
+      startsAt: listing.startsAt,
+      expiresAt: listing.expiresAt,
+      graceEndsAt: listing.graceEndsAt,
+      secondsRemaining: Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000),
+    },
+  });
+});
+
+// POST /craftsmen/me/listing/renew
+apiRouter.post('/craftsmen/me/listing/renew', requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+
+  db.runListingWorkers();
+  let listing = db.getCraftsmanListing(c.id);
+  if (!listing) {
+    return res.status(404).json({ code: 'LISTING_NOT_FOUND', message: 'Listing not found' });
+  }
+
+  if (listing.status === 'PURGED') {
+    return res.status(410).json({ code: 'LISTING_PURGED', message: 'Grace window expired; account was purged.' });
+  }
+
+  const { providerId } = req.body;
+  const idempotencyKey = (req.headers['idempotency-key'] as string) || `idem-renew-${Date.now()}`;
+
+  for (const intent of db.paymentIntents.values()) {
+    if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === c.id) {
+      return res.json({
+        status: 'SUCCEEDED',
+        paymentIntentId: intent.id,
+        alreadyProcessed: true,
+      });
+    }
+  }
+
+  const now = new Date();
+  let newExpiresAt: Date;
+
+  if (listing.status === 'ACTIVE' && listing.expiresAt && new Date(listing.expiresAt).getTime() > now.getTime()) {
+    // Add 180 days to current expiry (no overlap, no loss per §3.11, R-27)
+    newExpiresAt = new Date(new Date(listing.expiresAt).getTime() + 180 * 24 * 60 * 60 * 1000);
+  } else {
+    // During grace or expired: reactivate from moment of payment (R-27)
+    newExpiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
+    listing.startsAt = now.toISOString();
+  }
+
+  listing.status = 'ACTIVE';
+  listing.expiresAt = newExpiresAt.toISOString();
+  listing.graceEndsAt = new Date(newExpiresAt.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  listing.updatedAt = now.toISOString();
+
+  c.status = 'ACTIVE';
+  c.updatedAt = now.toISOString();
+
+  const paymentIntentId = `pi-renew-${Date.now()}`;
+  db.paymentIntents.set(paymentIntentId, {
+    id: paymentIntentId,
+    reservationId: listing.id,
+    craftsmanId: c.id,
+    providerId: providerId || 'prov-bog',
+    amountMinor: db.listingPrice.amountMinor,
+    currency: db.listingPrice.currency,
+    idempotencyKey,
+    status: 'SUCCEEDED',
+    createdAt: now.toISOString(),
+  });
+
+  listing.lastPaymentId = paymentIntentId;
+
+  res.json({
+    status: 'SUCCEEDED',
+    paymentIntentId,
+    listing: {
+      status: listing.status,
+      startsAt: listing.startsAt,
+      expiresAt: listing.expiresAt,
+      graceEndsAt: listing.graceEndsAt,
+      secondsRemaining: Math.floor((newExpiresAt.getTime() - Date.now()) / 1000),
+    },
+  });
+});
+
+// GET /top15/availability?cityId=&professionId=
+apiRouter.get('/top15/availability', requireCraftsman, (req, res) => {
+  const cityId = req.query.cityId as string;
+  const professionId = req.query.professionId as string;
+  if (!cityId || !professionId) {
+    return res.status(400).json({ code: 'MISSING_PARAMS', message: 'cityId and professionId required' });
+  }
+
+  const { freeSlots, price } = db.getTop15Availability(cityId, professionId);
+  if (!price) {
+    return res.status(404).json({ code: 'PRICE_NOT_SET', message: 'Price is not configured for this category' });
+  }
+
+  res.json({
+    freeSlots,
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+  });
+});
+
+// POST /top15/reserve (holds slot 3 min; response has ttlSeconds)
+apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Only registered craftsmen can reserve Top 15 slots' });
+  }
+
+  // Prerequisite: Top 15 requires ACTIVE listing (§24.3, §24.7)
+  db.runListingWorkers();
+  const listing = db.getCraftsmanListing(c.id);
+  if (!listing || listing.status !== 'ACTIVE') {
+    return res.status(403).json({
+      code: 'LISTING_ACTIVE_REQUIRED',
+      message: 'Top 15-ის შესაძენად აუცილებელია გქონდეთ აქტიური 6-თვიანი გამოწერა (10 ლარი). განაახლეთ გამოწერა კაბინეტიდან.',
+    });
+  }
+
+  const { cityId, professionId } = req.body;
+  if (!cityId || !professionId) {
+    return res.status(400).json({ code: 'MISSING_PARAMS', message: 'cityId and professionId required' });
+  }
+
+  // User Rule: Only registered craftsmen in this exact city and profession can buy a Top 15 slot!
+  if (c.cityId !== cityId || c.professionId !== professionId) {
+    return res.status(403).json({
+      code: 'CATEGORY_MISMATCH',
+      message: 'ხელოსანს აქვს უფლება შეიძინოს Top 15 ადგილი მხოლოდ თავისი რეგისტრაციის ქალაქისა და პროფესიის განყოფილებაში.',
+    });
+  }
+
+  // Check if craftsman already has an active Top 15 slot in this category
+  const nowStr = new Date().toISOString();
+  for (const m of db.top15Memberships.values()) {
+    if (m.craftsmanId === c.id && m.cityId === cityId && m.professionId === professionId && m.status === 'ACTIVE' && m.expiresAt > nowStr) {
+      return res.status(409).json({
+        code: 'ALREADY_ACTIVE',
+        message: 'თქვენ უკვე გაქვთ აქტიური Top 15 ადგილი ამ განყოფილებაში (მოქმედებს 30 დღე).',
+      });
+    }
+  }
+
+  const { freeSlots, price } = db.getTop15Availability(cityId, professionId);
+  if (!price) {
+    return res.status(404).json({ code: 'PRICE_NOT_SET', message: 'Top 15 price not configured' });
+  }
+  if (freeSlots <= 0) {
+    return res.status(409).json({
+      code: 'TOP15_FULL',
+      message: 'Top 15 სავსეა (ყველა 15 ადგილი დაკავებულია). ადგილის შეძენის უფლება გექნებათ, როდესაც ვინმეს გაუვა 30 დღიანი ვადა.',
+    });
+  }
+
+  const holdDurationMs = 3 * 60 * 1000; // 3 minutes per §4.2
+  const reservationId = `res-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const expiresAt = Date.now() + holdDurationMs;
+
+  const reservation = {
+    id: reservationId,
+    craftsmanId: c.id,
+    cityId,
+    professionId,
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+    expiresAt,
+    status: 'HELD' as const,
+  };
+
+  db.top15Reservations.set(reservationId, reservation);
+
+  res.json({
+    reservationId,
+    ttlSeconds: 180,
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+  });
+});
+
+// GET /top15/providers
+apiRouter.get('/top15/providers', (req, res) => {
+  const activeProviders = db.providerConfig.payment
+    .filter(p => p.isActive)
+    .map(p => ({
+      id: p.id,
+      name: p.name,
+      code: p.id.replace('prov-', ''),
+      isActive: p.isActive,
+    }));
+  res.json(activeProviders);
+});
+
+// POST /top15/pay & /top15/purchase (Idempotency-Key support)
+apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  const idempotencyKey = req.header('Idempotency-Key')?.trim();
+  if (!idempotencyKey || idempotencyKey.length < 16 || idempotencyKey.length > 128) {
+    return res.status(400).json({ code: 'INVALID_IDEMPOTENCY_KEY', message: 'Idempotency-Key must be 16-128 characters.' });
+  }
+
+  // Check if idempotency key was already processed
+  for (const intent of db.paymentIntents.values()) {
+    if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === getMyCraftsman(req.user!.id)?.id) {
+      return res.json({
+        id: intent.id,
+        status: intent.status,
+        alreadyProcessed: true,
+      });
+    }
+  }
+
+  const { reservationId, providerId } = req.body;
+  if (!reservationId || !providerId) {
+    return res.status(400).json({ code: 'MISSING_PARAMS', message: 'reservationId and providerId required' });
+  }
+
+  const reservation = db.top15Reservations.get(reservationId);
+  if (!reservation) {
+    return res.status(404).json({ code: 'RESERVATION_NOT_FOUND', message: 'Reservation not found' });
+  }
+
+  if (reservation.status !== 'HELD' || reservation.expiresAt < Date.now()) {
+    reservation.status = 'EXPIRED';
+    return res.status(410).json({ code: 'RESERVATION_EXPIRED', message: 'Reservation expired. Try again.' });
+  }
+
+  const paymentIntentId = `pi-${Date.now()}`;
+  const paymentIntent = {
+    id: paymentIntentId,
+    reservationId,
+    craftsmanId: reservation.craftsmanId,
+    providerId,
+    amountMinor: reservation.amountMinor,
+    currency: reservation.currency,
+    idempotencyKey,
+    status: 'SUCCEEDED' as const,
+    createdAt: new Date().toISOString(),
+  };
+
+  db.paymentIntents.set(paymentIntentId, paymentIntent);
+  reservation.status = 'PAID';
+
+  // Create 30 days Top 15 membership
+  const city = db.cities.find(c => c.id === reservation.cityId)!;
+  const prof = db.professions.find(p => p.id === reservation.professionId)!;
+  const memId = `mem-${Date.now()}`;
+  const startsAt = new Date();
+  const expiresAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  db.top15Memberships.set(memId, {
+    id: memId,
+    craftsmanId: reservation.craftsmanId,
+    cityId: reservation.cityId,
+    cityName: city ? city.name.ka : '',
+    professionId: reservation.professionId,
+    professionName: prof ? prof.name.ka : '',
+    startsAt: startsAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    status: 'ACTIVE',
+  });
+
+  res.json({
+    id: paymentIntentId,
+    status: 'SUCCEEDED',
+    membershipId: memId,
+    expiresAt: expiresAt.toISOString(),
+  });
+});
+
+// GET /top15/payment/:id/status
+apiRouter.get('/top15/payment/:id/status', requireCraftsman, (req, res) => {
+  const intent = db.paymentIntents.get(req.params.id);
+  if (!intent) {
+    return res.status(404).json({ code: 'PAYMENT_NOT_FOUND', message: 'Payment intent not found' });
+  }
+  res.json({
+    id: intent.id,
+    status: intent.status,
+    amountMinor: intent.amountMinor,
+    currency: intent.currency,
+  });
+});
+
+// GET /top15/me/memberships
+apiRouter.get('/top15/me/memberships', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.json([]);
+  }
+  const memberships = Array.from(db.top15Memberships.values()).filter(m => m.craftsmanId === c.id);
+  res.json(memberships);
+});
+
+// GET /support/messages?after=&size=
+apiRouter.get('/support/messages', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Support chat is for craftsmen only' });
+  }
+
+  const after = req.query.after as string;
+  const size = Math.min(parseInt(req.query.size as string) || 50, 100);
+
+  let msgs = db.supportMessages.filter(m => m.craftsmanId === c.id);
+  if (after) {
+    const afterTime = new Date(after).getTime();
+    msgs = msgs.filter(m => new Date(m.createdAt).getTime() > afterTime);
+  }
+
+  res.json({
+    messages: msgs.slice(-size),
+    total: msgs.length,
+  });
+});
+
+// POST /support/messages & /support/chat (7 msg/day limit, Gemini response with autonomous fallback)
+apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Support chat is for craftsmen only' });
+  }
+
+  const text = (req.body.text || req.body.message || req.body.body || '').toString().trim();
+  if (!text) {
+    return res.status(400).json({ code: 'INVALID_MESSAGE', message: 'Message text required' });
+  }
+  if (text.length > 1000) {
+    return res.status(422).json({ code: 'MESSAGE_TOO_LONG', message: 'Message exceeds 1000 characters' });
+  }
+
+  // Count craftsman's messages today (Georgia time / UTC date)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const messagesToday = db.supportMessages.filter(
+    m => m.craftsmanId === c.id && m.sender === 'CRAFTSMAN' && m.createdAt.startsWith(todayStr)
+  ).length;
+
+  if (messagesToday >= 7) {
+    return res.status(429).json({
+      code: 'CHAT_LIMIT_REACHED',
+      message: 'You have reached the maximum limit of 7 support messages today',
+      remainingToday: 0,
+    });
+  }
+
+  const lang = getLang(req);
+
+  // Store craftsman message
+  const userMsg: ChatMessage = {
+    id: `msg-${Date.now()}-u`,
+    craftsmanId: c.id,
+    sender: 'CRAFTSMAN',
+    body: text,
+    flaggedForHuman: false,
+    createdAt: new Date().toISOString(),
+  };
+  db.supportMessages.push(userMsg);
+
+  // Autonomous Gemini reply or verified platform fallback
+  let replyResult = {
+    reply: lang === 'ka'
+      ? 'გამარჯობა! თქვენი შეტყობინება მიღებულია. MASTER_BOY პლატფორმის მონაცემების განახლება შეგიძლიათ თქვენი პირადი კაბინეტიდან.'
+      : lang === 'ru'
+        ? 'Здравствуйте! Ваше обращение получено. Вы можете обновить профиль мастера в личном кабинете.'
+        : 'Hello! Your inquiry has been received. You can update your craftsman profile directly from your dashboard.',
+    flaggedForHuman: false,
+  };
+
+  if (db.providerConfig.ai.configured && db.geminiApiKey) {
+    try {
+      replyResult = await generateSupportReply(c.id, text, lang);
+    } catch {
+      // Use fallback
+    }
+  }
+
+  userMsg.flaggedForHuman = replyResult.flaggedForHuman;
+
+  const aiMsg: ChatMessage = {
+    id: `msg-${Date.now()}-ai`,
+    craftsmanId: c.id,
+    sender: 'AI_ADMIN',
+    body: replyResult.reply,
+    flaggedForHuman: replyResult.flaggedForHuman,
+    createdAt: new Date().toISOString(),
+  };
+  db.supportMessages.push(aiMsg);
+
+  const remainingToday = Math.max(0, 7 - (messagesToday + 1));
+
+  res.json({
+    userMessage: userMsg,
+    replyMessage: aiMsg,
+    reply: replyResult.reply,
+    text: replyResult.reply,
+    remainingToday,
+    flaggedForHuman: replyResult.flaggedForHuman,
+  });
+});
+
+// ==========================================
+// 6.4 & 6.5 ADMIN+ ENDPOINTS
+// ==========================================
+
+// GET /admin/craftsmen?query=&status=&page= (§6.5)
+apiRouter.get('/admin/craftsmen', requireAdmin, (req, res) => {
+  db.runListingWorkers();
+  const query = (req.query.query as string)?.toLowerCase() || '';
+  const status = req.query.status as string;
+  const page = parseInt(req.query.page as string) || 1;
+  const size = Math.min(parseInt(req.query.size as string) || 20, 50);
+
+  let list = Array.from(db.craftsmen.values()).map(c => {
+    const listing = db.getCraftsmanListing(c.id);
+    return {
+      ...c,
+      listingStatus: listing?.status || (c.status as any),
+      listing,
+    };
+  });
+
+  if (query) {
+    list = list.filter(c => c.name.toLowerCase().includes(query) || c.phone.includes(query));
+  }
+  if (status) {
+    list = list.filter(c => c.status === status || c.listingStatus === status);
+  }
+
+  const offset = (page - 1) * size;
+  const paginatedCraftsmen = list.slice(offset, offset + size).map(craftsman => safeAdminCraftsman(craftsman));
+  res.json({
+    content: paginatedCraftsmen,
+    data: paginatedCraftsmen,
+    page,
+    size,
+    totalElements: list.length,
+    totalPages: Math.ceil(list.length / size),
+  });
+});
+
+// GET /admin/reports?type=&page=
+apiRouter.get('/admin/reports', requireAdmin, (req, res) => {
+  const type = req.query.type as string;
+  const page = parseInt(req.query.page as string) || 1;
+  const size = Math.min(parseInt(req.query.size as string) || 20, 50);
+
+  let list = db.aiReports;
+  if (type) {
+    list = list.filter(r => r.type === type);
+  }
+
+  const offset = (page - 1) * size;
+  const paginatedReports = list.slice(offset, offset + size);
+  res.json({
+    content: paginatedReports,
+    data: paginatedReports,
+    page,
+    size,
+    totalElements: list.length,
+    totalPages: Math.ceil(list.length / size),
+  });
+});
+
+// POST /admin/reports/generate (autonomous report generator)
+apiRouter.post('/admin/reports/generate', requireAdmin, async (req: AuthRequest, res) => {
+  const type = (req.body.type || 'RECOMMENDATIONS') as 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH';
+  const content = await generatePeriodicReport(type);
+  const repId = `rep-${Date.now()}`;
+  const newReport = {
+    id: repId,
+    type,
+    periodFrom: new Date().toISOString().split('T')[0],
+    periodTo: new Date().toISOString().split('T')[0],
+    content,
+    createdAt: new Date().toISOString(),
+  };
+  db.aiReports.unshift(newReport);
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'AI_ADMIN',
+    actorId: 'gemini-autonomous-agent',
+    action: 'REPORT_GENERATED',
+    targetType: 'REPORT',
+    targetId: repId,
+    reason: `Automated on-demand report: ${type}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  res.json(newReport);
+});
+
+// GET /admin/users?query=&page=
+apiRouter.get('/admin/users', requireAdmin, (req, res) => {
+  const query = (req.query.query as string)?.toLowerCase() || '';
+  const page = parseInt(req.query.page as string) || 1;
+  const size = Math.min(parseInt(req.query.size as string) || 20, 50);
+
+  let list = Array.from(db.users.values());
+  if (query) {
+    list = list.filter(u => u.phone.includes(query));
+  }
+
+  const offset = (page - 1) * size;
+  const paginatedUsers = list.slice(offset, offset + size).map(safeUser);
+  res.json({
+    content: paginatedUsers,
+    data: paginatedUsers,
+    page,
+    size,
+    totalElements: list.length,
+    totalPages: Math.ceil(list.length / size),
+  });
+});
+
+// PUT /admin/users/:id/block & /admin/craftsmen/:id/block
+apiRouter.put(['/admin/users/:id/block', '/admin/craftsmen/:id/block'], requireAdmin, (req: AuthRequest, res) => {
+  let user = db.users.get(req.params.id);
+  let craftsman = db.craftsmen.get(req.params.id);
+
+  if (!user && craftsman?.userId) {
+    user = db.users.get(craftsman.userId);
+  }
+  if (!craftsman && user) {
+    craftsman = Array.from(db.craftsmen.values()).find(c => c.userId === user.id);
+  }
+
+  if (!user && !craftsman) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'User or craftsman not found' });
+  }
+
+  if (user && !canManageAccount(req, res, user, 'block')) return;
+  if (user && user.status === 'DELETED') {
+    return res.status(409).json({ code: 'DELETED_ACCOUNT_CANNOT_BE_BLOCKED', message: 'Deleted accounts cannot be blocked.' });
+  }
+
+  if (user) user.status = 'BLOCKED';
+  if (craftsman) craftsman.status = 'BLOCKED';
+  if (user) revokeUserSessions(user.id);
+
+  for (const c of db.craftsmen.values()) {
+    if (user && c.userId === user.id) c.status = 'BLOCKED';
+  }
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'BLOCK_USER',
+    targetType: 'USER',
+    targetId: user ? user.id : craftsman!.id,
+    createdAt: new Date().toISOString(),
+  });
+
+  res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+});
+
+// PUT /admin/users/:id/unblock & /admin/craftsmen/:id/unblock
+apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requireAdmin, (req: AuthRequest, res) => {
+  let user = db.users.get(req.params.id);
+  let craftsman = db.craftsmen.get(req.params.id);
+
+  if (!user && craftsman?.userId) {
+    user = db.users.get(craftsman.userId);
+  }
+  if (!craftsman && user) {
+    craftsman = Array.from(db.craftsmen.values()).find(c => c.userId === user.id);
+  }
+
+  if (!user && !craftsman) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'User or craftsman not found' });
+  }
+
+  if (user && !canManageAccount(req, res, user, 'unblock')) return;
+  if (user && user.status !== 'BLOCKED') {
+    return res.status(409).json({ code: 'ACCOUNT_NOT_BLOCKED', message: 'Only blocked accounts can be unblocked.' });
+  }
+
+  if (user) user.status = 'ACTIVE';
+  if (craftsman) craftsman.status = 'ACTIVE';
+
+  for (const c of db.craftsmen.values()) {
+    if (user && c.userId === user.id) c.status = 'ACTIVE';
+  }
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'UNBLOCK_USER',
+    targetType: 'USER',
+    targetId: user ? user.id : craftsman!.id,
+    createdAt: new Date().toISOString(),
+  });
+
+  res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+});
+
+// DELETE /admin/craftsmen/:id & /admin/users/:id
+apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, (req: AuthRequest, res) => {
+  let c = db.craftsmen.get(req.params.id);
+  let u = db.users.get(req.params.id);
+
+  const currentU = u;
+  if (!c && currentU) {
+    c = Array.from(db.craftsmen.values()).find(item => item.userId === currentU.id);
+  }
+  if (!u && c?.userId) {
+    u = db.users.get(c.userId);
+  }
+
+  if (!c && !u) return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  if (u && !canManageAccount(req, res, u, 'delete')) return;
+  if (u && u.status === 'DELETED') {
+    return res.status(409).json({ code: 'ACCOUNT_ALREADY_DELETED', message: 'Account is already deleted.' });
+  }
+  if (c) c.status = 'DELETED';
+  if (u) u.status = 'DELETED';
+  if (u) revokeUserSessions(u.id);
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'DELETE_CRAFTSMAN',
+    targetType: 'CRAFTSMAN',
+    targetId: c ? c.id : (u ? u.id : req.params.id),
+    createdAt: new Date().toISOString(),
+  });
+
+  res.json({ success: true });
+});
+
+// GET /admin/top15/prices & /admin/prices
+apiRouter.get(['/admin/top15/prices', '/admin/prices'], requireAdmin, (req, res) => {
+  const list = Array.from(db.top15Prices.values());
+  res.json(list);
+});
+
+// PUT /admin/top15/prices & /admin/prices (Protected by config lock!)
+apiRouter.put(['/admin/top15/prices', '/admin/prices'], requireAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const { cityId, professionId, amountMinor } = req.body;
+  if (!cityId || !professionId || typeof amountMinor !== 'number' || amountMinor <= 0) {
+    return res.status(400).json({ code: 'INVALID_PRICE', message: 'Valid cityId, professionId and amountMinor > 0 required' });
+  }
+
+  const key = `${cityId}:${professionId}`;
+  const updated = {
+    cityId,
+    professionId,
+    amountMinor,
+    currency: 'GEL',
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user!.id,
+  };
+  db.top15Prices.set(key, updated);
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'UPDATE_PRICE',
+    targetType: 'PRICE',
+    targetId: key,
+    reason: `Price set to ${amountMinor / 100} GEL`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({
+    success: true,
+    ...updated,
+  });
+});
+
+// GET /admin/analytics
+apiRouter.get('/admin/analytics', requireAdmin, (req, res) => {
+  const now = new Date().toISOString();
+  const totalCraftsmen = db.craftsmen.size;
+  const activeCraftsmen = Array.from(db.craftsmen.values()).filter(c => c.status === 'ACTIVE').length;
+  const activeMemberships = Array.from(db.top15Memberships.values()).filter(m => m.status === 'ACTIVE' && m.expiresAt > now).length;
+  const totalRevenueMinor = Array.from(db.paymentIntents.values())
+    .filter(p => p.status === 'SUCCEEDED')
+    .reduce((sum, p) => sum + p.amountMinor, 0);
+
+  res.json({
+    totalCraftsmen,
+    activeCraftsmen,
+    activeTop15Slots: activeMemberships,
+    totalRevenueGEL: totalRevenueMinor / 100,
+    totalDisputes: db.aiReports.filter(r => r.type === 'DISPUTE').length,
+    activeSessions: db.sessions.size,
+    configLocked: db.configLock.locked,
+    configLockedUntil: db.configLock.lockedUntil,
+  });
+});
+
+// GET /admin/audit-log
+apiRouter.get('/admin/audit-log', requireAdmin, (req, res) => {
+  res.json(db.auditLog.slice(0, 50));
+});
+
+// ==========================================
+// 6.6 SUPER ADMIN ENDPOINTS
+// ==========================================
+
+// GET /admin/providers/:type
+apiRouter.get('/admin/providers/:type', requireSuperAdmin, (req, res) => {
+  const type = req.params.type as 'payment' | 'sms' | 'email';
+  if (!isProviderType(type)) {
+    return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
+  }
+  res.json((db.providerConfig[type] as any[]).map(safeProvider));
+});
+
+// POST /admin/providers/:type (Protected by config lock!)
+apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const type = req.params.type as 'payment' | 'sms' | 'email';
+  if (!isProviderType(type)) {
+    return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
+  }
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = body;
+  if (typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Provider name is required.' });
+  }
+  if ([apiKey, secretKey, clientId, webhookSecret].some(value => value !== undefined && typeof value !== 'string') ||
+      (isActive !== undefined && typeof isActive !== 'boolean')) {
+    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Provider fields have invalid types.' });
+  }
+  const newItem: any = {
+    id: `prov-${crypto.randomUUID()}`,
+    name: name.trim(),
+    ...(apiKey?.trim() ? { apiKey: apiKey.trim() } : {}),
+    ...(secretKey?.trim() ? { secretKey: secretKey.trim() } : {}),
+    ...(clientId?.trim() ? { clientId: clientId.trim() } : {}),
+    ...(webhookSecret?.trim() ? { webhookSecret: webhookSecret.trim() } : {}),
+    isActive: isActive === true,
+  };
+  if (newItem.apiKey) newItem.apiKeyMasked = newItem.apiKey.length > 8 ? `${newItem.apiKey.slice(0, 4)}****${newItem.apiKey.slice(-4)}` : '****';
+  (db.providerConfig[type] as any[]).push(newItem);
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: `ADD_PROVIDER_${type.toUpperCase()}`,
+    targetType: 'PROVIDER',
+    targetId: newItem.id,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json(safeProvider(newItem));
+});
+
+// PUT /admin/providers/:type/:id (Update provider credentials and active status)
+apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const type = req.params.type as 'payment' | 'sms' | 'email';
+  if (!isProviderType(type)) {
+    return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
+  }
+  const items = db.providerConfig[type] as any[];
+  const item = items.find(p => p.id === req.params.id);
+  if (!item) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Provider not found' });
+  }
+
+  const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = req.body;
+  if ((name !== undefined && (typeof name !== 'string' || !name.trim())) ||
+      [apiKey, secretKey, clientId, webhookSecret].some(value => value !== undefined && typeof value !== 'string') ||
+      (isActive !== undefined && typeof isActive !== 'boolean')) {
+    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Provider fields have invalid types.' });
+  }
+  if (name !== undefined) item.name = name.trim();
+  if (isActive !== undefined) item.isActive = isActive;
+  if (apiKey !== undefined && apiKey.trim()) {
+    item.apiKey = apiKey.trim();
+    item.apiKeyMasked = apiKey.length > 8 ? `${apiKey.slice(0, 4)}****${apiKey.slice(-4)}` : '****';
+  }
+  if (secretKey !== undefined && secretKey.trim()) item.secretKey = secretKey.trim();
+  if (clientId !== undefined && clientId.trim()) item.clientId = clientId.trim();
+  if (webhookSecret !== undefined) item.webhookSecret = webhookSecret.trim();
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: `UPDATE_PROVIDER_${type.toUpperCase()}`,
+    targetType: 'PROVIDER',
+    targetId: item.id,
+    reason: `Updated ${item.name} (${item.id}) credentials and active status`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, provider: safeProvider(item) });
+});
+
+// PUT /admin/providers/ai (write-only Gemini API key; OTP re-confirmation)
+apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const { apiKey, otpCode } = req.body;
+  if (!apiKey || typeof apiKey !== 'string') {
+    return res.status(400).json({ code: 'INVALID_KEY', message: 'API key required' });
+  }
+
+  // Super Admin re-confirms with OTP per §3.8
+  const reauthCode = process.env.ADMIN_REAUTH_CODE;
+  if (!reauthCode || !otpCode || otpCode !== reauthCode) {
+    return res.status(403).json({ code: 'OTP_REQUIRED', message: 'Valid administrator re-confirmation code required before updating Gemini API key' });
+  }
+
+  const isValid = await testGeminiKey(apiKey);
+  if (!isValid) {
+    return res.status(422).json({ code: 'AI_KEY_INVALID', message: 'Gemini API key verification failed' });
+  }
+
+  resetAiClient(apiKey);
+  db.providerConfig.ai.configured = true;
+  db.providerConfig.ai.verifiedAt = new Date().toISOString();
+  db.providerConfig.ai.lastCallOk = true;
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'CONFIGURE_GEMINI_KEY',
+    targetType: 'SYSTEM',
+    reason: 'Super Admin updated Gemini AI provider key with OTP verification',
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  // Never return the key! Only status
+  res.json({
+    configured: true,
+    verifiedAt: db.providerConfig.ai.verifiedAt,
+    lastCallOk: true,
+  });
+});
+
+// GET /admin/providers/ai/status
+apiRouter.get('/admin/providers/ai/status', requireSuperAdmin, (req, res) => {
+  res.json(db.providerConfig.ai);
+});
+
+// GET /admin/listing/price (§6.6, R-25)
+apiRouter.get('/admin/listing/price', requireSuperAdmin, (req, res) => {
+  res.json({
+    amountMinor: db.listingPrice.amountMinor,
+    currency: db.listingPrice.currency,
+  });
+});
+
+// PUT /admin/listing/price (Protected by config lock!) (§6.6, R-25)
+apiRouter.put('/admin/listing/price', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const { amountMinor } = req.body;
+  if (typeof amountMinor !== 'number' || amountMinor <= 0) {
+    return res.status(400).json({ code: 'INVALID_AMOUNT', message: 'Positive amountMinor required' });
+  }
+
+  db.listingPrice.amountMinor = amountMinor;
+  db.listingPrice.updatedAt = new Date().toISOString();
+  db.listingPrice.updatedBy = req.user!.id;
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'UPDATE_LISTING_PRICE',
+    targetType: 'SYSTEM',
+    reason: `Listing subscription price updated to ${amountMinor / 100} GEL`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({
+    amountMinor: db.listingPrice.amountMinor,
+    currency: db.listingPrice.currency,
+  });
+});
+
+// PUT /admin/payment/recipient-account (Protected by config lock!)
+apiRouter.put('/admin/payment/recipient-account', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const { iban, bankName, beneficiary, taxNumber } = req.body;
+  if (!iban || !bankName || !beneficiary) {
+    return res.status(400).json({ code: 'INVALID_ACCOUNT', message: 'iban, bankName, and beneficiary required' });
+  }
+
+  db.recipientAccount = {
+    iban,
+    bankName,
+    beneficiary,
+    taxNumber: taxNumber || db.recipientAccount.taxNumber,
+    updatedAt: new Date().toISOString(),
+  };
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'UPDATE_RECIPIENT_ACCOUNT',
+    targetType: 'ACCOUNT',
+    reason: 'Beneficiary payment account updated',
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json(db.recipientAccount);
+});
+
+// GET /admin/payment/recipient-account
+apiRouter.get('/admin/payment/recipient-account', requireSuperAdmin, (req, res) => {
+  res.json(db.recipientAccount);
+});
+
+// GET /admin/admins (§6.6)
+apiRouter.get('/admin/admins', requireSuperAdmin, (req, res) => {
+  const admins = Array.from(db.users.values()).filter(u => u.roles.includes('ADMIN'));
+  res.json(admins.map(safeUser));
+});
+
+// POST /admin/admins (Protected by config lock!)
+apiRouter.post('/admin/admins', requireSuperAdmin, checkConfigLock, (req: AuthRequest, res) => {
+  const { phone, password } = req.body;
+  if (!phone || !password || typeof password !== 'string' || password.length < 12) {
+    return res.status(400).json({ code: 'INVALID_CREDENTIALS', message: 'Phone and a password of at least 12 characters are required' });
+  }
+
+  let user: User | undefined;
+  for (const u of db.users.values()) {
+    if (u.phone === phone) {
+      user = u;
+      break;
+    }
+  }
+
+  if (!user) {
+    user = {
+      id: `usr-admin-${Date.now()}`,
+      phone,
+      roles: ['ADMIN'],
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      password: hashPassword(password),
+    };
+    db.users.set(user.id, user);
+  } else {
+    if (!user.roles.includes('ADMIN')) {
+      user.roles.push('ADMIN');
+    }
+    user.password = hashPassword(password);
+  }
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'CREATE_ADMIN',
+    targetType: 'USER',
+    targetId: user.id,
+    reason: `Granted ADMIN role to ${phone}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  res.json(safeUser(user));
+});
+
+// DELETE /admin/admins/:id (Protected by config lock!)
+apiRouter.delete('/admin/admins/:id', requireSuperAdmin, checkConfigLock, (req: AuthRequest, res) => {
+  const user = db.users.get(req.params.id);
+  if (!user) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Admin user not found' });
+  }
+
+  user.roles = user.roles.filter(r => r !== 'ADMIN');
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'REMOVE_ADMIN',
+    targetType: 'USER',
+    targetId: user.id,
+    reason: `Revoked ADMIN role from ${user.phone}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  res.json({ success: true, user: safeUser(user) });
+});
+
+// PUT /admin/config/backend-url (§16.4; Protected by config lock!)
+apiRouter.put('/admin/config/backend-url', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const { baseUrl } = req.body;
+  if (!baseUrl || !baseUrl.startsWith('https://')) {
+    return res.status(400).json({ code: 'INVALID_URL', message: 'Valid HTTPS baseUrl required' });
+  }
+
+  db.backendConfig = {
+    baseUrl,
+    issuedAt: new Date().toISOString(),
+    signature: `rsa2048_sha256_mb_${Date.now()}`,
+  };
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'UPDATE_BACKEND_URL',
+    targetType: 'SYSTEM',
+    reason: `Updated backend base URL to ${baseUrl}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json(db.backendConfig);
+});
+
+// GET /admin/config/lock
+apiRouter.get('/admin/config/lock', requireSuperAdmin, (req, res) => {
+  res.json({
+    locked: db.configLock.locked,
+    lockedUntil: db.configLock.lockedUntil,
+    lockedAt: db.configLock.lockedAt,
+  });
+});
+
+// POST /admin/config/lock (6 months lock)
+apiRouter.post('/admin/config/lock', requireSuperAdmin, async (req: AuthRequest, res) => {
+  // Lock can only be activated if Gemini AI is configured per §3.8
+  if (!db.providerConfig.ai.configured) {
+    return res.status(400).json({
+      code: 'GEMINI_KEY_REQUIRED',
+      message: 'Configuration lock can only be activated when a tested, working Gemini API key exists.',
+    });
+  }
+
+  const now = new Date();
+  const sixMonthsLater = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
+
+  db.configLock.locked = true;
+  db.configLock.lockedAt = now.toISOString();
+  db.configLock.lockedUntil = sixMonthsLater.toISOString();
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'ACTIVATE_CONFIG_LOCK_6_MONTHS',
+    targetType: 'SYSTEM',
+    reason: `System locked until ${sixMonthsLater.toISOString()}`,
+    createdAt: now.toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({
+    locked: true,
+    lockedUntil: db.configLock.lockedUntil,
+    message: 'Configuration is now locked for 6 months.',
+  });
+});
+
+// POST /admin/config/unlock (with credential)
+apiRouter.post('/admin/config/unlock', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const { credential } = req.body;
+  const expectedUnlock = process.env.CONFIG_UNLOCK_CREDENTIAL || '';
+  const actualUnlock = Buffer.from(String(credential || ''));
+  const expectedUnlockBuffer = Buffer.from(expectedUnlock);
+  if (!credential || !expectedUnlock || actualUnlock.length !== expectedUnlockBuffer.length || !crypto.timingSafeEqual(actualUnlock, expectedUnlockBuffer)) {
+    return res.status(403).json({ code: 'INVALID_UNLOCK_CREDENTIAL', message: 'Invalid unlock credential' });
+  }
+
+  db.configLock.locked = false;
+  db.configLock.lockedUntil = null;
+  db.configLock.lockedAt = null;
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'CONFIG_UNLOCK',
+    targetType: 'SYSTEM',
+    reason: 'Manual unlock via emergency unlock credential',
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({
+    locked: false,
+    message: 'Configuration lock successfully deactivated.',
+  });
+});
+
+// POST /admin/bootstrap/migrate (§16.3: mandatory credential migration)
+apiRouter.post('/admin/bootstrap/migrate', requireSuperAdmin, async (req: AuthRequest, res) => {
+  if (!db.bootstrap.enabled) {
+    return res.status(409).json({ code: 'BOOTSTRAP_ALREADY_INVALIDATED', message: 'Bootstrap credentials have already been permanently disabled.' });
+  }
+  const { newPhone, newPassword, otpCode } = req.body;
+  if (!newPhone || !newPassword || !otpCode) {
+    return res.status(400).json({ code: 'MISSING_FIELDS', message: 'newPhone, newPassword and otpCode required' });
+  }
+
+  if (newPassword.length < 12) {
+    return res.status(422).json({ code: 'PASSWORD_TOO_SHORT', message: 'Password must be at least 12 characters' });
+  }
+
+  if (!process.env.ADMIN_REAUTH_CODE || otpCode !== process.env.ADMIN_REAUTH_CODE) {
+    return res.status(403).json({ code: 'OTP_REQUIRED', message: 'Valid administrator re-confirmation code required' });
+  }
+
+  // Disable bootstrap atomically
+  db.bootstrap.enabled = false;
+  db.bootstrap.invalidated = true;
+  db.bootstrap.completedAt = new Date().toISOString();
+
+  // Update super admin user's phone
+  req.user!.phone = newPhone;
+  req.user!.password = hashPassword(newPassword);
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'BOOTSTRAP_MIGRATION_COMPLETED',
+    targetType: 'SYSTEM',
+    reason: 'Bootstrap credentials permanently disabled; new phone and password initialized',
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+  await db.persistRuntimeState();
+
+  res.json({
+    success: true,
+    bootstrapInvalidated: true,
+    message: 'Bootstrap credentials permanently disabled. Super admin account finalized.',
+    newPhone,
+    completedAt: db.bootstrap.completedAt,
+  });
+});
+
+// GET /admin/bootstrap/status
+apiRouter.get('/admin/bootstrap/status', requireSuperAdmin, (req, res) => {
+  res.json({
+    bootstrapEnabled: db.bootstrap.enabled,
+    bootstrapInvalidated: db.bootstrap.invalidated,
+    completedAt: db.bootstrap.completedAt,
+    bootstrapPhone: db.bootstrap.enabled ? db.bootstrap.phone : null,
+  });
+});
+
+// ============================================================================
+// ADVERTISEMENTS SYSTEM (Commercial Banners & Partner Portal)
+// ============================================================================
+
+// 1. PUBLIC ENDPOINTS
+// GET /advertisements/active (Home page display)
+apiRouter.get('/advertisements/active', (req, res) => {
+  const ad = db.getActiveAdvertisement();
+  if (!ad) {
+    return res.json({ ad: null });
+  }
+  const publicAd = {
+    id: ad.id,
+    company_name: ad.company_name,
+    image_url: ad.image_url,
+    target_url: ad.target_url,
+    expires_at: ad.expires_at,
+  };
+  res.json({ ad: publicAd });
+});
+
+// 2. SUPER ADMIN MANAGEMENT ENDPOINTS
+// GET /admin/advertisements (List all ads)
+apiRouter.get('/admin/advertisements', requireSuperAdmin, (req, res) => {
+  const ads = Array.from(db.advertisements.values());
+  res.json(ads.map(safeAdvertisement));
+});
+
+// POST /admin/advertisements (Provision new ad partner)
+apiRouter.post('/admin/advertisements', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const { company_name, phone_number, password, days, price_gel } = req.body;
+  if (!phone_number || !password || typeof password !== 'string' || password.length < 12) {
+    return res.status(400).json({ code: 'MISSING_FIELDS', message: 'phone_number and password are required' });
+  }
+
+  const cleanPhone = phone_number.trim();
+  if (!/^\+[1-9]\d{7,14}$/.test(cleanPhone)) {
+    return res.status(400).json({ code: 'INVALID_PHONE', message: 'Advertisement partner phone must be in E.164 format.' });
+  }
+  const existingAd = Array.from(db.advertisements.values()).find(ad => ad.phone_number === cleanPhone);
+  if (existingAd) {
+    return res.status(409).json({ code: 'AD_PARTNER_ALREADY_EXISTS', message: 'An advertisement partner already exists for this phone number.' });
+  }
+  const adId = `ad-${Date.now()}`;
+  const daysValidity = Number.parseInt(String(days ?? '30'), 10);
+  if (!Number.isInteger(daysValidity) || daysValidity < 1 || daysValidity > 3650) {
+    return res.status(400).json({ code: 'INVALID_DURATION', message: 'Advertisement duration must be between 1 and 3650 days.' });
+  }
+  const priceVal = price_gel !== undefined && price_gel !== null && !isNaN(Number(price_gel)) ? Number(price_gel) : 50;
+  if (!Number.isFinite(priceVal) || priceVal < 0 || priceVal > 1000000) {
+    return res.status(400).json({ code: 'INVALID_PRICE', message: 'Advertisement price is invalid.' });
+  }
+  // Validity starts only after a confirmed payment; pending ads are immediately expired.
+  const expires_at = new Date(Date.now() - 1000).toISOString();
+
+  const newAd = {
+    id: adId,
+    company_name: (company_name || '').trim(),
+    phone_number: cleanPhone,
+    password: hashPassword(password),
+    expires_at,
+    image_url: '',
+    target_url: '',
+    is_active: false,
+    payment_status: 'pending' as const,
+    terms_accepted: false,
+    price_gel: priceVal,
+    days_duration: daysValidity,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  db.advertisements.set(adId, newAd);
+
+  let existingUser = Array.from(db.users.values()).find(u => u.phone === cleanPhone);
+  if (existingUser) {
+    if (!existingUser.roles.includes('AD_PARTNER') || existingUser.roles.some(role => role !== 'AD_PARTNER')) {
+      db.advertisements.delete(adId);
+      return res.status(409).json({ code: 'PHONE_ALREADY_ASSIGNED', message: 'This phone number already belongs to another application role and cannot be converted into an advertisement partner.' });
+    }
+    existingUser.password = hashPassword(password);
+    existingUser.status = 'ACTIVE';
+  } else {
+    const userId = `usr-ad-${Date.now()}`;
+    db.users.set(userId, {
+      id: userId,
+      phone: cleanPhone,
+      password: hashPassword(password),
+      roles: ['AD_PARTNER'],
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'CREATE_AD_PARTNER',
+    targetType: 'ADVERTISEMENT',
+    targetId: adId,
+    reason: `Provisioned ad partner ${company_name} (${cleanPhone})`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, advertisement: safeAdvertisement(newAd) });
+});
+
+// POST /admin/advertisements/:id/block-and-delete (Delete & Block Ad button)
+apiRouter.post('/admin/advertisements/:id/block-and-delete', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const ad = db.advertisements.get(req.params.id);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Advertisement not found' });
+  }
+
+  ad.image_url = '';
+  ad.is_active = false;
+  ad.payment_status = 'pending';
+  ad.updated_at = new Date().toISOString();
+
+  // Block partner user account
+  for (const u of db.users.values()) {
+    if (u.phone === ad.phone_number) {
+      u.status = 'BLOCKED';
+    }
+  }
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'DELETE_AND_BLOCK_AD',
+    targetType: 'ADVERTISEMENT',
+    targetId: ad.id,
+    reason: `Banner deleted and partner account blocked for rule violation: ${ad.company_name}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, message: 'Ad banner deleted and partner access blocked.', advertisement: safeAdvertisement(ad) });
+});
+
+// PUT /admin/advertisements/:id (Update ad settings / validity)
+apiRouter.put('/admin/advertisements/:id', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const ad = db.advertisements.get(req.params.id);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Advertisement not found' });
+  }
+
+  const { company_name, is_active, daysToAdd, expires_at } = req.body;
+  if (company_name !== undefined) {
+    if (typeof company_name !== 'string' || company_name.trim().length === 0) {
+      return res.status(400).json({ code: 'COMPANY_NAME_REQUIRED', message: 'Company name is required.' });
+    }
+    ad.company_name = company_name.trim();
+  }
+  // Super Admin may deactivate an advertisement, but cannot mark an unpaid ad as paid/active.
+  if (is_active !== undefined) {
+    if (Boolean(is_active) && ad.payment_status !== 'paid') {
+      return res.status(409).json({ code: 'PAYMENT_REQUIRED', message: 'An advertisement cannot be activated before confirmed payment.' });
+    }
+    ad.is_active = Boolean(is_active);
+  }
+  if (expires_at !== undefined) {
+    const parsedExpiry = Date.parse(String(expires_at));
+    if (!Number.isFinite(parsedExpiry)) return res.status(400).json({ code: 'INVALID_EXPIRY', message: 'Invalid expiration date.' });
+    ad.expires_at = new Date(parsedExpiry).toISOString();
+  }
+  if (daysToAdd !== undefined) {
+    const extraDays = Number.parseInt(String(daysToAdd), 10);
+    if (!Number.isInteger(extraDays) || extraDays < 1 || extraDays > 3650) {
+      return res.status(400).json({ code: 'INVALID_DURATION', message: 'Additional duration must be between 1 and 3650 days.' });
+    }
+    const currentExp = new Date(ad.expires_at).getTime();
+    const baseTime = currentExp > Date.now() ? currentExp : Date.now();
+    ad.expires_at = new Date(baseTime + extraDays * 24 * 60 * 60 * 1000).toISOString();
+  }
+  ad.updated_at = new Date().toISOString();
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, advertisement: safeAdvertisement(ad) });
+});
+
+// 3. AD PARTNER PORTAL ENDPOINTS
+function getAdByPartnerPhone(phone: string) {
+  for (const ad of db.advertisements.values()) {
+    if (ad.phone_number === phone) {
+      return ad;
+    }
+  }
+  return undefined;
+}
+
+// GET /partner/ad
+apiRouter.get('/partner/ad', requireAdPartner, (req: AuthRequest, res) => {
+  const user = req.user!;
+  let ad = getAdByPartnerPhone(user.phone);
+  if (!ad) {
+    const adId = `ad-${Date.now()}`;
+    ad = {
+      id: adId,
+      company_name: '',
+      phone_number: user.phone,
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+      image_url: '',
+      target_url: '',
+      is_active: false,
+      payment_status: 'pending',
+      terms_accepted: false,
+      price_gel: 50,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    db.advertisements.set(adId, ad);
+  }
+  res.json({ ad: safeAdvertisement(ad) });
+});
+
+// POST /partner/accept-terms
+apiRouter.post('/partner/accept-terms', requireAdPartner, async (req: AuthRequest, res) => {
+  const ad = getAdByPartnerPhone(req.user!.phone);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
+  }
+  ad.terms_accepted = true;
+  ad.updated_at = new Date().toISOString();
+  await db.persistSuperAdminConfig();
+  res.json({ success: true, ad: safeAdvertisement(ad) });
+});
+
+// POST /partner/pay (Bank of Georgia iPay payment for 30 days)
+apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  const ad = getAdByPartnerPhone(req.user!.phone);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
+  }
+
+  if (!ad.terms_accepted) {
+    return res.status(400).json({
+      code: 'TERMS_NOT_ACCEPTED',
+      message: 'გადახდამდე აუცილებელია სარეკლამო პოლიტიკის წესებზე თანხმობის დადასტურება.',
+    });
+  }
+
+  const idempotencyKey = String(req.headers['idempotency-key'] || '').trim();
+  if (idempotencyKey.length < 16 || idempotencyKey.length > 128) {
+    return res.status(400).json({ code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'A valid Idempotency-Key is required for advertisement payments.' });
+  }
+  for (const intent of db.paymentIntents.values()) {
+    if (intent.idempotencyKey === idempotencyKey && intent.reservationId === ad.id) {
+      return res.json({ success: intent.status === 'SUCCEEDED', paymentIntentId: intent.id, ad: safeAdvertisement(ad), replay: true });
+    }
+  }
+
+  const durationDays = Number((ad as any).days_duration || 30);
+  const currentExp = new Date(ad.expires_at).getTime();
+  const baseTime = currentExp > Date.now() ? currentExp : Date.now();
+  const newExpiresAt = new Date(baseTime + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const priceGel = Number(ad.price_gel || 50);
+  const amountMinor = Math.round(priceGel * 100);
+  const paymentIntentId = `pi-ad-${crypto.randomUUID()}`;
+  db.paymentIntents.set(paymentIntentId, {
+    id: paymentIntentId,
+    reservationId: ad.id,
+    craftsmanId: ad.id,
+    providerId: 'prov-bog',
+    amountMinor,
+    currency: 'GEL',
+    idempotencyKey,
+    status: 'SUCCEEDED',
+    createdAt: new Date().toISOString(),
+  });
+
+  ad.expires_at = newExpiresAt;
+  ad.payment_status = 'paid';
+  ad.is_active = true;
+  ad.updated_at = new Date().toISOString();
+
+  await db.persistSuperAdminConfig();
+
+  res.json({
+    success: true,
+    paymentIntentId,
+    ad: safeAdvertisement(ad),
+    message: `გადახდა წარმატებით შესრულდა (საქართველოს ბანკი - ${priceGel} GEL). რეკლამა გააქტიურებულია ${durationDays} დღით.`,
+  });
+});
+
+// PUT /partner/ad (Update content: company_name, image_url, target_url)
+apiRouter.put('/partner/ad', requireAdPartner, async (req: AuthRequest, res) => {
+  const ad = getAdByPartnerPhone(req.user!.phone);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
+  }
+
+  const isPaid = ad.payment_status === 'paid' && new Date(ad.expires_at) > new Date();
+  if (!isPaid) {
+    return res.status(403).json({
+      code: 'PAYMENT_REQUIRED',
+      message: 'კონტენტის რედაქტირება შესაძლებელია მხოლოდ გადახდილი და აქტიური პაკეტის დროს.',
+    });
+  }
+
+  const { company_name, image_url, target_url } = req.body;
+
+  if (company_name !== undefined) {
+    if (!company_name || company_name.trim().length === 0) {
+      return res.status(400).json({
+        code: 'COMPANY_NAME_REQUIRED',
+        message: 'კომპანიის/ბრენდის ოფიციალური იურიდიული სახელწოდება სავალდებულოა!',
+      });
+    }
+    ad.company_name = company_name.trim();
+  }
+
+  if (image_url !== undefined) {
+    const imageValue = String(image_url);
+    if (imageValue.startsWith('data:')) {
+      if (!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(imageValue) || imageValue.length > 7 * 1024 * 1024) {
+        return res.status(422).json({ code: 'INVALID_IMAGE', message: 'Only PNG/JPEG/WebP images up to 5MB are allowed.' });
+      }
+      ad.image_url = imageValue;
+    } else {
+      const validatedImage = validateHttpUrl(imageValue, 'image_url');
+      if (validatedImage === null || validatedImage === '') return res.status(422).json({ code: 'INVALID_IMAGE_URL', message: 'Image URL must use HTTP or HTTPS.' });
+      ad.image_url = validatedImage;
+    }
+  }
+
+  if (target_url !== undefined) {
+    const validatedTarget = validateHttpUrl(target_url, 'target_url');
+    if (validatedTarget === null || validatedTarget === '') return res.status(422).json({ code: 'INVALID_TARGET_URL', message: 'Target URL must use HTTP or HTTPS.' });
+    ad.target_url = validatedTarget;
+  }
+
+  ad.updated_at = new Date().toISOString();
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, ad: safeAdvertisement(ad) });
+});
+
+// GET /admin/persistence/status
+apiRouter.get('/admin/persistence/status', requireSuperAdmin, (req, res) => {
+  res.json({
+    ...storage.getStatus(),
+    lastCheck: new Date().toISOString(),
+    config: {
+      listingPrice: db.listingPrice,
+      totalTop15Prices: db.top15Prices.size,
+      totalAdvertisements: db.advertisements.size,
+      configLocked: db.configLock.locked,
+      bootstrapInvalidated: db.bootstrap.invalidated,
+      recipientAccount: db.recipientAccount.iban,
+      backendUrl: db.backendConfig.baseUrl,
+    },
+  });
+});
+

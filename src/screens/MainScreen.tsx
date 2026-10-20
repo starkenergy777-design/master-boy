@@ -200,4 +200,33 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                 <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
                   {lang === 'ka' ? 'რეკლამა' : lang === 'ru' ? 'Рეკлама' : 'Sponsored'}
                 </span>
-                <span className="text-xs font-bold text-white trunca
+                <span className="text-xs font-bold text-white truncate" title={activeAd.company_name}>
+                  {activeAd.company_name}
+                </span>
+              </div>
+              {activeAd.target_url && (
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-400 shrink-0 transition-colors" />
+              )}
+            </div>
+
+            {/* Clickable Image Banner - Stretches and completely fills the remaining vertical space */}
+            <a
+              href={activeAd.target_url || '#'}
+              target={activeAd.target_url ? '_blank' : undefined}
+              rel="noopener noreferrer"
+              className="flex-1 w-full min-h-0 relative overflow-hidden bg-slate-950 block"
+            >
+              <img
+                src={activeAd.image_url}
+                alt={activeAd.company_name}
+                className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                loading="lazy"
+              />
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  ));
+};
+

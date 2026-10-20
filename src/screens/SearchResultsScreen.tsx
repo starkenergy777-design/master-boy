@@ -236,4 +236,89 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
             ) : (
               <div className="grid grid-cols-1 gap-2.5">
                 {top15.map((c, index) => renderCraftsmanCard(c, index + 1))}
- 
+              </div>
+            )}
+
+            {/* BUTTON #16: "სხვა ხელოსნები" (User Rule Requirement) */}
+            <div className="pt-2">
+              <button
+                onClick={() => setShowOtherCraftsmen(!showOtherCraftsmen)}
+                className={`w-full rounded-2xl p-4 flex items-center justify-between text-left transition-all border shadow-lg ${
+                  showOtherCraftsmen
+                    ? 'bg-amber-500/10 border-amber-500/80 shadow-amber-500/10'
+                    : 'bg-slate-900 hover:bg-slate-850 border-amber-500/40 hover:border-amber-500'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 font-black flex items-center justify-center text-sm shadow">
+                    #16
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>{lang === 'ka' ? 'სხვა ხელოსნები' : lang === 'ru' ? 'Другие мастера' : 'Other Craftsmen'}</span>
+                      <span className="text-[10px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded-full border border-slate-700">
+                        {formatCraftsmanCount(lang, allCraftsmen.length)}
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                      <Users className="w-3 h-3 text-amber-400" />
+                      <span>
+                        {lang === 'ka'
+                          ? 'სრული კატალოგი • პირდაპირი კონტაქტი'
+                          : 'Full Directory • Direct Contact'}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-xs font-bold text-amber-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-amber-500/30 inline-flex items-center gap-1">
+                    {showOtherCraftsmen ? (
+                      <>
+                        <span>{lang === 'ka' ? 'დახურვა' : 'Close'}</span>
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </>
+                    ) : (
+                      <>
+                        <span>{lang === 'ka' ? 'გახსნა' : 'Open'}</span>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* 👷 UNLIMITED OTHER CRAFTSMEN LIST (Expanded upon clicking #16) */}
+          {showOtherCraftsmen && (
+            <div className="space-y-3 pt-2 animate-fade-in border-t border-slate-800">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-slate-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    {lang === 'ka' ? 'სხვა ხელოსნების ულიმიტო სია' : 'Unlimited Craftsmen List'} ({allCraftsmen.length})
+                  </h3>
+                </div>
+                <span className="text-[10px] text-amber-400 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  {lang === 'ka' ? '30 წუთიანი როტაცია' : '30-min shuffle'}
+                </span>
+              </div>
+
+              {allCraftsmen.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800 text-xs">
+                  {lang === 'ka' ? 'დამატებითი ხელოსნები ამ კატეგორიაში არ მოიძებნა' : 'No other craftsmen in this category'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5">
+                  {allCraftsmen.map((c) => renderCraftsmanCard(c))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  ));
+};
+
