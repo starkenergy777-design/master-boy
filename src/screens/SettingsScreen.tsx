@@ -42,10 +42,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       input.setAttribute('readonly', '');
       input.style.position = 'fixed';
       input.style.opacity = '0';
-      document.body.appendChild(input);
-      input.select();
-      copied = document.execCommand('copy');
-      input.remove();
+      try {
+        document.body.appendChild(input);
+        input.select();
+        copied = document.execCommand('copy');
+      } catch {
+        copied = false;
+      } finally {
+        input.remove();
+      }
     }
 
     setLinkCopyStatus(copied ? 'copied' : 'error');
@@ -125,7 +130,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             className="shrink-0 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs transition-colors"
           >
             {linkCopyStatus === 'copied' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            <span>{linkCopyStatus === 'copied' ? t.linkCopied : t.copyLink}</span>
+            <span aria-live="polite">{linkCopyStatus === 'copied' ? t.linkCopied : t.copyLink}</span>
           </button>
         </div>
 
@@ -138,7 +143,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 : 'Could not copy the link. Select it in the field and copy it manually.'}
           </p>
         )}
-        {linkCopyStatus === 'copied' && <span className="sr-only" role="status">{t.linkCopied}</span>}
       </div>
 
       {/* Platform Info */}
