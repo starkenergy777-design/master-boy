@@ -190,42 +190,63 @@ export const MainScreen: React.FC<MainScreenProps> = ({
         </div>
       </div>
 
-      {/* Commercial Advertisement Banner Container - Stretches to fill all available vertical space with ZERO empty gap */}
-      {activeAd && activeAd.company_name && activeAd.image_url && (
-        <div className="flex-1 -mx-2.5 sm:-mx-3 mb-0 mt-2 flex flex-col min-h-0">
-          <div className="flex-1 flex flex-col min-h-0 bg-slate-900 border-t border-slate-800/90 hover:border-amber-500/40 overflow-hidden transition-all group shadow-xl">
-            {/* Header: Clear Company/Brand Legal Name identification */}
-            <div className="px-3 py-1.5 bg-slate-950/95 border-b border-slate-800/80 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
-                  {lang === 'ka' ? 'რეკლამა' : lang === 'ru' ? 'Рეკлама' : 'Sponsored'}
+      {/* Commercial Advertisement Banner Container */}
+      <div className="flex-1 -mx-2.5 sm:-mx-3 mb-0 mt-2 flex flex-col min-h-[160px]">
+        <div className="flex-1 flex flex-col min-h-0 bg-slate-900 border-t border-x border-slate-800/90 overflow-hidden transition-all group shadow-xl">
+          {activeAd && activeAd.company_name && activeAd.image_url ? (
+            <>
+              <div className="px-3 py-1.5 bg-slate-950/95 border-b border-slate-800/80 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
+                    {lang === 'ka' ? 'რეკლამა' : lang === 'ru' ? 'Реклама' : 'Sponsored'}
+                  </span>
+                  <span className="text-xs font-bold text-white truncate" title={activeAd.company_name}>
+                    {activeAd.company_name}
+                  </span>
+                </div>
+                {activeAd.target_url && (
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-400 shrink-0 transition-colors" />
+                )}
+              </div>
+
+              <a
+                href={activeAd.target_url || '#'}
+                target={activeAd.target_url ? '_blank' : undefined}
+                rel="noopener noreferrer"
+                className="flex-1 w-full min-h-0 relative overflow-hidden bg-slate-950 block"
+              >
+                <img
+                  src={activeAd.image_url}
+                  alt={activeAd.company_name}
+                  className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                  loading="lazy"
+                />
+              </a>
+            </>
+          ) : (
+            <>
+              <div className="px-3 py-1.5 bg-slate-950/95 border-b border-slate-800/80 flex items-center justify-between shrink-0">
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  {lang === 'ka' ? 'სარეკლამო ადგილი' : lang === 'ru' ? 'Рекламное место' : 'Ad space'}
                 </span>
-                <span className="text-xs font-bold text-white truncate" title={activeAd.company_name}>
-                  {activeAd.company_name}
+                <span className="text-[10px] text-slate-500">
+                  {lang === 'ka' ? 'თავისუფალია' : lang === 'ru' ? 'Свободно' : 'Available'}
                 </span>
               </div>
-              {activeAd.target_url && (
-                <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-400 shrink-0 transition-colors" />
-              )}
-            </div>
-
-            {/* Clickable Image Banner - Stretches and completely fills the remaining vertical space */}
-            <a
-              href={activeAd.target_url || '#'}
-              target={activeAd.target_url ? '_blank' : undefined}
-              rel="noopener noreferrer"
-              className="flex-1 w-full min-h-0 relative overflow-hidden bg-slate-950 block"
-            >
-              <img
-                src={activeAd.image_url}
-                alt={activeAd.company_name}
-                className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-                loading="lazy"
-              />
-            </a>
-          </div>
+              <div className="flex-1 min-h-[140px] flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/10 border-x border-b border-dashed border-slate-700/80">
+                <div className="text-center px-5">
+                  <p className="text-sm font-bold text-slate-300">
+                    {lang === 'ka' ? 'მოათავსეთ თქვენი რეკლამა აქ' : lang === 'ru' ? 'Разместите здесь свою рекламу' : 'Place your advertisement here'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {lang === 'ka' ? 'აქტიური რეკლამის დამატების შემდეგ აქ ბანერი გამოჩნდება.' : lang === 'ru' ? 'Здесь появится баннер после добавления активной рекламы.' : 'An active advertisement banner will appear here.'}
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
     </div>
   ));
 };
