@@ -1183,3 +1183,134 @@ index 0000000..3b24c5a
 +WHERE user_id IN ('usr-cm-1','usr-cm-2','usr-cm-3','usr-cm-4','usr-cm-5');
 +
 +COMMIT;
+diff --git a/.audit-before-order/server/db.ts b/server/db.ts
+index aa220cd..282bd9c 100644
+--- a/.audit-before-order/server/db.ts
++++ b/server/db.ts
+@@ -46,12 +46,12 @@ class Database {
+     { id: 'city-zestafoni', name: { ka: 'ზესტაფონი', ru: 'Зестафони', en: 'Zestafoni' }, isActive: true, lat: 42.108333, lng: 43.037493 },
+     { id: 'city-zugdidi', name: { ka: 'ზუგდიდი', ru: 'Зугдиди', en: 'Zugdidi' }, isActive: true, lat: 42.5088, lng: 41.8709 },
+     { id: 'city-telavi', name: { ka: 'თელავი', ru: 'Телави', en: 'Telavi' }, isActive: true, lat: 41.9198, lng: 45.4731 },
+-    { id: 'city-kobuleti', name: { ka: 'ქობულეთი', ru: 'Кобулети', en: 'Kobuleti' }, isActive: true, lat: 41.815997, lng: 41.783810 },
+     { id: 'city-martvili', name: { ka: 'მარტვილი', ru: 'Мартвили', en: 'Martvili' }, isActive: true, lat: 42.423184, lng: 42.381115 },
+     { id: 'city-samtredia', name: { ka: 'სამტრედია', ru: 'Самтредиа', en: 'Samtredia' }, isActive: true, lat: 42.159926, lng: 42.336768 },
+     { id: 'city-svaneti', name: { ka: 'სვანეთი', ru: 'Сванетия', en: 'Svaneti' }, isActive: true, lat: 43.0438, lng: 42.723680 },
+-    { id: 'city-tskaltubo', name: { ka: 'წყალტუბო', ru: 'Цхалтубо', en: 'Tskaltubo' }, isActive: true, lat: 42.328499, lng: 42.600368 },
+     { id: 'city-poti', name: { ka: 'ფოთი', ru: 'Поти', en: 'Poti' }, isActive: true, lat: 42.1462, lng: 41.6720 },
++    { id: 'city-kobuleti', name: { ka: 'ქობულეთი', ru: 'Кобулети', en: 'Kobuleti' }, isActive: true, lat: 41.815997, lng: 41.783810 },
++    { id: 'city-tskaltubo', name: { ka: 'წყალტუბო', ru: 'Цхалтубо', en: 'Tskaltubo' }, isActive: true, lat: 42.328499, lng: 42.600368 },
+     { id: 'city-khashuri', name: { ka: 'ხაშური', ru: 'Хашури', en: 'Khashuri' }, isActive: true, lat: 41.983769, lng: 43.586595 },
+   ];
+
+diff --git a/.audit-before-order/migrations/002_seed_data.sql b/migrations/002_seed_data.sql
+index 0b380fc..b878ab8 100644
+--- a/.audit-before-order/migrations/002_seed_data.sql
++++ b/migrations/002_seed_data.sql
+@@ -18,12 +18,12 @@ VALUES
+     ('city-zestafoni', 'ზესტაფონი', 'Зестафони', 'Zestafoni', 42.108333, 43.037493, true, 8),
+     ('city-zugdidi', 'ზუგდიდი', 'Зугдиди', 'Zugdidi', 42.5088, 41.8709, true, 9),
+     ('city-telavi', 'თელავი', 'Телави', 'Telavi', 41.9198, 45.4731, true, 10),
+-    ('city-kobuleti', 'ქობულეთი', 'Кобулети', 'Kobuleti', 41.815997, 41.783810, true, 11),
+-    ('city-martvili', 'მარტვილი', 'Мартвили', 'Martvili', 42.423184, 42.381115, true, 12),
+-    ('city-samtredia', 'სამტრედია', 'Самтредиа', 'Samtredia', 42.159926, 42.336768, true, 13),
+-    ('city-svaneti', 'სვანეთი', 'Сванетия', 'Svaneti', 43.0438, 42.723680, true, 14),
+-    ('city-tskaltubo', 'წყალტუბო', 'Цхалтубо', 'Tskaltubo', 42.328499, 42.600368, true, 15),
+-    ('city-poti', 'ფოთი', 'Поти', 'Poti', 42.1462, 41.6720, true, 16),
++    ('city-martvili', 'მარტვილი', 'Мартвили', 'Martvili', 42.423184, 42.381115, true, 11),
++    ('city-samtredia', 'სამტრედია', 'Самтредиа', 'Samtredia', 42.159926, 42.336768, true, 12),
++    ('city-svaneti', 'სვანეთი', 'Сванетия', 'Svaneti', 43.0438, 42.723680, true, 13),
++    ('city-poti', 'ფოთი', 'Поти', 'Poti', 42.1462, 41.6720, true, 14),
++    ('city-kobuleti', 'ქობულეთი', 'Кобулети', 'Kobuleti', 41.815997, 41.783810, true, 15),
++    ('city-tskaltubo', 'წყალტუბო', 'Цхалтубо', 'Tskaltubo', 42.328499, 42.600368, true, 16),
+     ('city-khashuri', 'ხაშური', 'Хашури', 'Khashuri', 41.983769, 43.586595, true, 17)
+ ON CONFLICT (id) DO NOTHING;
+
+diff --git a/.audit-before-order/migrations/005_sort_catalog_and_disable_demo_profiles.sql b/migrations/005_sort_catalog_and_disable_demo_profiles.sql
+index 3b24c5a..57b55ea 100644
+--- a/.audit-before-order/migrations/005_sort_catalog_and_disable_demo_profiles.sql
++++ b/migrations/005_sort_catalog_and_disable_demo_profiles.sql
+@@ -16,12 +16,12 @@ FROM (VALUES
+   ('city-zestafoni', 8),
+   ('city-zugdidi', 9),
+   ('city-telavi', 10),
+-  ('city-kobuleti', 11),
+-  ('city-martvili', 12),
+-  ('city-samtredia', 13),
+-  ('city-svaneti', 14),
+-  ('city-tskaltubo', 15),
+-  ('city-poti', 16),
++  ('city-martvili', 11),
++  ('city-samtredia', 12),
++  ('city-svaneti', 13),
++  ('city-poti', 14),
++  ('city-kobuleti', 15),
++  ('city-tskaltubo', 16),
+   ('city-khashuri', 17)
+ ) AS v(id, display_order)
+ WHERE c.id = v.id;
+
+diff --git a/.audit-before-order/migrations/run-migrations.ts b/migrations/run-migrations.ts
+index 183926b..1f59705 100644
+--- a/.audit-before-order/migrations/run-migrations.ts
++++ b/migrations/run-migrations.ts
+@@ -27,7 +27,7 @@ async function tryConnect(configs: { name: string; config: ConnectionConfig }[])
+     console.log(`🔌 Attempting connection: ${name}...`);
+     const client = new Client({
+       ...config,
+-      ssl: { rejectUnauthorized: false },
++      ssl: { rejectUnauthorized: true },
+       connectionTimeoutMillis: 8000,
+     });
+ 
+@@ -60,6 +60,7 @@ async function runMigrations() {
+     '003_advertisements_schema.sql',
+     '004_runtime_storage.sql',
+     '005_sort_catalog_and_disable_demo_profiles.sql',
++    '006_georgian_alphabetical_city_order.sql',
+   ];
+ 
+   // Verify all files exist
+@@ -88,7 +89,7 @@ async function runMigrations() {
+   try {
+     parsedUrl = new URL(rawUrl);
+   } catch (err: any) {
+-    console.error(`❌ Invalid DATABASE_URL format: ${rawUrl}`);
++    console.error('❌ Invalid DATABASE_URL format. Expected a valid PostgreSQL connection URL.');
+     process.exit(1);
+   }
+
+diff --git a/migrations/006_georgian_alphabetical_city_order.sql b/migrations/006_georgian_alphabetical_city_order.sql
+new file mode 100644
+index 0000000..74aa037
+--- /dev/null
++++ b/migrations/006_georgian_alphabetical_city_order.sql
+@@ -0,0 +1,29 @@
++-- Correct the non-major city order to Georgian alphabetical order.
++-- The first four entries remain the major centers requested by the product owner.
++BEGIN;
++
++UPDATE public.cities AS c
++SET display_order = v.display_order
++FROM (VALUES
++  ('city-tbilisi', 1),
++  ('city-batumi', 2),
++  ('city-kutaisi', 3),
++  ('city-rustavi', 4),
++  ('city-akhaltsikhe', 5),
++  ('city-borjomi', 6),
++  ('city-gori', 7),
++  ('city-zestafoni', 8),
++  ('city-zugdidi', 9),
++  ('city-telavi', 10),
++  ('city-martvili', 11),
++  ('city-samtredia', 12),
++  ('city-svaneti', 13),
++  ('city-poti', 14),
++  ('city-kobuleti', 15),
++  ('city-tskaltubo', 16),
++  ('city-khashuri', 17)
++) AS v(id, display_order)
++WHERE c.id = v.id
++  AND c.display_order IS DISTINCT FROM v.display_order;
++
++COMMIT;
