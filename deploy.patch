@@ -844,3 +844,342 @@ diff --git a/src/screens/MainScreen.tsx b/src/screens/MainScreen.tsx
                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
 -                  {lang === 'ka' ? 'რეკლამა' : lang === 'ru' ? 'Рეკлама' : 'Sponsored'}
 +                  {lang === 'ka' ? 'რეკლამა' : lang === 'ru' ? 'Реклама' : 'Sponsored'}
+diff --git a/server/db.ts b/server/db.ts
+index f62d0be..aa220cd 100644
+--- a/server/db.ts
++++ b/server/db.ts
+@@ -36,97 +36,36 @@ class Database {
+   };
+   listingPurgeLog: ListingPurgeLog[] = [];
+   cities: City[] = [
+-    {
+-      id: 'city-tbilisi',
+-      name: { ka: 'თბილისი', ru: 'Тбилиси', en: 'Tbilisi' },
+-      isActive: true,
+-      lat: 41.7151,
+-      lng: 44.8271,
+-    },
+-    {
+-      id: 'city-batumi',
+-      name: { ka: 'ბათუმი', ru: 'Батуми', en: 'Batumi' },
+-      isActive: true,
+-      lat: 41.6168,
+-      lng: 41.6367,
+-    },
+-    {
+-      id: 'city-kutaisi',
+-      name: { ka: 'ქუთაისი', ru: 'Кутаиси', en: 'Kutaisi' },
+-      isActive: true,
+-      lat: 42.2679,
+-      lng: 42.6946,
+-    },
+-    {
+-      id: 'city-rustavi',
+-      name: { ka: 'რუსთავი', ru: 'Рустави', en: 'Rustavi' },
+-      isActive: true,
+-      lat: 41.5495,
+-      lng: 44.9932,
+-    },
+-    {
+-      id: 'city-gori',
+-      name: { ka: 'გორი', ru: 'Гори', en: 'Gori' },
+-      isActive: true,
+-      lat: 41.9842,
+-      lng: 44.1158,
+-    },
+-    {
+-      id: 'city-telavi',
+-      name: { ka: 'თელავი', ru: 'Телави', en: 'Telavi' },
+-      isActive: true,
+-      lat: 41.9198,
+-      lng: 45.4731,
+-    },
+-    {
+-      id: 'city-zugdidi',
+-      name: { ka: 'ზუგდიდი', ru: 'Зугдиди', en: 'Zugdidi' },
+-      isActive: true,
+-      lat: 42.5088,
+-      lng: 41.8709,
+-    },
+-    {
+-      id: 'city-poti',
+-      name: { ka: 'ფოთი', ru: 'Поти', en: 'Poti' },
+-      isActive: true,
+-      lat: 42.1462,
+-      lng: 41.6720,
+-    },
++    { id: 'city-tbilisi', name: { ka: 'თბილისი', ru: 'Тбилиси', en: 'Tbilisi' }, isActive: true, lat: 41.7151, lng: 44.8271 },
++    { id: 'city-batumi', name: { ka: 'ბათუმი', ru: 'Батуми', en: 'Batumi' }, isActive: true, lat: 41.6168, lng: 41.6367 },
++    { id: 'city-kutaisi', name: { ka: 'ქუთაისი', ru: 'Кутаиси', en: 'Kutaisi' }, isActive: true, lat: 42.2662, lng: 42.7180 },
++    { id: 'city-rustavi', name: { ka: 'რუსთავი', ru: 'Рустави', en: 'Rustavi' }, isActive: true, lat: 41.5495, lng: 44.9932 },
++    { id: 'city-akhaltsikhe', name: { ka: 'ახალციხე', ru: 'Ахалцихе', en: 'Akhaltsikhe' }, isActive: true, lat: 41.643429, lng: 42.993445 },
++    { id: 'city-borjomi', name: { ka: 'ბორჯომი', ru: 'Боржоми', en: 'Borjomi' }, isActive: true, lat: 41.839953, lng: 43.390757 },
++    { id: 'city-gori', name: { ka: 'გორი', ru: 'Гори', en: 'Gori' }, isActive: true, lat: 41.9842, lng: 44.1158 },
++    { id: 'city-zestafoni', name: { ka: 'ზესტაფონი', ru: 'Зестафони', en: 'Zestafoni' }, isActive: true, lat: 42.108333, lng: 43.037493 },
++    { id: 'city-zugdidi', name: { ka: 'ზუგდიდი', ru: 'Зугдиди', en: 'Zugdidi' }, isActive: true, lat: 42.5088, lng: 41.8709 },
++    { id: 'city-telavi', name: { ka: 'თელავი', ru: 'Телави', en: 'Telavi' }, isActive: true, lat: 41.9198, lng: 45.4731 },
++    { id: 'city-kobuleti', name: { ka: 'ქობულეთი', ru: 'Кобулети', en: 'Kobuleti' }, isActive: true, lat: 41.815997, lng: 41.783810 },
++    { id: 'city-martvili', name: { ka: 'მარტვილი', ru: 'Мартвили', en: 'Martvili' }, isActive: true, lat: 42.423184, lng: 42.381115 },
++    { id: 'city-samtredia', name: { ka: 'სამტრედია', ru: 'Самтредиа', en: 'Samtredia' }, isActive: true, lat: 42.159926, lng: 42.336768 },
++    { id: 'city-svaneti', name: { ka: 'სვანეთი', ru: 'Сванетия', en: 'Svaneti' }, isActive: true, lat: 43.0438, lng: 42.723680 },
++    { id: 'city-tskaltubo', name: { ka: 'წყალტუბო', ru: 'Цхалтубо', en: 'Tskaltubo' }, isActive: true, lat: 42.328499, lng: 42.600368 },
++    { id: 'city-poti', name: { ka: 'ფოთი', ru: 'Поти', en: 'Poti' }, isActive: true, lat: 42.1462, lng: 41.6720 },
++    { id: 'city-khashuri', name: { ka: 'ხაშური', ru: 'Хашури', en: 'Khashuri' }, isActive: true, lat: 41.983769, lng: 43.586595 },
+   ];
+ 
+   professions: Profession[] = [
+-    {
+-      id: 'prof-plumber',
+-      name: { ka: 'სანტექნიკოსი', ru: 'Сантехник', en: 'Plumber' },
+-    },
+-    {
+-      id: 'prof-electrician',
+-      name: { ka: 'ელექტრიკოსი', ru: 'Электрик', en: 'Electrician' },
+-    },
+-    {
+-      id: 'prof-painter',
+-      name: { ka: 'მალიარი / მღებავი', ru: 'Маляр / Штукатур', en: 'Painter / Finisher' },
+-    },
+-    {
+-      id: 'prof-tiler',
+-      name: { ka: 'კაფელ-მეტლახის ოსტატი', ru: 'Мастер по плитке', en: 'Tiler' },
+-    },
+-    {
+-      id: 'prof-ac',
+-      name: { ka: 'კონდიციონერის ხელოსანი', ru: 'Мастер кондиционеров', en: 'AC Technician' },
+-    },
+-    {
+-      id: 'prof-locksmith',
+-      name: { ka: 'საკეტების ოსტატი', ru: 'Мастер замков', en: 'Locksmith' },
+-    },
+-    {
+-      id: 'prof-heating',
+-      name: { ka: 'გათბობის სისტემები', ru: 'Отопительные системы', en: 'Heating Systems' },
+-    },
+-    {
+-      id: 'prof-carpenter',
+-      name: { ka: 'დურგალი / ავეჯი', ru: 'Плотник / Мебель', en: 'Carpenter / Furniture' },
+-    },
++    { id: 'prof-plumber', name: { ka: 'სანტექნიკოსი', ru: 'Сантехник', en: 'Plumber' } },
++    { id: 'prof-electrician', name: { ka: 'ელექტრიკოსი', ru: 'Электрик', en: 'Electrician' } },
++    { id: 'prof-ac', name: { ka: 'კონდიციონერის ხელოსანი', ru: 'Мастер кондиционеров', en: 'HVAC / AC Master' } },
++    { id: 'prof-carpenter', name: { ka: 'ავეჯის ხელოსანი / დურგალი', ru: 'Мебельщик / Плотник', en: 'Furniture / Carpenter' } },
++    { id: 'prof-painter', name: { ka: 'მღებავი / სამღებრო', ru: 'Маляр', en: 'Painter' } },
++    { id: 'prof-tiler', name: { ka: 'მეკაფელე', ru: 'Плиточник', en: 'Tiler' } },
++    { id: 'prof-locksmith', name: { ka: 'საკეტების ხელოსანი', ru: 'Замочный мастер', en: 'Locksmith' } },
++    { id: 'prof-heating', name: { ka: 'გათბობის ხელოსანი', ru: 'Мастер по отоплению', en: 'Heating Specialist' } },
++    { id: 'prof-demolition-drill', name: { ka: 'პერფერატორით დანგრევა', ru: 'Демонтаж перфоратором', en: 'Demolition with a hammer drill' } },
++    { id: 'prof-waste-removal', name: { ka: 'ნაგვის გატანა', ru: 'Вывоз мусора', en: 'Waste removal' } },
+   ];
+ 
+   users: Map<string, User> = new Map();
+
+diff --git a/migrations/002_seed_data.sql b/migrations/002_seed_data.sql
+index ab27307..0b380fc 100644
+--- a/migrations/002_seed_data.sql
++++ b/migrations/002_seed_data.sql
+@@ -1,7 +1,8 @@
+ -- ============================================================================
+ -- MASTER_BOY Database Migration 002: Seed Data
+--- Populates 8 Georgian cities, 8 professions, bootstrap admin & super admin,
+--- initial Top 15 pricing (50.00 GEL), and verified craftsmen.
++-- Populates the 17-city and 10-profession catalogs and initial Top 15 pricing.
++-- Production administrator accounts are bootstrapped from Render secrets.
++-- Never seed public demo craftsmen or reusable credentials into production.
+ -- ============================================================================
+ 
+ -- 1. Cities in Georgia
+@@ -11,10 +12,19 @@ VALUES
+     ('city-batumi', 'ბათუმი', 'Батуми', 'Batumi', 41.6168, 41.6367, true, 2),
+     ('city-kutaisi', 'ქუთაისი', 'Кутаиси', 'Kutaisi', 42.2662, 42.7180, true, 3),
+     ('city-rustavi', 'რუსთავი', 'Рустави', 'Rustavi', 41.5495, 44.9932, true, 4),
+-    ('city-gori', 'გორი', 'Гори', 'Gori', 41.9842, 44.1158, true, 5),
+-    ('city-zugdidi', 'ზუგდიდი', 'Зугдиди', 'Zugdidi', 42.5088, 41.8709, true, 6),
+-    ('city-poti', 'ფოთი', 'Поти', 'Poti', 42.1462, 41.6720, true, 7),
+-    ('city-telavi', 'თელავი', 'Телави', 'Telavi', 41.9198, 45.4731, true, 8)
++    ('city-akhaltsikhe', 'ახალციხე', 'Ахалцихе', 'Akhaltsikhe', 41.643429, 42.993445, true, 5),
++    ('city-borjomi', 'ბორჯომი', 'Боржоми', 'Borjomi', 41.839953, 43.390757, true, 6),
++    ('city-gori', 'გორი', 'Гори', 'Gori', 41.9842, 44.1158, true, 7),
++    ('city-zestafoni', 'ზესტაფონი', 'Зестафони', 'Zestafoni', 42.108333, 43.037493, true, 8),
++    ('city-zugdidi', 'ზუგდიდი', 'Зугдиди', 'Zugdidi', 42.5088, 41.8709, true, 9),
++    ('city-telavi', 'თელავი', 'Телави', 'Telavi', 41.9198, 45.4731, true, 10),
++    ('city-kobuleti', 'ქობულეთი', 'Кобулети', 'Kobuleti', 41.815997, 41.783810, true, 11),
++    ('city-martvili', 'მარტვილი', 'Мартвили', 'Martvili', 42.423184, 42.381115, true, 12),
++    ('city-samtredia', 'სამტრედია', 'Самтредиа', 'Samtredia', 42.159926, 42.336768, true, 13),
++    ('city-svaneti', 'სვანეთი', 'Сванетия', 'Svaneti', 43.0438, 42.723680, true, 14),
++    ('city-tskaltubo', 'წყალტუბო', 'Цхалтубо', 'Tskaltubo', 42.328499, 42.600368, true, 15),
++    ('city-poti', 'ფოთი', 'Поти', 'Poti', 42.1462, 41.6720, true, 16),
++    ('city-khashuri', 'ხაშური', 'Хашури', 'Khashuri', 41.983769, 43.586595, true, 17)
+ ON CONFLICT (id) DO NOTHING;
+ 
+ -- 2. Professional Categories
+@@ -27,17 +37,12 @@ VALUES
+     ('prof-painter', 'მღებავი / სამღებრო', 'Маляр', 'Painter', 'Paintbrush', 5, true),
+     ('prof-tiler', 'მეკაფელე', 'Плиточник', 'Tiler', 'Layers', 6, true),
+     ('prof-locksmith', 'საკეტების ხელოსანი', 'Замочный мастер', 'Locksmith', 'Key', 7, true),
+-    ('prof-heating', 'გათბობის ხელოსანი', 'Мастер по отоплению', 'Heating Specialist', 'Flame', 8, true)
++    ('prof-heating', 'გათბობის ხელოსანი', 'Мастер по отоплению', 'Heating Specialist', 'Flame', 8, true),
++    ('prof-demolition-drill', 'პერფერატორით დანგრევა', 'Демонтаж перфоратором', 'Demolition with a hammer drill', 'Hammer', 9, true),
++    ('prof-waste-removal', 'ნაგვის გატანა', 'Вывоз мусора', 'Waste removal', 'Truck', 10, true)
+ ON CONFLICT (id) DO NOTHING;
+ 
+--- 3. Super Administrator & Staff Administrator
+-INSERT INTO users (id, phone, password_hash, roles, status)
+-VALUES
+-    ('usr-superadmin', '+995000000000', 'UNUSABLE_SEED_PASSWORD', ARRAY['SUPER_ADMIN']::user_role[], 'ACTIVE'),
+-    ('usr-admin', '+995999000000', 'UNUSABLE_SEED_PASSWORD', ARRAY['ADMIN']::user_role[], 'ACTIVE')
+-ON CONFLICT (phone) DO NOTHING;
+-
+--- 4. Initial Top 15 Prices (50.00 GEL for all categories)
++-- 3. Initial Top 15 Prices (50.00 GEL for all categories)
+ INSERT INTO top15_prices (id, city_id, profession_id, amount_minor, currency, updated_at)
+ SELECT
+     c.id || ':' || p.id AS id,
+@@ -50,7 +55,7 @@ FROM cities c
+ CROSS JOIN professions p
+ ON CONFLICT (id) DO NOTHING;
+ 
+--- 5. Seed System Config
++-- 4. Seed System Config
+ INSERT INTO system_config (
+     id,
+     config_locked,
+@@ -68,49 +73,3 @@ INSERT INTO system_config (
+     'MASTER_BOY LLC',
+     5000
+ ) ON CONFLICT (id) DO NOTHING;
+-
+--- 6. Demo Craftsman Accounts & Listings
+-INSERT INTO users (id, phone, password_hash, roles, status)
+-VALUES
+-    ('usr-cm-1', '+995599112233', 'UNUSABLE_SEED_PASSWORD', ARRAY['CRAFTSMAN']::user_role[], 'ACTIVE'),
+-    ('usr-cm-2', '+995577445566', 'UNUSABLE_SEED_PASSWORD', ARRAY['CRAFTSMAN']::user_role[], 'ACTIVE'),
+-    ('usr-cm-3', '+995555889900', 'UNUSABLE_SEED_PASSWORD', ARRAY['CRAFTSMAN']::user_role[], 'ACTIVE'),
+-    ('usr-cm-4', '+995593123456', 'UNUSABLE_SEED_PASSWORD', ARRAY['CRAFTSMAN']::user_role[], 'ACTIVE'),
+-    ('usr-cm-5', '+995577112244', 'UNUSABLE_SEED_PASSWORD', ARRAY['CRAFTSMAN']::user_role[], 'ACTIVE')
+-ON CONFLICT (phone) DO NOTHING;
+-
+-INSERT INTO craftsmen (id, user_id, name, description, phone, phone_visible, city_id, profession_id, latitude, longitude, status)
+-VALUES
+-    ('cm-1', 'usr-cm-1', 'გიორგი ბერიძე', 'პროფესიონალი სანტექნიკოსი 12 წლიანი გამოცდილებით. ნებისმიერი სირთულის მილების მონტაჟი.', '+995599112233', true, 'city-tbilisi', 'prof-plumber', 41.7151, 44.8271, 'ACTIVE'),
+-    ('cm-2', 'usr-cm-2', 'დავით მამულაშვილი', 'სერთიფიცირებული ელექტრიკოსი. ბინების და ოფისების სრული ელექტროგაყვანილობა.', '+995577445566', true, 'city-tbilisi', 'prof-electrician', 41.7250, 44.7500, 'ACTIVE'),
+-    ('cm-3', 'usr-cm-3', 'ლევან ყიფიანი', 'კონდიციონერების მონტაჟი, წმენდა და ფრეონით დატუმბვა გარანტიით.', '+995555889900', true, 'city-tbilisi', 'prof-ac', 41.7300, 44.8000, 'ACTIVE'),
+-    ('cm-4', 'usr-cm-4', 'ირაკლი გელოვანი', 'ავეჯის დამზადება, აწყობა, რესტავრაცია. ინდივიდუალური პროექტები.', '+995593123456', false, 'city-tbilisi', 'prof-carpenter', 41.7100, 44.7800, 'ACTIVE'),
+-    ('cm-5', 'usr-cm-5', 'ვახტანგ ჯაფარიძე', 'მაღალი ხარისხის სამღებრო და სამალიარო სამუშაოები. შპალერი, ლამინატი.', '+995577112244', true, 'city-batumi', 'prof-painter', 41.6168, 41.6367, 'ACTIVE')
+-ON CONFLICT (id) DO NOTHING;
+-
+--- Initial Photos for Craftsmen
+-INSERT INTO craftsman_photos (id, craftsman_id, url, is_primary, display_order)
+-VALUES
+-    ('ph-1', 'cm-1', 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80', true, 0),
+-    ('ph-2', 'cm-2', 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80', true, 0),
+-    ('ph-3', 'cm-3', 'https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&w=600&q=80', true, 0),
+-    ('ph-4', 'cm-4', 'https://images.unsplash.com/photo-1541888946425-d0fbb186156f?auto=format&fit=crop&w=600&q=80', true, 0),
+-    ('ph-5', 'cm-5', 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=600&q=80', true, 0)
+-ON CONFLICT (id) DO NOTHING;
+-
+--- Listings (180 days validity)
+-INSERT INTO craftsman_listings (id, craftsman_id, city_id, profession_id, status, starts_at, expires_at, grace_ends_at)
+-VALUES
+-    ('list-cm-1', 'cm-1', 'city-tbilisi', 'prof-plumber', 'ACTIVE', NOW(), NOW() + INTERVAL '180 days', NOW() + INTERVAL '210 days'),
+-    ('list-cm-2', 'cm-2', 'city-tbilisi', 'prof-electrician', 'ACTIVE', NOW(), NOW() + INTERVAL '180 days', NOW() + INTERVAL '210 days'),
+-    ('list-cm-3', 'cm-3', 'city-tbilisi', 'prof-ac', 'ACTIVE', NOW(), NOW() + INTERVAL '180 days', NOW() + INTERVAL '210 days'),
+-    ('list-cm-4', 'cm-4', 'city-tbilisi', 'prof-carpenter', 'ACTIVE', NOW(), NOW() + INTERVAL '180 days', NOW() + INTERVAL '210 days'),
+-    ('list-cm-5', 'cm-5', 'city-batumi', 'prof-painter', 'ACTIVE', NOW(), NOW() + INTERVAL '180 days', NOW() + INTERVAL '210 days')
+-ON CONFLICT (id) DO NOTHING;
+-
+--- Sample Top 15 memberships
+-INSERT INTO top15_memberships (id, city_id, profession_id, craftsman_id, status, starts_at, expires_at)
+-VALUES
+-    ('top-1', 'city-tbilisi', 'prof-plumber', 'cm-1', 'ACTIVE', NOW(), NOW() + INTERVAL '30 days'),
+-    ('top-2', 'city-tbilisi', 'prof-electrician', 'cm-2', 'ACTIVE', NOW(), NOW() + INTERVAL '30 days')
+-ON CONFLICT (id) DO NOTHING;
+
+diff --git a/migrations/run-migrations.ts b/migrations/run-migrations.ts
+index 236238b..183926b 100644
+--- a/migrations/run-migrations.ts
++++ b/migrations/run-migrations.ts
+@@ -59,6 +59,7 @@ async function runMigrations() {
+     '002_seed_data.sql',
+     '003_advertisements_schema.sql',
+     '004_runtime_storage.sql',
++    '005_sort_catalog_and_disable_demo_profiles.sql',
+   ];
+ 
+   // Verify all files exist
+@@ -210,6 +211,15 @@ async function runMigrations() {
+       );
+     `);
+ 
++    // Keep the internal migration tracker out of the public client API on fresh installs too.
++    await client.query(`
++      ALTER TABLE public._migrations ENABLE ROW LEVEL SECURITY;
++      DROP POLICY IF EXISTS migration_tracker_deny_client_access ON public._migrations;
++      CREATE POLICY migration_tracker_deny_client_access
++        ON public._migrations FOR ALL TO anon, authenticated
++        USING (false) WITH CHECK (false);
++    `);
++
+     // Get list of already executed migrations
+     const executedRes = await client.query('SELECT filename FROM _migrations');
+     const executedSet = new Set(executedRes.rows.map((r: any) => r.filename));
+
+diff --git a/migrations/005_sort_catalog_and_disable_demo_profiles.sql b/migrations/005_sort_catalog_and_disable_demo_profiles.sql
+new file mode 100644
+index 0000000..3b24c5a
+--- /dev/null
++++ b/migrations/005_sort_catalog_and_disable_demo_profiles.sql
+@@ -0,0 +1,53 @@
++-- Keep the requested city ordering and prevent sample accounts from appearing
++-- as paid, public listings. Rows are retained so an administrator can review
++-- or restore them without data loss.
++BEGIN;
++
++UPDATE public.cities AS c
++SET display_order = v.display_order
++FROM (VALUES
++  ('city-tbilisi', 1),
++  ('city-batumi', 2),
++  ('city-kutaisi', 3),
++  ('city-rustavi', 4),
++  ('city-akhaltsikhe', 5),
++  ('city-borjomi', 6),
++  ('city-gori', 7),
++  ('city-zestafoni', 8),
++  ('city-zugdidi', 9),
++  ('city-telavi', 10),
++  ('city-kobuleti', 11),
++  ('city-martvili', 12),
++  ('city-samtredia', 13),
++  ('city-svaneti', 14),
++  ('city-tskaltubo', 15),
++  ('city-poti', 16),
++  ('city-khashuri', 17)
++) AS v(id, display_order)
++WHERE c.id = v.id;
++
++UPDATE public.users
++SET status = 'BLOCKED', updated_at = NOW()
++WHERE id IN ('usr-cm-1','usr-cm-2','usr-cm-3','usr-cm-4','usr-cm-5')
++  AND 'CRAFTSMAN' = ANY(roles)
++  AND status = 'ACTIVE';
++
++UPDATE public.craftsmen
++SET status = 'BLOCKED', updated_at = NOW()
++WHERE id IN ('cm-1','cm-2','cm-3','cm-4','cm-5')
++  AND status = 'ACTIVE';
++
++UPDATE public.craftsman_listings
++SET status = 'EXPIRED', updated_at = NOW()
++WHERE craftsman_id IN ('cm-1','cm-2','cm-3','cm-4','cm-5')
++  AND status = 'ACTIVE';
++
++UPDATE public.top15_memberships
++SET status = 'REVOKED'
++WHERE craftsman_id IN ('cm-1','cm-2','cm-3','cm-4','cm-5')
++  AND status = 'ACTIVE';
++
++DELETE FROM public.user_sessions
++WHERE user_id IN ('usr-cm-1','usr-cm-2','usr-cm-3','usr-cm-4','usr-cm-5');
++
++COMMIT;
