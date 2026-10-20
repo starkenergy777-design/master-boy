@@ -799,7 +799,7 @@ index 0000000..df21c80
 diff --git a/src/screens/SettingsScreen.tsx b/src/screens/SettingsScreen.tsx
 --- a/src/screens/SettingsScreen.tsx
 +++ b/src/screens/SettingsScreen.tsx
-@@ -67,5 +67,10 @@
+@@ -67,5 +67,11 @@
          <h3 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
            <Shield className="w-3.5 h-3.5 text-amber-400" />
 -          <span>{lang === 'ka' ? 'პლატფორმის შესახებ' : 'About Platform'}</span>
