@@ -93,7 +93,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           {/* City selector & Quick chips */}
           <div className="space-y-1">
             <div className="flex items-center justify-between px-0.5">
-              <label className="text-[10px] sm:text-[11px] font-medium text-slate-400">
+              <label className="text-xs sm:text-[13px] font-medium text-slate-400">
                 {t.selectCity}
               </label>
               <span className="text-[9px] text-slate-500">საქართველო</span>
@@ -133,7 +133,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
 
           {/* Profession dropdown */}
           <div className="space-y-1">
-            <label className="text-[10px] sm:text-[11px] font-medium text-slate-400 px-0.5">
+            <label className="text-xs sm:text-[13px] font-medium text-slate-400 px-0.5">
               {t.selectProfession}
             </label>
             <select
