@@ -128,6 +128,10 @@ class ApiClient {
     return this.request(`/craftsmen/${id}`);
   }
 
+  getCraftsmanRegistrationPrice() {
+    return this.request<{ amountMinor: number; currency: string }>('/craftsmen/registration-price');
+  }
+
   getTop15Price(cityId: string, professionId: string) {
     return this.request(`/top15/price?cityId=${cityId}&professionId=${professionId}`);
   }
