@@ -37,6 +37,13 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [selectedProviderId, setSelectedProviderId] = useState('prov-bog');
   const [showPassword, setShowPassword] = useState(false);
+  const [registrationPrice, setRegistrationPrice] = useState<{ amountMinor: number; currency: string } | null>(null);
+  const [priceLoading, setPriceLoading] = useState(true);
+  const [priceError, setPriceError] = useState('');
+  const isFreeRegistration = registrationPrice?.amountMinor === 0;
+  const registrationPriceLabel = registrationPrice
+    ? `${(registrationPrice.amountMinor / 100).toFixed(2)} ${registrationPrice.currency}`
+    : '—';
 
   const [paymentProviders, setPaymentProviders] = useState<{ id: string; name: string; code?: string }[]>([
     { id: 'prov-bog', name: 'საქართველოს ბანკი (Bank of Georgia iPay)', code: 'bog' },
@@ -67,15 +74,17 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
   useEffect(() => {
     async function init() {
       try {
-        const [cList, pList, provList] = await Promise.all([
+        const [cList, pList, price] = await Promise.all([
           api.getCities().catch(() => []),
           api.getProfessions().catch(() => []),
-          api.getPaymentProviders().catch(() => []),
+          api.getCraftsmanRegistrationPrice(),
         ]);
         setCities(cList);
         setProfessions(pList);
-        if (provList && provList.length > 0) {
-          setPaymentProviders(provList);
+        setRegistrationPrice(price);
+        const provList = price.amountMinor > 0 ? await api.getPaymentProviders().catch(() => []) : [];
+        setPaymentProviders(provList);
+        if (provList.length > 0) {
           setSelectedProviderId(provList[0].id);
         }
         if (cList.length > 0 && !formData.cityId) {
@@ -106,6 +115,13 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
         }
       } catch (err) {
         console.error('Failed to init wizard:', err);
+        setPriceError(lang === 'ka'
+          ? 'რეგისტრაციის ტარიფის ჩატვირთვა ვერ მოხერხდა. სცადეთ ხელახლა.'
+          : lang === 'ru'
+            ? 'Не удалось загрузить тариф регистрации. Попробуйте ещё раз.'
+            : 'Could not load the registration price. Please try again.');
+      } finally {
+        setPriceLoading(false);
       }
     }
     init();
@@ -125,7 +141,11 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
     setErrorMsg('');
     if (step === 1) {
       if (!formData.name.trim()) {
-        setErrorMsg(lang === 'ka' ? 'შეიყვანეთ თქვენი სახელი და გვარი' : 'Enter your name');
+        setErrorMsg(lang === 'ka' ? 'შეიყვანეთ თქვენი სახელი და გვარი' : lang === 'ru' ? 'Введите имя и фамилию' : 'Enter your name');
+        return;
+      }
+      if (!formData.bankAccount.trim()) {
+        setErrorMsg(lang === 'ka' ? 'საბანკო ანგარიში სავალდებულოა' : lang === 'ru' ? 'Банковский счёт обязателен' : 'Bank account is required');
         return;
       }
       if (!formData.phone || formData.phone.trim().length < 8) {
@@ -149,12 +169,21 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
 
   const handleSubmit = async () => {
     setErrorMsg('');
+    if (!registrationPrice) {
+      setErrorMsg(priceError || (lang === 'ka' ? 'რეგისტრაციის ტარიფი ჯერ არ ჩაიტვირთა' : lang === 'ru' ? 'Тариф регистрации ещё не загружен' : 'Registration price has not loaded yet'));
+      return;
+    }
+    if (!formData.bankAccount.trim()) {
+      setErrorMsg(lang === 'ka' ? 'საბანკო ანგარიში სავალდებულოა' : lang === 'ru' ? 'Банковский счёт обязателен' : 'Bank account is required');
+      setStep(1);
+      return;
+    }
     try {
       setLoading(true);
       const payload = {
         ...formData,
-        paid: true,
-        providerId: selectedProviderId,
+        paid: !isFreeRegistration,
+        ...(isFreeRegistration ? {} : { providerId: selectedProviderId }),
         photos: [
           {
             id: `ph-${Date.now()}`,
@@ -226,7 +255,13 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
         <h2 className="text-xl font-black text-white mb-1">
           {step === 1 && (lang === 'ka' ? 'პირადი მონაცემები და პროფესია' : 'Personal Info & Profession')}
           {step === 2 && (lang === 'ka' ? 'სამუშაო საათები და პარამეტრები' : 'Working Hours & Settings')}
-          {step === 3 && (lang === 'ka' ? 'გამოწერის გადახდა (10 GEL / 6 თვე)' : 'Subscription Payment (10 GEL / 6 months)')}
+          {step === 3 && (isFreeRegistration
+            ? (lang === 'ka' ? 'უფასო რეგისტრაცია (6 თვე)' : lang === 'ru' ? 'Бесплатная регистрация (6 месяцев)' : 'Free registration (6 months)')
+            : lang === 'ka'
+              ? `გამოწერის გადახდა (${registrationPriceLabel} / 6 თვე)`
+              : lang === 'ru'
+                ? `Оплата подписки (${registrationPriceLabel} / 6 месяцев)`
+                : `Subscription payment (${registrationPriceLabel} / 6 months)`)}
         </h2>
         <p className="text-xs text-slate-400 mb-6">
           {lang === 'ka'
@@ -351,12 +386,13 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-slate-400 px-1 flex items-center justify-between">
-                <span>საბანკო ანგარიში / IBAN (საქართველოს ბანკი)</span>
-                <span className="text-amber-400 text-[10px]">სურვილისამებრ</span>
+              <label className="text-[11px] font-medium text-slate-400 px-1">
+                საბანკო ანგარიში / IBAN (საქართველოს ბანკი) <span className="text-rose-400" aria-hidden="true">*</span>
               </label>
               <input
                 type="text"
+                required
+                aria-required="true"
                 placeholder="GE00BG0000000000000000"
                 value={formData.bankAccount}
                 onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value.toUpperCase().replace(/\s/g, '') })}
@@ -433,64 +469,77 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
         {/* Step 3: Subscription Payment (§3.11, §4.2, §24) */}
         {step === 3 && (
           <div className="space-y-4">
+            {priceError && <div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-3 text-xs text-rose-300">{priceError}</div>}
             <div className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-950/30 p-3 text-xs text-sky-200">
               <ShieldCheck className="h-4 w-4 shrink-0" />
-              <span>{lang === 'ka'
-                ? 'რეგისტრაციისას SMS კოდი არ მოითხოვება. ანგარიში შეიქმნება მხოლოდ გამოწერის გადახდის დადასტურების შემდეგ.'
-                : lang === 'ru'
-                  ? 'Для регистрации SMS-код не требуется. Аккаунт будет создан только после подтверждения оплаты подписки.'
-                  : 'No SMS code is required to register. Your account is created only after the subscription payment is confirmed.'}</span>
+              <span>{isFreeRegistration
+                ? (lang === 'ka'
+                  ? 'ტარიფი 0 ლარია: რეგისტრაცია უფასოა და საბანკო გადახდა არ შესრულდება.'
+                  : lang === 'ru'
+                    ? 'Тариф составляет 0 GEL: регистрация бесплатна, банковская операция не выполняется.'
+                    : 'The price is 0 GEL: registration is free and no bank payment will be made.')
+                : lang === 'ka'
+                  ? 'რეგისტრაციისას SMS კოდი არ მოითხოვება. ანგარიში შეიქმნება გამოწერის გადახდის დადასტურების შემდეგ.'
+                  : lang === 'ru'
+                    ? 'Для регистрации SMS-код не требуется. Аккаунт будет создан после подтверждения оплаты подписки.'
+                    : 'No SMS code is required to register. Your account is created after subscription payment is confirmed.'}</span>
             </div>
             <div className="bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 border border-amber-500/40 rounded-3xl p-5 shadow-lg space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                  {lang === 'ka' ? 'ხელოსნის 6-თვიანი გამოწერა' : '6-Month Craftsman Listing'}
+                  {lang === 'ka' ? 'ხელოსნის 6-თვიანი გამოწერა' : lang === 'ru' ? 'Размещение мастера на 6 месяцев' : '6-Month Craftsman Listing'}
                 </span>
                 <span className="text-lg font-black text-white font-mono">
-                  10.00 GEL
+                  {registrationPriceLabel}
                 </span>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
                 {lang === 'ka'
                   ? 'გამოწერა მოიცავს 180 დღიან ხილვადობას "სხვა ხელოსნების" სიაში თქვენი ქალაქისა და პროფესიის მიხედვით.'
-                  : 'Subscription covers 180 days of visibility in the "Other craftsmen" list for your city and profession.'}
+                  : lang === 'ru'
+                    ? 'Подписка включает 180 дней видимости в списке «Другие мастера» для выбранных города и профессии.'
+                    : 'Subscription covers 180 days of visibility in the "Other craftsmen" list for your city and profession.'}
               </p>
               <div className="flex items-center gap-2 text-[11px] text-emerald-400 bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/30">
                 <ShieldCheck className="w-4 h-4 shrink-0" />
                 <span>
                   {lang === 'ka'
                     ? 'გარანტირებული 180 დღე (სერვერული ტაიმერი). განახლება შესაძლებელია ნებისმიერ დროს.'
-                    : 'Guaranteed 180 days server timer. Can be renewed anytime.'}
+                    : lang === 'ru'
+                      ? 'Гарантированные 180 дней (таймер сервера). Продлить можно в любое время.'
+                      : 'Guaranteed 180 days server timer. Can be renewed anytime.'}
                 </span>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[11px] font-medium text-slate-400 px-1">
-                {lang === 'ka' ? 'აირჩიეთ გადახდის მეთოდი' : 'Select Payment Provider'}
-              </label>
+            {!isFreeRegistration && registrationPrice && (
               <div className="space-y-2">
-                {paymentProviders.map((prov) => (
-                  <div
-                    key={prov.id}
-                    onClick={() => setSelectedProviderId(prov.id)}
-                    className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
-                      selectedProviderId === prov.id
-                        ? 'bg-amber-500/10 border-amber-500 text-white shadow-sm'
-                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <CreditCard className={`w-4 h-4 ${selectedProviderId === prov.id ? 'text-amber-400' : 'text-slate-400'}`} />
-                      <span className="text-xs font-semibold">{prov.name}</span>
+                <label className="text-[11px] font-medium text-slate-400 px-1">
+                  {lang === 'ka' ? 'აირჩიეთ გადახდის მეთოდი' : lang === 'ru' ? 'Выберите способ оплаты' : 'Select Payment Provider'}
+                </label>
+                <div className="space-y-2">
+                  {paymentProviders.map((prov) => (
+                    <div
+                      key={prov.id}
+                      onClick={() => setSelectedProviderId(prov.id)}
+                      className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                        selectedProviderId === prov.id
+                          ? 'bg-amber-500/10 border-amber-500 text-white shadow-sm'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <CreditCard className={`w-4 h-4 ${selectedProviderId === prov.id ? 'text-amber-400' : 'text-slate-400'}`} />
+                        <span className="text-xs font-semibold">{prov.name}</span>
+                      </div>
+                      {selectedProviderId === prov.id && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow" />
+                      )}
                     </div>
-                    {selectedProviderId === prov.id && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow" />
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -510,7 +559,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || priceLoading || !registrationPrice}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {loading ? (
@@ -518,7 +567,13 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
               ) : (
                 <>
                   <Check className="w-4 h-4 stroke-[3]" />
-                  <span>{lang === 'ka' ? 'გადახდა (10 GEL) და აქტივაცია' : 'Pay 10 GEL & Activate'}</span>
+                  <span>{isFreeRegistration
+                    ? (lang === 'ka' ? 'უფასო რეგისტრაცია და აქტივაცია' : lang === 'ru' ? 'Бесплатная регистрация и активация' : 'Register free and activate')
+                    : lang === 'ka'
+                      ? `გადახდა (${registrationPriceLabel}) და აქტივაცია`
+                      : lang === 'ru'
+                        ? `Оплатить (${registrationPriceLabel}) и активировать`
+                        : `Pay (${registrationPriceLabel}) and activate`}</span>
                 </>
               )}
             </button>
