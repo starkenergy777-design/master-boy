@@ -22,12 +22,17 @@ interface ConnectionConfig {
 
 async function tryConnect(configs: { name: string; config: ConnectionConfig }[]): Promise<pg.Client> {
   let lastError: any = null;
+  const caCertificate = process.env.SUPABASE_DB_CA_CERT?.replace(/\\n/g, '\n').trim();
+
+  if (process.env.NODE_ENV === 'production' && !caCertificate) {
+    throw new Error('SUPABASE_DB_CA_CERT is required in production to verify the Supabase TLS certificate.');
+  }
 
   for (const { name, config } of configs) {
     console.log(`🔌 Attempting connection: ${name}...`);
     const client = new Client({
       ...config,
-      ssl: { rejectUnauthorized: true },
+      ssl: { ca: caCertificate, rejectUnauthorized: true },
       connectionTimeoutMillis: 8000,
     });
 
@@ -99,6 +104,9 @@ async function runMigrations() {
   const hostname = parsedUrl.hostname;
   const port = parseInt(parsedUrl.port || '5432', 10);
   const database = parsedUrl.pathname.replace(/^\//, '') || 'postgres';
+  const secureConnectionUrl = new URL(rawUrl);
+  ['sslmode', 'sslrootcert', 'sslcert', 'sslkey'].forEach((key) => secureConnectionUrl.searchParams.delete(key));
+  const normalizedConnectionString = secureConnectionUrl.toString();
 
   // Build candidate configurations
   const candidateConfigs: { name: string; config: ConnectionConfig }[] = [];
@@ -175,7 +183,7 @@ async function runMigrations() {
     candidateConfigs.push({
       name: `Direct PostgreSQL URL (decoded password)`,
       config: {
-        connectionString: rawUrl,
+        connectionString: normalizedConnectionString,
       },
     });
   }

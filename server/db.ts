@@ -1075,6 +1075,19 @@ class Database {
           this.bootstrap = { ...this.bootstrap, phone: '', password: '', enabled: false };
         }
       }
+      // Upgrade legacy plaintext password values before the database snapshot is written.
+      // Password verification below only accepts scrypt hashes after this one-time upgrade.
+      let upgradedPasswordCount = 0;
+      for (const user of this.users.values()) {
+        if (user.password && !user.password.startsWith('scrypt$')) {
+          user.password = hashPassword(user.password);
+          upgradedPasswordCount += 1;
+        }
+      }
+      if (upgradedPasswordCount > 0) {
+        console.log(`[MASTER_BOY] Upgraded ${upgradedPasswordCount} legacy password hashes.`);
+      }
+
       if (requireDurable && !storage.getStatus().databaseConnected) {
         throw new Error('Supabase Postgres is required in production but is not connected. Refusing to start with ephemeral-only persistence.');
       }
@@ -1130,8 +1143,7 @@ export function hashPassword(password: string): string {
 }
 
 export function verifyPassword(password: string, stored: string | undefined): boolean {
-  if (!stored) return false;
-  if (!stored.startsWith('scrypt$')) return stored === password;
+  if (!stored || !stored.startsWith('scrypt$')) return false;
   const [, salt, expected] = stored.split('$');
   if (!salt || !expected) return false;
   const actual = crypto.scryptSync(password, salt, 64).toString('hex');

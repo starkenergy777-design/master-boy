@@ -577,9 +577,6 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
     // Verify the stored password hash
     const isPasswordValid = verifyPassword(password, foundUser.password);
     if (isPasswordValid) {
-      if (foundUser.password && !foundUser.password.startsWith('scrypt$')) {
-        foundUser.password = hashPassword(password);
-      }
       const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
       db.sessions.set(sessionToken, { userId: foundUser.id, createdAt: Date.now() });
 
