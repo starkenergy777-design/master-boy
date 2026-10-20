@@ -402,15 +402,6 @@ index 3470858..2e48810 100644
  
    res.json({
      success: true,
-@@ -2587,7 +2678,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
-   }
-   for (const intent of db.paymentIntents.values()) {
-     if (intent.idempotencyKey === idempotencyKey && intent.reservationId === ad.id) {
--      return res.json({ success: intent.status === 'SUCCEEDED', paymentIntentId: intent.id, ad, replay: true });
-+      return res.json({ success: intent.status === 'SUCCEEDED', paymentIntentId: intent.id, ad: safeAdvertisement(ad), replay: true });
-     }
-   }
- 
 @@ -2621,7 +2712,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
    res.json({
      success: true,
