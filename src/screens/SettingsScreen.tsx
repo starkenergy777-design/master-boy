@@ -1,6 +1,6 @@
 import { localizeTree } from '../i18n.js';
 import React from 'react';
-import { Globe, Shield, LogOut, Check } from 'lucide-react';
+import { Globe, Shield, LogOut, Check, Copy, Link2 } from 'lucide-react';
 import { translations } from '../i18n.js';
 import { Language, User } from '../types.js';
 
@@ -20,6 +20,37 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onBack,
 }) => {
   const t = translations[lang] || translations.ka;
+  const appUrl = typeof window !== 'undefined'
+    ? new URL('/', window.location.origin).toString()
+    : 'https://master-boy.onrender.com/';
+  const [linkCopyStatus, setLinkCopyStatus] = React.useState<'idle' | 'copied' | 'error'>('idle');
+
+  const handleCopyAppLink = async () => {
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(appUrl);
+        copied = true;
+      }
+    } catch {
+      // Use the selection-based fallback if clipboard permission is unavailable.
+    }
+
+    if (!copied) {
+      const input = document.createElement('textarea');
+      input.value = appUrl;
+      input.setAttribute('readonly', '');
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.select();
+      copied = document.execCommand('copy');
+      input.remove();
+    }
+
+    setLinkCopyStatus(copied ? 'copied' : 'error');
+    window.setTimeout(() => setLinkCopyStatus('idle'), copied ? 2200 : 3500);
+  };
 
   const languages: { code: Language; label: string; flag: string }[] = [
     { code: 'ka', label: 'ქართული', flag: '🇬🇪' },
@@ -61,6 +92,53 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Share the app */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+        <div>
+          <h3 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+            <Link2 className="w-3.5 h-3.5" />
+            <span>{lang === 'ka' ? 'აპლიკაციის გაზიარება' : lang === 'ru' ? 'Поделиться приложением' : 'Share the app'}</span>
+          </h3>
+          <p className="text-xs text-slate-400 mt-1.5">
+            {lang === 'ka'
+              ? 'გაუგზავნეთ ეს ბმული ხელოსნებსა და მომხმარებლებს, რომ აპლიკაცია მეტმა ადამიანმა გამოიყენოს.'
+              : lang === 'ru'
+                ? 'Отправьте эту ссылку мастерам и клиентам, чтобы больше людей узнали о приложении.'
+                : 'Send this link to craftsmen and customers to help more people discover the app.'}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            readOnly
+            value={appUrl}
+            aria-label={lang === 'ka' ? 'აპლიკაციის ბმული' : lang === 'ru' ? 'Ссылка на приложение' : 'App link'}
+            onFocus={(event) => event.currentTarget.select()}
+            className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-200 font-mono"
+          />
+          <button
+            type="button"
+            onClick={handleCopyAppLink}
+            className="shrink-0 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs transition-colors"
+          >
+            {linkCopyStatus === 'copied' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            <span>{linkCopyStatus === 'copied' ? t.linkCopied : t.copyLink}</span>
+          </button>
+        </div>
+
+        {linkCopyStatus === 'error' && (
+          <p role="status" className="text-[11px] text-rose-300">
+            {lang === 'ka'
+              ? 'ბმული ვერ დაკოპირდა. მონიშნეთ და დააკოპირეთ ველიდან.'
+              : lang === 'ru'
+                ? 'Не удалось скопировать ссылку. Выделите её в поле и скопируйте вручную.'
+                : 'Could not copy the link. Select it in the field and copy it manually.'}
+          </p>
+        )}
+        {linkCopyStatus === 'copied' && <span className="sr-only" role="status">{t.linkCopied}</span>}
       </div>
 
       {/* Platform Info */}
