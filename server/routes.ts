@@ -367,6 +367,12 @@ apiRouter.get('/search', (req, res) => {
   });
 });
 
+// GET /craftsmen/registration-price
+// Public, non-sensitive price data needed by the registration wizard.
+apiRouter.get('/craftsmen/registration-price', (_req, res) => {
+  res.json({ amountMinor: db.listingPrice.amountMinor, currency: db.listingPrice.currency });
+});
+
 // GET /craftsmen/:id (and /craftsman/:id alias)
 apiRouter.get(['/craftsmen/:id', '/craftsman/:id'], (req, res, next) => {
   if (req.params.id === 'me' || req.params.id === 'register') {
@@ -615,7 +621,7 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
 });
 
 // POST /auth/craftsman/register (also /auth/register and /craftsmen/register)
-apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/register'], (req, res) => {
+apiRouter.post(['/auth/craftsman/register', '/auth/register'], (req, res) => {
   const {
     phone,
     password,
@@ -647,14 +653,21 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
     return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'სახელი, ქალაქი და პროფესია სავალდებულოა' });
   }
 
-  const isPaid = paid === true;
+  if (typeof bankAccount !== 'string' || !bankAccount.trim()) {
+    return res.status(422).json({ code: 'BANK_ACCOUNT_REQUIRED', message: 'საბანკო ანგარიში სავალდებულოა.' });
+  }
+
+  const isFree = db.listingPrice.amountMinor === 0;
+  const isPaid = isFree || paid === true;
   if (!isPaid) {
     return res.status(402).json({ code: 'PAYMENT_REQUIRED', message: 'ხელოსნის ანგარიშის შექმნამდე საჭიროა გამოწერის გადახდა.' });
   }
-  if (!requireRealPaymentIntegration(res)) return;
-  const provider = db.providerConfig.payment.find(p => p.id === providerId);
-  if (!provider || !provider.isActive) {
-    return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+  if (!isFree) {
+    if (!requireRealPaymentIntegration(res)) return;
+    const provider = db.providerConfig.payment.find(p => p.id === providerId);
+    if (!provider || !provider.isActive) {
+      return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+    }
   }
 
   // Check if phone already registered with a craftsman profile
@@ -741,7 +754,7 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register', '/craftsmen/regist
   const listGraceEndsAt = new Date(now.getTime() + (180 + 30) * 24 * 60 * 60 * 1000).toISOString();
 
   let paymentIntentId: string | null = null;
-  if (isPaid) {
+  if (isPaid && !isFree) {
     paymentIntentId = `pi-list-${Date.now()}`;
     db.paymentIntents.set(paymentIntentId, {
       id: paymentIntentId,
@@ -850,14 +863,22 @@ apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res) 
     return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'Name, City, and Profession are required' });
   }
 
-  const isPaid = data.paid === true;
+  const bankAccount = typeof data.bankAccount === 'string' ? data.bankAccount.trim() : '';
+  if (!bankAccount) {
+    return res.status(422).json({ code: 'BANK_ACCOUNT_REQUIRED', message: 'საბანკო ანგარიში სავალდებულოა.' });
+  }
+
+  const isFree = db.listingPrice.amountMinor === 0;
+  const isPaid = isFree || data.paid === true;
   if (!isPaid) {
     return res.status(402).json({ code: 'PAYMENT_REQUIRED', message: 'A subscription payment is required before the craftsman account can be created.' });
   }
-  if (!requireRealPaymentIntegration(res)) return;
-  const provider = db.providerConfig.payment.find(p => p.id === data.providerId);
-  if (!provider || !provider.isActive) {
-    return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+  if (!isFree) {
+    if (!requireRealPaymentIntegration(res)) return;
+    const provider = db.providerConfig.payment.find(p => p.id === data.providerId);
+    if (!provider || !provider.isActive) {
+      return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+    }
   }
 
   if (data.password && typeof data.password === 'string' && data.password.length >= 12) {
@@ -885,6 +906,7 @@ apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res) 
     status: initialStatus,
     cityId: data.cityId,
     professionId: data.professionId,
+    bankAccount,
     photos: (data.photos || []).slice(0, 1).map((p: any, idx: number) => {
       if (typeof p === 'string') {
         return {
@@ -920,7 +942,7 @@ apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res) 
     updatedAt: startsAt,
   });
 
-  if (isPaid) {
+  if (isPaid && !isFree) {
     const paymentIntentId = `pi-reg-${Date.now()}`;
     db.paymentIntents.set(paymentIntentId, {
       id: paymentIntentId,
