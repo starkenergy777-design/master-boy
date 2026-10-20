@@ -1,0 +1,41 @@
+{
+  "id": "/",
+  "name": "MASTER_BOY — ხელოსნების პლატფორმა",
+  "short_name": "MASTER_BOY",
+  "description": "საქართველოს ხელოსნების ეროვნული პლატფორმა პირდაპირი დარეკვით და TOP 15 რეიტინგით",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#020617",
+  "background_color": "#020617",
+  "lang": "ka",
+  "categories": ["business", "utilities", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "ძებნა (Search)",
+      "url": "/",
+      "icons": [{ "src": "/icons/icon-192.jpg", "sizes": "1024x1024", "type": "image/jpeg" }]
+    }
+  ]
+}

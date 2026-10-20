@@ -1,6 +1,6 @@
 {
   "name": "MASTER_BOY",
-  "description": "MASTER_BOY platform with trusted backend API v1.2.0 and native Android client experience for craftsmen and clients.",
+  "description": "Multilingual craftsman directory and management application using a React client, Render-hosted Node.js API, and Supabase PostgreSQL.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": ["SERVER_SIDE_API", "SUPABASE_POSTGRES_BACKEND"]
 }
