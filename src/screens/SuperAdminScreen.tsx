@@ -299,4 +299,851 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       if (err.status === 423) {
         setErrorMsg('423 CONFIG_LOCKED: Cannot toggle provider during lock.');
       } else {
-        setErrorMsg(err.message || 'სტატუსის შეცვლა ვერ მოხ�
+        setErrorMsg(err.message || 'სტატუსის შეცვლა ვერ მოხერხდა');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Advertisements Handlers (§Task 10)
+  const handleBlockAndDeleteAd = async (adId: string) => {
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      setSuccessMsg('');
+      await api.blockAndDeleteAdminAd(adId);
+      setSuccessMsg('სარეკლამო ბანერი წაიშალა და პარტნიორის ანგარიში დაიბლოკა!');
+      loadAll();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'წაშლა და დაბლოკვა ვერ მოხერხდა');
+    } finally {
+      setLoading(false);
+      setDeleteConfirmAd(null);
+    }
+  };
+
+  const handleCreateAd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      setSuccessMsg('');
+      await api.createAdminAd({
+        company_name: newAdCompany.trim(),
+        phone_number: newAdPhone.trim(),
+        password: newAdPassword.trim(),
+        days: parseInt(newAdDays || '30', 10),
+        price_gel: parseFloat(newAdPrice || '50'),
+      });
+      setSuccessMsg('სარეკლამო პარტნიორი წარმატებით შეიქმნა!');
+      setNewAdCompany('');
+      setNewAdPhone('+9955');
+      setNewAdPassword('');
+      setShowCreateAdModal(false);
+      loadAll();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'შექმნა ვერ მოხერხდა');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return localizeTree(lang, (
+    <div className="flex-1 flex flex-col p-4 pb-20 space-y-5 animate-fade-in text-slate-100">
+      {/* Top Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
+              <span>{t.superAdminCabinet}</span>
+              <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.2 rounded border border-purple-500/30">
+                SUPER_ADMIN
+              </span>
+            </h2>
+            <p className="text-[10px] text-slate-400">
+              {lang === 'ka' ? 'სისტემური პარამეტრები და უსაფრთხოება' : 'System Settings & Security'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {errorMsg && (
+        <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-300 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-300 flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      {/* 1. Configuration Lock (§3.5 & §3.6) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`p-2 rounded-xl border ${configLock.locked ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
+              {configLock.locked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white">{t.lockStatus}</h3>
+              <p className="text-[10px] text-slate-400">
+                {configLock.locked ? `Locked until ${formatLocalizedDate(lang, configLock.lockedUntil)}` : 'Unlocked (Config edits allowed)'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {configLock.locked ? (
+          <div className="space-y-2 pt-2 border-t border-slate-800">
+            <p className="text-[11px] text-amber-300">
+              Autonomous mode active. Gemini handles chat and audits. Staff edits return 423 CONFIG_LOCKED.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={unlockCredential}
+                onChange={(e) => setUnlockCredential(e.target.value)}
+                placeholder="Emergency Unlock Credential"
+                className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"
+              />
+              <button
+                onClick={handleUnlock}
+                className="bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold px-3 py-2 rounded-xl text-xs border border-slate-700 shrink-0"
+              >
+                Unlock
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowLockConfirmModal(true)}
+            disabled={loading || !geminiStatus?.configured}
+            className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs shadow disabled:opacity-50"
+          >
+            {t.activateLock}
+          </button>
+        )}
+      </div>
+
+      {/* 2. Gemini AI Provider & Write-Only Key (§3.8) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+              <Cpu className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white">Gemini (AI) Provider</h3>
+              <p className="text-[10px] text-slate-400">
+                Write-only key input with OTP re-confirmation
+              </p>
+            </div>
+          </div>
+
+          <span
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+              geminiStatus?.configured
+                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                : 'bg-rose-500/20 text-rose-400 border-rose-500/40'
+            }`}
+          >
+            {geminiStatus?.configured ? 'Configured' : 'Not Set'}
+          </span>
+        </div>
+
+        <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-3 text-[11px] text-indigo-300 space-y-1">
+          <p className="font-semibold text-white">
+            🔑 Gemini AI-ის გააქტიურება:
+          </p>
+          <p className="text-[10px] text-slate-300 leading-relaxed">
+            სუპერადმინისტრატორის მიერ API გასაღების დამატების შემდეგ აპლიკაციაში ამოქმედდება Google Gemini: ხელოსნების მხარდაჭერის ჩატი და ავტომატური ანგარიშები.
+          </p>
+        </div>
+
+        <form onSubmit={handleUpdateGeminiKey} className="space-y-2.5 pt-1">
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400">Gemini API Key (Invisible / Masked)</label>
+            <input
+              type="password"
+              autoComplete="off"
+              value={geminiKeyInput}
+              onChange={(e) => setGeminiKeyInput(e.target.value)}
+              placeholder="AIzaSy... (Write-only, never returned)"
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
+              required
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400">Re-confirm OTP Code</label>
+            <input
+              type="text"
+              value={geminiOtpCode}
+              onChange={(e) => setGeminiOtpCode(e.target.value)}
+              placeholder="6-digit code"
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || configLock.locked}
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition-all disabled:opacity-50"
+          >
+            Verify & Save Gemini Key
+          </button>
+        </form>
+      </div>
+
+      {/* 3. Recipient Account (§3.5) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-xs font-bold text-white">Payment Recipient Account</h3>
+            <p className="text-[10px] text-slate-400">Receiving company bank account for Top 15</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleUpdateRecipient} className="space-y-2 text-xs">
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400">Company IBAN</label>
+            <input
+              type="text"
+              value={recipient.iban || ''}
+              onChange={(e) => setRecipient({ ...recipient, iban: e.target.value })}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 font-mono text-white"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400">Bank Name</label>
+            <input
+              type="text"
+              value={recipient.bankName || ''}
+              onChange={(e) => setRecipient({ ...recipient, bankName: e.target.value })}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400">Beneficiary Legal Entity</label>
+            <input
+              type="text"
+              value={recipient.beneficiary || ''}
+              onChange={(e) => setRecipient({ ...recipient, beneficiary: e.target.value })}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || configLock.locked}
+            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl text-xs border border-slate-700"
+          >
+            Update Recipient Details
+          </button>
+        </form>
+      </div>
+
+      {/* 4. Craftsman Listing Subscription Price (§6.6, R-25) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+              <CreditCard className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white">Craftsman Listing Price (R-25)</h3>
+              <p className="text-[10px] text-slate-400">180-day subscription for "Other craftsmen" visibility</p>
+            </div>
+          </div>
+          <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/30">
+            {(listingPrice.amountMinor / 100).toFixed(2)} {listingPrice.currency}
+          </span>
+        </div>
+
+        <form onSubmit={handleUpdateListingPrice} className="space-y-2 text-xs">
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400">Price in GEL (Default: 10 GEL)</label>
+            <input
+              type="number"
+              step="1"
+              min="1"
+              value={newListingPriceGEL}
+              onChange={(e) => setNewListingPriceGEL(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || configLock.locked}
+            className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded-xl text-xs transition-colors disabled:opacity-50"
+          >
+            Update Listing Subscription Price
+          </button>
+        </form>
+      </div>
+
+      {/* 4. Mandatory Credential Migration */}
+      {bootstrapStatus?.bootstrapEnabled && (
+        <div className="bg-purple-950/40 border border-purple-500/40 rounded-3xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-purple-400" />
+            <div>
+              <h3 className="text-xs font-bold text-white">Mandatory Credential Migration</h3>
+              <p className="text-[10px] text-purple-300">
+                Permanently disable bootstrap credentials and initialize real phone + password.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleMigrateBootstrap} className="space-y-2 text-xs">
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400">New Phone Number (E.164)</label>
+              <input
+                type="tel"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                className="w-full bg-slate-950 border border-purple-500/40 rounded-xl px-3 py-2 text-white font-mono"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400">New Password (min 12 chars)</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Upper + Lower + Digit (12+ chars)"
+                className="w-full bg-slate-950 border border-purple-500/40 rounded-xl px-3 py-2 text-white font-mono"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400">SMS Verification Code</label>
+              <input
+                type="text"
+                value={bootstrapOtp}
+                onChange={(e) => setBootstrapOtp(e.target.value)}
+                className="w-full bg-slate-950 border border-purple-500/40 rounded-xl px-3 py-2 text-white font-mono"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || configLock.locked}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white font-bold py-2.5 rounded-xl text-xs shadow"
+            >
+              Finalize Migration & Invalidate Bootstrap
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* 5. Payment Providers Configuration (BOG, TBC Bank, Stripe) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+              <CreditCard className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white">საგადახდო სისტემები (BOG, TBC, Stripe)</h3>
+              <p className="text-[10px] text-slate-400">საქართველოს ბანკი, თიბისი და Stripe-ის მონაცემების შეყვანა</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2.5 pt-1">
+          {paymentProviders.map((prov) => (
+            <div
+              key={prov.id}
+              className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3 text-xs space-y-2 hover:border-slate-700 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-bold text-white text-xs truncate">
+                    {prov.name}
+                  </span>
+                  <span
+                    className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                      prov.isActive
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}
+                  >
+                    {prov.isActive ? 'აქტიური' : 'გამორთული'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleProviderActive(prov)}
+                    disabled={loading || configLock.locked}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors ${
+                      prov.isActive
+                        ? 'bg-rose-950/40 text-rose-300 border-rose-800 hover:bg-rose-900'
+                        : 'bg-emerald-950/40 text-emerald-300 border-emerald-800 hover:bg-emerald-900'
+                    }`}
+                  >
+                    {prov.isActive ? 'გათიშვა' : 'ჩართვა'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditProvider(prov)}
+                    disabled={loading || configLock.locked}
+                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg border border-slate-700 transition-colors"
+                    title="მონაცემების შეყვანა / რედაქტირება"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-400 font-mono space-y-0.5 bg-slate-900/60 p-2 rounded-xl border border-slate-850">
+                {prov.clientId && <p>Client ID: <span className="text-slate-200">{prov.clientId}</span></p>}
+                {prov.apiKeyMasked && <p>API Key: <span className="text-slate-200">{prov.apiKeyMasked}</span></p>}
+                {prov.secretKeyConfigured && <p>Secret Key: <span className="text-slate-200">configured</span></p>}
+                {prov.webhookSecretConfigured && <p>Webhook Secret: <span className="text-slate-200">configured</span></p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 6. Commercial Advertisements Management (§Task 10) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+              <Megaphone className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white">სარეკლამო ბანერების მართვა</h3>
+              <p className="text-[10px] text-slate-400">კომერციული ბანერები, ვადები და მკაცრი პოლიტიკა</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowCreateAdModal(true)}
+            disabled={loading}
+            className="text-[11px] font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 px-3 py-1.5 rounded-xl transition-colors shadow-sm"
+          >
+            + ახალი პარტნიორი
+          </button>
+        </div>
+
+        {ads.length === 0 ? (
+          <p className="text-xs text-slate-500 py-2 text-center">აქტიური ან რეგისტრირებული ბანერები არ არის</p>
+        ) : (
+          <div className="space-y-2.5 pt-1">
+            {ads.map((adItem) => {
+              const isExpired = new Date(adItem.expires_at) < new Date();
+              return (
+                <div
+                  key={adItem.id}
+                  className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3 text-xs space-y-2 hover:border-slate-700 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-xs truncate">
+                          {adItem.company_name}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                            adItem.is_active && !isExpired && adItem.payment_status === 'paid'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                          }`}
+                        >
+                          {adItem.is_active && !isExpired && adItem.payment_status === 'paid' ? 'აქტიური' : 'არააქტიური/ვადაგასული'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                        {adItem.phone_number} • {adItem.payment_status === 'paid' ? 'გადახდილი' : 'გადაუხდელი'}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        ვადა: {formatLocalizedDate(lang, adItem.expires_at)} {isExpired && '(ვადა გასულია)'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmAd(adItem)}
+                      disabled={loading}
+                      className="px-2.5 py-1.5 bg-rose-950/60 hover:bg-rose-900 text-rose-300 rounded-xl border border-rose-800/80 text-[11px] font-bold flex items-center gap-1.5 shrink-0 transition-colors"
+                      title="წაშლა და დაბლოკვა"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                      <span>წაშლა და დაბლოკვა</span>
+                    </button>
+                  </div>
+
+                  {adItem.image_url && (
+                    <div className="relative aspect-[16/6] w-full rounded-xl overflow-hidden border border-slate-800 bg-slate-900 mt-1">
+                      <img src={adItem.image_url} alt={adItem.company_name} className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 7. Signed Backend URL */}
+      {backendConfig && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-xs space-y-1">
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <Link className="w-3.5 h-3.5 text-amber-400" />
+            <span className="font-bold text-[11px]">Signed Backend URL</span>
+          </div>
+          <p className="font-mono text-[10px] text-slate-300 truncate">
+            {backendConfig.baseUrl}
+          </p>
+          <p className="font-mono text-[9px] text-slate-500 truncate">
+            Signature: {backendConfig.signature}
+          </p>
+        </div>
+      )}
+
+      {/* 8. SuperAdmin Persistent Storage Status */}
+      {persistenceStatus && (
+        <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-3 text-xs space-y-1.5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[11px]">
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>სუპერადმინის კონფიგურაციების მუდმივი შენახვა</span>
+            </div>
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold border ${persistenceStatus.databaseConnected ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' : 'bg-rose-500/10 text-rose-300 border-rose-500/30'}`}>
+              {persistenceStatus.databaseConnected ? t.databaseConnected : t.databaseDisconnected}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-400 leading-relaxed">
+            ყველა პარამეტრი (ტარიფები, პროვაიდერები, რეკლამები, რეკვიზიტები, საკეტი) საიმედოდ ინახება და ავტომატურად აღდგება სერვერის ცივი გადატვირთვის / Cold Start-ის შემდეგ.
+          </p>
+          <div className="flex items-center gap-2 pt-0.5 text-[9px] font-mono text-slate-500">
+            <span>სინქრონიზებული: {formatLocalizedTime(lang, persistenceStatus.lastCheck)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Lock Confirmation Modal (Replaces window.confirm) */}
+      {showLockConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-xs w-full space-y-4 shadow-2xl animate-scale-up text-center">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto">
+              <Lock className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-white mb-1">
+                Activate 6-Month Lock
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Activate 6-month configuration lock? Human edits to prices, recipients, and roles will be strictly blocked. The app runs autonomously with Gemini AI.
+              </p>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowLockConfirmModal(false)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeActivateLock}
+                disabled={loading}
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50"
+              >
+                {loading ? '...' : 'Confirm & Lock'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Provider Edit Modal (BOG, TBC Bank, Stripe) */}
+      {editingProvider && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h3 className="text-xs font-bold text-white truncate max-w-[200px]">
+                    {editingProvider.name}
+                  </h3>
+                  <span className="text-[10px] text-slate-400">პარამეტრებისა და გასაღებების შეყვანა</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingProvider(null)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProvider} className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400">Client ID / Merchant ID</label>
+                <input
+                  type="text"
+                  value={providerForm.clientId}
+                  onChange={(e) => setProviderForm({ ...providerForm, clientId: e.target.value })}
+                  placeholder="მაგ: tbc_client_... ან bog_client_..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-slate-400">Secret Key / Client Secret</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowKeyMask(!showKeyMask)}
+                    className="text-[10px] text-amber-400 flex items-center gap-1"
+                  >
+                    {showKeyMask ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    <span>{showKeyMask ? 'დამალვა' : 'ჩვენება'}</span>
+                  </button>
+                </div>
+                <input
+                  type={showKeyMask ? 'text' : 'password'}
+                  value={providerForm.secretKey}
+                  onChange={(e) => setProviderForm({ ...providerForm, secretKey: e.target.value })}
+                  placeholder={editingProvider.secretKeyConfigured ? 'შეავსეთ მხოლოდ გასაახლებლად' : 'Secret Key...'}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              {editingProvider.id === 'prov-stripe' && (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400">Publishable Key (pk_test_... / pk_live_...)</label>
+                    <input
+                      type="text"
+                      value={providerForm.apiKey}
+                      onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
+                      placeholder={editingProvider.apiKeyConfigured ? 'შეავსეთ მხოლოდ გასაახლებლად' : 'pk_live_...'}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400">Webhook Secret (whsec_...)</label>
+                    <input
+                      type="text"
+                      value={providerForm.webhookSecret}
+                      onChange={(e) => setProviderForm({ ...providerForm, webhookSecret: e.target.value })}
+                      placeholder={editingProvider.webhookSecretConfigured ? 'შეავსეთ მხოლოდ გასაახლებლად' : 'whsec_...'}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-white block">სისტემაში გააქტიურება</span>
+                  <span className="text-[10px] text-slate-400 block">ჩართვის შემთხვევაში გამოჩნდება გადახდისას</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProviderForm({ ...providerForm, isActive: !providerForm.isActive })}
+                  className={`w-11 h-6 rounded-full transition-colors relative p-0.5 ${
+                    providerForm.isActive ? 'bg-emerald-500' : 'bg-slate-700'
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                      providerForm.isActive ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingProvider(null)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+                >
+                  გაუქმება
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50"
+                >
+                  {loading ? '...' : 'შენახვა'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Ad Partner Modal */}
+      {showCreateAdModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Megaphone className="w-5 h-5 text-amber-400" />
+                <h3 className="text-xs font-bold text-white">ახალი სარეკლამო პარტნიორი</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateAdModal(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAd} className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400">კომპანიის იურიდიული დასახელება (სურვილისამებრ, პარტნიორსაც შეუძლია შეავსოს)</label>
+                <input
+                  type="text"
+                  value={newAdCompany}
+                  onChange={(e) => setNewAdCompany(e.target.value)}
+                  placeholder="მაგ: შპს „ელიტ ელექტრონიქსი“"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400">ტელეფონის ნომერი (შესასვლელად) *</label>
+                <input
+                  type="tel"
+                  required
+                  value={newAdPhone}
+                  onChange={(e) => setNewAdPhone(e.target.value)}
+                  placeholder="+995599..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400">პაროლი *</label>
+                <input
+                  type="password"
+                  required
+                  value={newAdPassword}
+                  onChange={(e) => setNewAdPassword(e.target.value)}
+                  placeholder="მინიმუმ 12 სიმბოლო"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400">ვადა (დღეები)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newAdDays}
+                    onChange={(e) => setNewAdDays(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400">თანხა (GEL)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={newAdPrice}
+                    onChange={(e) => setNewAdPrice(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateAdModal(false)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+                >
+                  გაუქმება
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50"
+                >
+                  {loading ? '...' : 'პარტნიორის შექმნა'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete & Block Ad Confirmation Modal */}
+      {deleteConfirmAd && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-3xl p-5 max-w-xs w-full space-y-4 shadow-2xl animate-scale-up text-center">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-white mb-1">
+                ბანერის წაშლა და დაბლოკვა
+              </h3>
+              <p className="text-xs text-rose-300 leading-relaxed">
+                ნამდვილად გსურთ <strong>{deleteConfirmAd.company_name}</strong>-ის ბანერის მყისიერი წაშლა და პარტნიორის ანგარიშის დაბლოკვა?
+              </p>
+              <p className="text-[10px] text-slate-400 mt-2">
+                ბანერი დაუყოვნებლივ გაქრება მთავარი გვერდიდან.
+              </p>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmAd(null)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+              >
+                გაუქმება
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBlockAndDeleteAd(deleteConfirmAd.id)}
+                disabled={loading}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+              >
+                {loading ? '...' : 'წაშლა და დაბლოკვა'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  ));
+};
+

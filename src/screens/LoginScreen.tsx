@@ -226,4 +226,129 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <span>{t.signIn}</span>
-             
+                )}
+              </button>
+
+              {/* NOT REGISTERED? PROMINENT REGISTRATION BUTTON (§User Requirement) */}
+              {onOpenRegister && (
+                <div className="pt-2 text-center border-t border-slate-800/80 space-y-2">
+                  <span className="text-xs text-slate-400 block">
+                    {lang === 'ka' ? 'ხელოსანი ჯერ არ ხართ რეგისტრირებული?' : lang === 'ru' ? 'Вы ещё не зарегистрированы как мастер?' : 'Not registered as a craftsman yet?'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onOpenRegister}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-500/40 hover:border-amber-400 font-bold py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>{lang === 'ka' ? 'ხელოსნის რეგისტრაცია' : lang === 'ru' ? 'Регистрация мастера' : 'Craftsman registration'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Option to switch to SMS OTP */}
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMethod('OTP');
+                    setOtpStep('REQUEST');
+                    setErrorMsg('');
+                  }}
+                  className="text-xs text-slate-400 hover:text-amber-300 underline"
+                >
+                  {t.orLoginWithOtp}
+                </button>
+              </div>
+
+            </form>
+          )}
+
+          {/* ALTERNATIVE FORM: SMS OTP */}
+          {authMethod === 'OTP' && (
+            <div className="space-y-4">
+              {otpStep === 'REQUEST' ? (
+                <form onSubmit={handleRequestOtp} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-slate-400 px-1">
+                      {t.phoneInput}
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <Phone className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+995599000000"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all text-sm disabled:opacity-50"
+                  >
+                    {loading ? '...' : (lang === 'ka' ? 'SMS კოდის მიღება' : 'Send SMS Code')}
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-slate-400 px-1">
+                      {t.verifyOtp}
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      placeholder="6-digit code"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-center text-xl tracking-[0.5em] text-white font-mono focus:outline-none focus:border-amber-500"
+                      autoFocus
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all text-sm disabled:opacity-50"
+                  >
+                    {loading ? '...' : t.submit}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOtpStep('REQUEST')}
+                    className="w-full text-xs text-slate-400 hover:text-white py-1"
+                  >
+                    {lang === 'ka' ? 'ნომრის შეცვლა' : 'Change Phone'}
+                  </button>
+                </form>
+              )}
+
+              {/* Back to Password Login */}
+              <div className="text-center pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMethod('PASSWORD');
+                    setErrorMsg('');
+                  }}
+                  className="text-xs text-amber-400 hover:underline font-semibold"
+                >
+                  {t.orLoginWithPassword}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+    </div>
+  ));
+};
+

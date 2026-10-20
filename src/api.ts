@@ -379,3 +379,88 @@ class ApiClient {
 
   getConfigLock() {
     return this.request('/admin/config/lock');
+  }
+
+  activateConfigLock() {
+    return this.request('/admin/config/lock', { method: 'POST' });
+  }
+
+  unlockConfig(credential: string) {
+    return this.request('/admin/config/unlock', {
+      method: 'POST',
+      body: JSON.stringify({ credential }),
+    });
+  }
+
+  migrateBootstrap(newPhone: string, newPassword: string, otpCode: string) {
+    return this.request('/admin/bootstrap/migrate', {
+      method: 'POST',
+      body: JSON.stringify({ newPhone, newPassword, otpCode }),
+    });
+  }
+
+  getBootstrapStatus() {
+    return this.request('/admin/bootstrap/status');
+  }
+
+  // --- Advertisements & Partner System ---
+  getActiveAd() {
+    return this.request<{ ad: AdvertisementPublic | null }>('/advertisements/active');
+  }
+
+  getAdminAds() {
+    return this.request<Advertisement[]>('/admin/advertisements');
+  }
+
+  createAdminAd(payload: { company_name?: string; phone_number: string; password: string; days?: number; price_gel?: number }) {
+    return this.request('/admin/advertisements', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  updateAdminAd(id: string, payload: any) {
+    return this.request(`/admin/advertisements/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  blockAndDeleteAdminAd(id: string) {
+    return this.request(`/admin/advertisements/${id}/block-and-delete`, {
+      method: 'POST',
+    });
+  }
+
+  getPartnerAd() {
+    return this.request<{ ad: Advertisement }>('/partner/ad');
+  }
+
+  acceptPartnerTerms() {
+    return this.request('/partner/accept-terms', { method: 'POST' });
+  }
+
+  payPartnerAd() {
+    const key = `adpay-${crypto.randomUUID()}`;
+    return this.request('/partner/pay', { method: 'POST', headers: { 'Idempotency-Key': key } });
+  }
+
+  updatePartnerAd(payload: { company_name?: string; image_url?: string; target_url?: string }) {
+    return this.request('/partner/ad', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  getPersistenceStatus() {
+    return this.request<{
+      databaseConfigured: boolean;
+      databaseConnected: boolean;
+      lastCheck: string;
+      config: any;
+    }>('/admin/persistence/status');
+  }
+}
+
+export const api = new ApiClient();
+

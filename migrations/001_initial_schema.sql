@@ -248,4 +248,103 @@ CREATE TABLE IF NOT EXISTS top15_reservations (
     profession_id VARCHAR(64) NOT NULL REFERENCES professions(id),
     craftsman_id VARCHAR(64) NOT NULL REFERENCES craftsmen(id) ON DELETE CASCADE,
     reserved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL, -- 3
+    expires_at TIMESTAMPTZ NOT NULL, -- 3 minutes TTL
+    status reservation_status NOT NULL DEFAULT 'PENDING'
+);
+
+CREATE INDEX IF NOT EXISTS idx_reservations_status_expires ON top15_reservations(status, expires_at);
+
+-- ----------------------------------------------------------------------------
+-- 13. TOP 15 MEMBERSHIPS (30-Day Premier Placement)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS top15_memberships (
+    id VARCHAR(64) PRIMARY KEY,
+    city_id VARCHAR(64) NOT NULL REFERENCES cities(id),
+    profession_id VARCHAR(64) NOT NULL REFERENCES professions(id),
+    craftsman_id VARCHAR(64) NOT NULL REFERENCES craftsmen(id) ON DELETE CASCADE,
+    payment_id VARCHAR(64),
+    status membership_status NOT NULL DEFAULT 'ACTIVE',
+    starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL, -- 30 days TTL
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_memberships_active ON top15_memberships(city_id, profession_id, status, expires_at);
+
+-- ----------------------------------------------------------------------------
+-- 14. PAYMENT INTENTS & TRANSACTIONS
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS payment_intents (
+    id VARCHAR(64) PRIMARY KEY,
+    reservation_id VARCHAR(64),
+    craftsman_id VARCHAR(64) NOT NULL REFERENCES craftsmen(id),
+    provider VARCHAR(32) NOT NULL, -- bog, tbc, stripe
+    amount_minor INT NOT NULL,
+    currency VARCHAR(8) NOT NULL DEFAULT 'GEL',
+    idempotency_key VARCHAR(128) NOT NULL UNIQUE,
+    status payment_status NOT NULL DEFAULT 'PENDING',
+    provider_transaction_id VARCHAR(128),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payments_idempotency ON payment_intents(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_payments_craftsman ON payment_intents(craftsman_id);
+
+-- ----------------------------------------------------------------------------
+-- 15. SUPPORT CHAT MESSAGES (AI Admin Autonomous Support)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS support_messages (
+    id VARCHAR(64) PRIMARY KEY,
+    craftsman_id VARCHAR(64) NOT NULL REFERENCES craftsmen(id) ON DELETE CASCADE,
+    sender chat_sender_type NOT NULL,
+    body TEXT NOT NULL,
+    flagged_for_human BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_craftsman_date ON support_messages(craftsman_id, created_at);
+
+-- ----------------------------------------------------------------------------
+-- 16. AUDIT LOGS (Immutable Security and System Event Trail)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id VARCHAR(64) PRIMARY KEY,
+    actor_type VARCHAR(32) NOT NULL, -- USER, AI_ADMIN, SYSTEM, CRON
+    actor_id VARCHAR(64) NOT NULL,
+    action VARCHAR(64) NOT NULL,
+    target_type VARCHAR(64),
+    target_id VARCHAR(64),
+    reason TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_action_time ON audit_logs(action, created_at);
+
+-- ----------------------------------------------------------------------------
+-- 17. SYSTEM CONFIGURATION & FINANCIAL RECIPIENT
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS system_config (
+    id VARCHAR(32) PRIMARY KEY DEFAULT 'global_config',
+    config_locked BOOLEAN NOT NULL DEFAULT false,
+    lock_expires_at TIMESTAMPTZ,
+    recipient_bank_name VARCHAR(120) NOT NULL DEFAULT 'TBC Bank JSC',
+    recipient_iban VARCHAR(64) NOT NULL DEFAULT '',
+    recipient_tax_id VARCHAR(32) NOT NULL DEFAULT '',
+    recipient_company_name VARCHAR(120) NOT NULL DEFAULT 'MASTER_BOY LLC',
+    standard_listing_price_minor INT NOT NULL DEFAULT 5000, -- 50 GEL for 180 days
+    gemini_api_key_configured BOOLEAN NOT NULL DEFAULT false,
+    bog_active BOOLEAN NOT NULL DEFAULT true,
+    bog_client_id TEXT DEFAULT '',
+    bog_secret_key TEXT DEFAULT '',
+    tbc_active BOOLEAN NOT NULL DEFAULT false,
+    tbc_client_id TEXT DEFAULT '',
+    tbc_secret_key TEXT DEFAULT '',
+    stripe_active BOOLEAN NOT NULL DEFAULT false,
+    stripe_publishable_key TEXT DEFAULT '',
+    stripe_secret_key TEXT DEFAULT '',
+    stripe_webhook_secret TEXT DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+

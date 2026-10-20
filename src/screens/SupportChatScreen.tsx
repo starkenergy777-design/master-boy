@@ -235,4 +235,23 @@ export const SupportChatScreen: React.FC<SupportChatScreenProps> = ({
             className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
           />
           <button
-            t
+            type="submit"
+            disabled={!inputText.trim() || remainingToday <= 0 || loading}
+            className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 px-3.5 py-2.5 rounded-xl font-bold transition-all shrink-0 active:scale-95"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+
+        <p className="text-[10px] text-slate-500 text-center mt-1">
+          {lang === 'ka'
+            ? 'მაქს. 1000 სიმბოლო • 7 შეტყობინება დღეში • მხარდაჭერის სისტემა'
+            : lang === 'ru'
+            ? 'Макс. 1000 символов • 7 сообщений в день • Система поддержки'
+            : 'Max 1000 characters • 7 messages/day • Autonomous Support'}
+        </p>
+      </div>
+    </div>
+  ));
+};
+

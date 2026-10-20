@@ -232,4 +232,132 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
                 href={`https://wa.me/${cleanPhone}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-c
+                className="flex items-center justify-center gap-1.5 py-2 px-2 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/50 rounded-xl text-emerald-400 text-xs font-bold transition-all active:scale-95"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>WhatsApp</span>
+              </a>
+
+              <a
+                href={`viber://chat?number=${cleanPhone}`}
+                className="flex items-center justify-center gap-1.5 py-2 px-2 bg-purple-950/60 hover:bg-purple-900/60 border border-purple-700/50 rounded-xl text-purple-400 text-xs font-bold transition-all active:scale-95"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>Viber</span>
+              </a>
+
+              <a
+                href={`sms:${craftsman.phone}`}
+                className="flex items-center justify-center gap-1.5 py-2 px-2 bg-slate-950 hover:bg-slate-800 border border-slate-700 rounded-xl text-slate-300 text-xs font-bold transition-all active:scale-95"
+              >
+                <Phone className="w-3.5 h-3.5 text-amber-400" />
+                <span>SMS</span>
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Description */}
+        <div className="pt-2 border-t border-slate-800/80">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+            {t.aboutCraftsman}
+          </h3>
+          <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
+            {craftsman.description || (lang === 'ka' ? 'აღწერა არ არის მითითებული.' : 'No description provided.')}
+          </p>
+        </div>
+
+        {/* Bank Account (IBAN) */}
+        {craftsman.bankAccount && (
+          <div className="pt-2 border-t border-slate-800/80">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center justify-between">
+              <span>საბანკო ანგარიში (IBAN)</span>
+              <span className="text-amber-400 font-mono text-[10px]">საქართველოს ბანკი</span>
+            </h3>
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+              <span className="font-mono text-xs text-amber-300 font-bold tracking-wider select-all">
+                {craftsman.bankAccount}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(craftsman.bankAccount || '');
+                  alert(localizeInlineText(lang, 'ანგარიშის ნომერი დაკოპირდა!'));
+                }}
+                className="text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-lg border border-amber-500/30 transition-colors shrink-0"
+              >
+                კოპირება
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Working Hours (§7.1) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 shadow-sm space-y-2">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-2">
+          <Clock className="w-3.5 h-3.5 text-amber-400" />
+          <span>{t.workingHours}</span>
+          <span className="text-[10px] text-slate-500 lowercase">(Georgia Local Time)</span>
+        </h3>
+
+        <div className="space-y-1 text-xs">
+          {daysOfWeek.map((day) => {
+            const hours = (craftsman.workingHours as any)?.[day.key];
+            const isClosed = !hours;
+            const dayName = (day as any)[lang] || day.ka;
+
+            return (
+              <div
+                key={day.key}
+                className="flex items-center justify-between py-1 px-1 border-b border-slate-800/50 last:border-none"
+              >
+                <span className="text-slate-400">{dayName}</span>
+                <span className={`font-mono ${isClosed ? 'text-rose-400/80 text-[11px]' : 'text-slate-200'}`}>
+                  {isClosed ? (lang === 'ka' ? 'დასვენება' : 'Closed') : hours}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Strict Section 1 Notice: NO REVIEWS */}
+      <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 flex items-start gap-2.5 text-[11px] text-slate-400">
+        <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+        <p className="leading-snug">
+          {t.noReviewsNotice}
+        </p>
+      </div>
+
+      {/* Bottom Sticky Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 z-40 max-w-5xl mx-auto flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <span className="text-[10px] text-slate-400 block truncate">
+            {craftsman.name}
+          </span>
+          <span className="text-xs font-bold text-white block truncate">
+            {craftsman.professionName}
+          </span>
+        </div>
+
+        {/* If phoneVisible === false: Button is completely hidden! (§3.4) */}
+        {craftsman.phoneVisible && craftsman.phone ? (
+          <button
+            onClick={() => onCall(craftsman)}
+            className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold py-2.5 px-6 rounded-2xl shadow-lg shadow-emerald-900/40 active:scale-95 transition-all text-sm"
+          >
+            <Phone className="w-4 h-4 fill-white" />
+            <span>{t.call}</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 italic">
+            <EyeOff className="w-4 h-4 text-slate-500" />
+            <span>{t.phoneHidden}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  ));
+};
+

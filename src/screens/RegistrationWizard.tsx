@@ -245,4 +245,299 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
         {step === 1 && (
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text
+              <label className="text-[11px] font-medium text-slate-400 px-1">
+                {t.fullName} *
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="გიორგი ბერიძე"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-slate-400 px-1">
+                  {t.phoneInput} *
+                </label>
+                <div className="relative">
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="+995599000000"
+                    disabled={!!api.getToken()}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-slate-400 px-1">
+                  {t.setPassword} *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    minLength={12}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 pr-8 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                    required={!api.getToken()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-white"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-slate-400 px-1">
+                  {t.city} *
+                </label>
+                <select
+                  value={formData.cityId}
+                  onChange={(e) => setFormData({ ...formData, cityId: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                >
+                  {cities.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-slate-400 px-1">
+                  {t.profession} *
+                </label>
+                <select
+                  value={formData.professionId}
+                  onChange={(e) => setFormData({ ...formData, professionId: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                >
+                  {professions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-slate-400 px-1">
+                {t.description}
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={3}
+                placeholder="აღწერეთ თქვენი გამოცდილება, სერვისები და პირობები..."
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-amber-500 resize-none"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-slate-400 px-1 flex items-center justify-between">
+                <span>საბანკო ანგარიში / IBAN (საქართველოს ბანკი)</span>
+                <span className="text-amber-400 text-[10px]">სურვილისამებრ</span>
+              </label>
+              <input
+                type="text"
+                placeholder="GE00BG0000000000000000"
+                value={formData.bankAccount}
+                onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value.toUpperCase().replace(/\s/g, '') })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500 uppercase"
+              />
+              <p className="text-[10px] text-slate-500 px-1">
+                ჩაწერეთ თქვენი ანგარიშის ნომერი, რათა კლიენტებმა შეძლონ პირდაპირი გადარიცხვა.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-slate-400 px-1 flex items-center justify-between">
+                <span>პროფილის ფოტოს URL</span>
+                <span className="text-amber-400 font-bold text-[10px]">მაქსიმუმ 1 ფოტო</span>
+              </label>
+              <input
+                type="url"
+                value={formData.photoUrl}
+                onChange={(e) => setFormData({ ...formData, photoUrl: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
+              <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-700 mt-2">
+                <img src={formData.photoUrl} alt="Preview" className="w-full h-full object-cover" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Working Hours & Phone Visibility */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-white block">
+                  {t.phoneVisibility}
+                </span>
+                <span className="text-[11px] text-slate-400 block max-w-[220px]">
+                  {t.phoneVisibilityDesc}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, phoneVisible: !formData.phoneVisible })}
+                className={`w-12 h-6 rounded-full transition-colors relative p-0.5 ${
+                  formData.phoneVisible ? 'bg-emerald-500' : 'bg-slate-700'
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    formData.phoneVisible ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[11px] font-medium text-slate-400 px-1">
+                {t.workingHours}
+              </label>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl">
+                  <span className="text-slate-400 block text-[10px]">ორშაბათი - პარასკევი</span>
+                  <span className="font-semibold text-white">09:00 - 18:00</span>
+                </div>
+                <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl">
+                  <span className="text-slate-400 block text-[10px]">შაბათი</span>
+                  <span className="font-semibold text-white">10:00 - 15:00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Subscription Payment (§3.11, §4.2, §24) */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-950/30 p-3 text-xs text-sky-200">
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              <span>{lang === 'ka'
+                ? 'რეგისტრაციისას SMS კოდი არ მოითხოვება. ანგარიში შეიქმნება მხოლოდ გამოწერის გადახდის დადასტურების შემდეგ.'
+                : lang === 'ru'
+                  ? 'Для регистрации SMS-код не требуется. Аккаунт будет создан только после подтверждения оплаты подписки.'
+                  : 'No SMS code is required to register. Your account is created only after the subscription payment is confirmed.'}</span>
+            </div>
+            <div className="bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 border border-amber-500/40 rounded-3xl p-5 shadow-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                  {lang === 'ka' ? 'ხელოსნის 6-თვიანი გამოწერა' : '6-Month Craftsman Listing'}
+                </span>
+                <span className="text-lg font-black text-white font-mono">
+                  10.00 GEL
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {lang === 'ka'
+                  ? 'გამოწერა მოიცავს 180 დღიან ხილვადობას "სხვა ხელოსნების" სიაში თქვენი ქალაქისა და პროფესიის მიხედვით.'
+                  : 'Subscription covers 180 days of visibility in the "Other craftsmen" list for your city and profession.'}
+              </p>
+              <div className="flex items-center gap-2 text-[11px] text-emerald-400 bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/30">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span>
+                  {lang === 'ka'
+                    ? 'გარანტირებული 180 დღე (სერვერული ტაიმერი). განახლება შესაძლებელია ნებისმიერ დროს.'
+                    : 'Guaranteed 180 days server timer. Can be renewed anytime.'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[11px] font-medium text-slate-400 px-1">
+                {lang === 'ka' ? 'აირჩიეთ გადახდის მეთოდი' : 'Select Payment Provider'}
+              </label>
+              <div className="space-y-2">
+                {paymentProviders.map((prov) => (
+                  <div
+                    key={prov.id}
+                    onClick={() => setSelectedProviderId(prov.id)}
+                    className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                      selectedProviderId === prov.id
+                        ? 'bg-amber-500/10 border-amber-500 text-white shadow-sm'
+                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <CreditCard className={`w-4 h-4 ${selectedProviderId === prov.id ? 'text-amber-400' : 'text-slate-400'}`} />
+                      <span className="text-xs font-semibold">{prov.name}</span>
+                    </div>
+                    {selectedProviderId === prov.id && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="pt-6 space-y-2">
+        {step < 3 ? (
+          <button
+            type="button"
+            onClick={handleNext}
+            className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm transition-all active:scale-[0.98]"
+          >
+            <span>{t.next}</span>
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  <span>{lang === 'ka' ? 'გადახდა (10 GEL) და აქტივაცია' : 'Pay 10 GEL & Activate'}</span>
+                </>
+              )}
+            </button>
+
+          </div>
+        )}
+
+        {/* Already registered? Login */}
+        <div className="pt-2 text-center border-t border-slate-800">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-xs text-amber-400 hover:underline font-semibold"
+          >
+            {t.alreadyRegistered} {t.signIn}
+          </button>
+        </div>
+      </div>
+    </div>
+  ));
+};
+
