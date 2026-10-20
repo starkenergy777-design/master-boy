@@ -106,9 +106,13 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           </button>
         ) : (
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black text-xs shadow-md">
-              MB
-            </div>
+            <img
+              src="/icons/icon-192.jpg"
+              alt="MASTER_BOY"
+              width={32}
+              height={32}
+              className="w-8 h-8 rounded-lg object-cover shadow-md"
+            />
             <span className="font-black text-sm tracking-wider text-white">
               MASTER_BOY
             </span>
