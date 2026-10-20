@@ -11,14 +11,12 @@ import { api } from '../api.js';
 interface MainScreenProps {
   lang: Language;
   onSearch: (cityId?: string, professionId?: string) => void;
-  onOpenCraftsmanLogin: () => void;
   onSelectCraftsman: (craftsman: CraftsmanPublic) => void;
 }
 
 export const MainScreen: React.FC<MainScreenProps> = ({
   lang,
   onSearch,
-  onOpenCraftsmanLogin,
 }) => {
   const t = translations[lang] || translations.ka;
   const [cities, setCities] = useState<City[]>([]);
@@ -64,11 +62,11 @@ export const MainScreen: React.FC<MainScreenProps> = ({
   };
 
   return localizeTree(lang, (
-    <div className="flex-1 flex flex-col p-2.5 sm:p-3 pb-0 animate-fade-in text-slate-100 min-h-0">
+    <div className="flex-1 flex flex-col p-3 sm:p-4 pb-0 animate-fade-in text-slate-100 min-h-0">
       {/* Top Banner & Search Controls grouped */}
-      <div className="space-y-2 shrink-0">
+      <div className="space-y-3 shrink-0">
         {/* Top Banner / Welcome - compact */}
-        <div className="bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 border border-amber-500/30 rounded-xl p-2.5 sm:p-3 shadow-sm relative overflow-hidden">
+        <div className="bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 border border-amber-500/30 rounded-xl p-3 sm:p-4 shadow-sm relative overflow-hidden">
           <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
@@ -89,20 +87,20 @@ export const MainScreen: React.FC<MainScreenProps> = ({
         </div>
 
         {/* Main Search Controls */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-sm space-y-1.5">
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm space-y-2">
           {/* City selector & Quick chips */}
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between px-0.5">
-              <label className="text-xs sm:text-[13px] font-medium text-slate-400">
+              <label className="text-sm sm:text-[15px] font-semibold text-slate-300">
                 {t.selectCity}
               </label>
-              <span className="text-[9px] text-slate-500">საქართველო</span>
+              <span className="text-xs text-slate-400">საქართველო</span>
             </div>
 
             <select
               value={selectedCityId}
               onChange={(e) => setSelectedCityId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 transition-colors"
+              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
             >
               <option value="">{t.allCities}</option>
               {cities.map((city) => (
@@ -113,13 +111,13 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             </select>
 
             {/* Quick Georgian City Chips */}
-            <div className="flex flex-wrap gap-1 pt-0.5">
+            <div className="flex flex-wrap gap-1.5 pt-1">
               {cities.slice(0, 4).map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => handleQuickCity(c.id)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
                     selectedCityId === c.id
                       ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
                       : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
@@ -132,14 +130,14 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           </div>
 
           {/* Profession dropdown */}
-          <div className="space-y-1">
-            <label className="text-xs sm:text-[13px] font-medium text-slate-400 px-0.5">
+          <div className="space-y-1.5">
+            <label className="text-sm sm:text-[15px] font-semibold text-slate-300 px-0.5">
               {t.selectProfession}
             </label>
             <select
               value={selectedProfessionId}
               onChange={(e) => setSelectedProfessionId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 transition-colors"
+              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
             >
               <option value="">{t.allProfessions}</option>
               {professions.map((prof) => (
@@ -153,16 +151,16 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           <div className="pt-1 grid grid-cols-1 gap-1.5">
             <button
               onClick={handleSearchClick}
-              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold py-2 px-3 rounded-lg shadow-sm shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] text-xs"
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold py-2.5 px-4 rounded-lg shadow-sm shadow-amber-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-sm"
             >
-              <Search className="w-3.5 h-3.5 stroke-[2.5]" />
+              <Search className="w-4 h-4 stroke-[2.5]" />
               <span className="truncate">{t.searchCraftsmen}</span>
             </button>
           </div>
         </div>
 
         <div className="mb-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2">
-          <p className="text-[10px] leading-relaxed text-slate-400">
+          <p className="text-xs leading-relaxed text-slate-400">
             {lang === 'ka'
               ? 'ხელოსნის მოსაძებნად რეგისტრაცია საჭირო არ არის — აირჩიეთ ქალაქი და პროფესია.'
               : lang === 'ru'
@@ -171,27 +169,10 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           </p>
         </div>
 
-        {/* Craftsman Entry CTA Banner - Compact */}
-        <div className="bg-slate-900/60 border border-dashed border-slate-800 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs">
-          <div>
-            <p className="font-bold text-slate-200 text-[11px] leading-tight">
-              {lang === 'ka' ? 'ხართ ხელოსანი?' : lang === 'ru' ? 'Вы мастер?' : 'Are you a craftsman?'}
-            </p>
-            <p className="text-[9px] text-slate-400 leading-tight">
-              {lang === 'ka' ? 'ხელოსნის რეგისტრაცია — მიიღეთ კლიენტების ზარები' : lang === 'ru' ? 'Регистрация мастера — получайте звонки клиентов' : 'Craftsman registration — receive client calls'}
-            </p>
-          </div>
-          <button
-            onClick={onOpenCraftsmanLogin}
-            className="bg-slate-800 hover:bg-slate-700 text-amber-400 font-semibold px-2 py-1 text-[11px] rounded-lg border border-amber-500/30 transition-colors shrink-0 ml-2"
-          >
-            {t.craftsmanLogin}
-          </button>
-        </div>
       </div>
 
       {/* Commercial Advertisement Banner Container */}
-      <div className="flex-1 -mx-2.5 sm:-mx-3 mb-0 mt-2 flex flex-col min-h-[160px]">
+      <div className="flex-1 -mx-3 sm:-mx-4 mb-0 mt-2 flex flex-col min-h-[160px]">
         <div className="flex-1 flex flex-col min-h-0 bg-slate-900 border-t border-x border-slate-800/90 overflow-hidden transition-all group shadow-xl">
           {activeAd && activeAd.company_name && activeAd.image_url ? (
             <>
