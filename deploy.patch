@@ -812,3 +812,29 @@ diff --git a/src/screens/SettingsScreen.tsx b/src/screens/SettingsScreen.tsx
 +          </span>
          </h3>
          <ul className="space-y-1.5 text-slate-300 text-xs">
+@@ -72,14 +78,14 @@
+           <li className="flex items-center gap-2">
+             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+-            <span>{lang === 'ka' ? 'საქართველოს მასშტაბით ხელოსნებთან პირდაპირი დაკავშირება' : 'Direct contact with craftsmen across Georgia'}</span>
++            <span>{lang === 'ka' ? 'საქართველოს მასშტაბით ხელოსნებთან პირდაპირი დაკავშირება' : lang === 'ru' ? 'Прямой контакт с мастерами по всей Грузии' : 'Direct contact with craftsmen across Georgia'}</span>
+           </li>
+           <li className="flex items-center gap-2">
+             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+-            <span>{lang === 'ka' ? 'Top 15 პრიორიტეტული და შემოწმებული პროფესიონალები' : 'Top 15 premier verified professionals'}</span>
++            <span>{lang === 'ka' ? 'Top 15 პრიორიტეტული და შემოწმებული პროფესიონალები' : lang === 'ru' ? 'Проверенные специалисты в приоритетном списке ТОП-15' : 'Top 15 premier verified professionals'}</span>
+           </li>
+           <li className="flex items-center gap-2">
+             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+-            <span>{lang === 'ka' ? 'მომხმარებელთა კონფიდენციალურობა და უსაფრთხოება' : 'User privacy and data security'}</span>
++            <span>{lang === 'ka' ? 'მომხმარებელთა კონფიდენციალურობა და უსაფრთხოება' : lang === 'ru' ? 'Конфиденциальность и безопасность пользователей' : 'User privacy and data security'}</span>
+           </li>
+         </ul>
+       </div>
++
+diff --git a/src/components/TopAppBar.tsx b/src/components/TopAppBar.tsx
+--- a/src/components/TopAppBar.tsx
++++ b/src/components/TopAppBar.tsx
++@@ -89,1 +89,1 @@
++-          subtitle: lang === 'ka' ? 'ენები და პროფილი' : 'Languages & Profile',
+++          subtitle: lang === 'ka' ? 'ენები და პროფილი' : lang === 'ru' ? 'Язык и профиль' : 'Languages & Profile',
++
