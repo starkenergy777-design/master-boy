@@ -51,6 +51,13 @@ export class StorageService {
         idleTimeoutMillis: 30000,
         ssl: { ca: caCertificate, rejectUnauthorized: true },
         application_name: 'master-boy-api',
+        // Assume the restricted backend role on every pooled connection so RLS
+        // and column grants apply even when DATABASE_URL uses Supabase's postgres login.
+        onConnect: async (client) => {
+          if (process.env.NODE_ENV === 'production') {
+            await client.query('SET ROLE masterboy_app');
+          }
+        },
       });
       this.pool.on('error', (e) => { this.connected = false; this.connectionError = e.message; });
     }
@@ -63,7 +70,14 @@ export class StorageService {
 
   async connect(): Promise<void> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return;
-    try { await this.db().query('SELECT 1'); this.connected = true; this.connectionError = null; }
+    try {
+      const result = await this.db().query('SELECT current_user AS runtime_role');
+      if (process.env.NODE_ENV === 'production' && result.rows[0]?.runtime_role !== 'masterboy_app') {
+        throw new Error('Production database connection must use the restricted masterboy_app role.');
+      }
+      this.connected = true;
+      this.connectionError = null;
+    }
     catch (e: any) { this.connected = false; this.connectionError = e.message; throw e; }
   }
 
