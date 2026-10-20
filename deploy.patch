@@ -836,3 +836,11 @@ diff --git a/src/components/TopAppBar.tsx b/src/components/TopAppBar.tsx
 @@ -89,1 +89,1 @@
 -          subtitle: lang === 'ka' ? 'ენები და პროფილი' : 'Languages & Profile',
 +          subtitle: lang === 'ka' ? 'ენები და პროფილი' : lang === 'ru' ? 'Язык и профиль' : 'Languages & Profile',
+diff --git a/src/screens/MainScreen.tsx b/src/screens/MainScreen.tsx
+--- a/src/screens/MainScreen.tsx
++++ b/src/screens/MainScreen.tsx
+@@ -210,3 +210,3 @@
+               <div className="flex items-center gap-1.5 min-w-0">
+                 <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
+-                  {lang === 'ka' ? 'რეკლამა' : lang === 'ru' ? 'Рეკлама' : 'Sponsored'}
++                  {lang === 'ka' ? 'რეკლამა' : lang === 'ru' ? 'Реклама' : 'Sponsored'}
