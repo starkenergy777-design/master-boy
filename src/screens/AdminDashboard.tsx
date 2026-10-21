@@ -247,35 +247,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return localizeTree(lang, (
-    <div className="flex-1 flex flex-col p-4 pb-20 space-y-4 animate-fade-in text-slate-100">
-      {/* Top Banner */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
-            <Shield className="w-5 h-5" />
+    <div className="admin-console relative isolate mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-5 px-4 pb-24 pt-5 text-slate-100 animate-fade-in sm:gap-6 lg:px-6">
+      {/* Admin cabinet identity */}
+      <header className="relative overflow-hidden rounded-[1.75rem] border border-cyan-400/20 bg-[radial-gradient(ellipse_at_top_right,_rgba(34,211,238,0.12),_transparent_45%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(17,24,39,0.96)_58%,_rgba(12,74,110,0.36))] p-5 shadow-[0_18px_50px_rgba(2,6,23,0.34)] sm:p-6">
+        <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full border border-cyan-300/10" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-400/10 text-cyan-200 shadow-inner shadow-cyan-100/5">
+              <Shield className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{t.adminCabinet}</h2>
+                <span className="inline-flex max-w-full items-center truncate rounded-full border border-slate-500/40 bg-slate-800/70 px-3 py-1 text-xs font-semibold text-slate-200">
+                  {currentUser.roles.join(', ')}
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm text-slate-300">{currentUser.phone}</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
-              <span>{t.adminCabinet}</span>
-              <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
-                {currentUser.roles.join(', ')}
-              </span>
-            </h2>
-            <p className="text-[10px] text-slate-400">
-              {currentUser.phone}
-            </p>
-          </div>
+          {isSuperAdmin && (
+            <button
+              onClick={onOpenSuperAdmin}
+              className="min-h-10 shrink-0 rounded-xl border border-violet-300/25 bg-violet-400/10 px-4 py-2 text-sm font-bold text-violet-100 transition-colors hover:border-violet-200/40 hover:bg-violet-400/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
+            >
+              ⚙️ Super Admin
+            </button>
+          )}
         </div>
-
-        {isSuperAdmin && (
-          <button
-            onClick={onOpenSuperAdmin}
-            className="text-xs font-bold text-purple-400 bg-purple-950/60 border border-purple-800/80 px-3 py-1.5 rounded-xl hover:bg-purple-900 transition-colors shadow-sm"
-          >
-            ⚙️ Super Admin
-          </button>
-        )}
-      </div>
+      </header>
 
       {/* Lock Status Alert */}
       {analytics?.configLocked && (
@@ -305,7 +305,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* Tabs */}
-      <div className="flex rounded-2xl bg-slate-900 p-1 border border-slate-800 text-[11px] font-semibold">
+      <div className="admin-console-tabs grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-700/70 bg-slate-950/50 p-1.5 text-xs font-semibold sm:grid-cols-4">
         <button
           onClick={() => setActiveTab('analytics')}
           className={`flex-1 py-1.5 rounded-xl transition-all ${
@@ -343,29 +343,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Analytics Tab */}
       {activeTab === 'analytics' && analytics && (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-1">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="admin-console-panel rounded-2xl p-4 sm:p-5 space-y-2">
               <span className="text-[10px] text-slate-400 uppercase font-bold">Revenue (Top 15)</span>
               <p className="text-xl font-black text-amber-400 font-mono">
                 {analytics.totalRevenueGEL.toFixed(2)} GEL
               </p>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-1">
+            <div className="admin-console-panel rounded-2xl p-4 sm:p-5 space-y-2">
               <span className="text-[10px] text-slate-400 uppercase font-bold">Active Top 15</span>
               <p className="text-xl font-black text-emerald-400 font-mono">
                 {analytics.activeTop15Slots} slots
               </p>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-1">
+            <div className="admin-console-panel rounded-2xl p-4 sm:p-5 space-y-2">
               <span className="text-[10px] text-slate-400 uppercase font-bold">Total Craftsmen</span>
               <p className="text-xl font-black text-white font-mono">
                 {analytics.totalCraftsmen}
               </p>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-1">
+            <div className="admin-console-panel rounded-2xl p-4 sm:p-5 space-y-2">
               <span className="text-[10px] text-slate-400 uppercase font-bold">Disputes Flagged</span>
               <p className="text-xl font-black text-rose-400 font-mono">
                 {analytics.totalDisputes}
@@ -373,7 +373,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-400">
+          <div className="admin-console-note rounded-2xl p-4 text-xs text-slate-300">
             All accounting and ledger verification is automatically audited by AI_ADMIN (Gemini).
           </div>
         </div>
@@ -383,7 +383,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'craftsmen' && (
         <div className="space-y-3">
           {/* CRM Search & Filters */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2">
+          <div className="admin-console-panel rounded-2xl p-4 space-y-3">
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
@@ -437,7 +437,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 return (
                   <div
                     key={c.id}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between text-xs hover:border-slate-700 transition-colors"
+                    className="admin-console-panel admin-console-row rounded-2xl p-3 sm:p-4 flex items-center justify-between text-sm transition-colors"
                   >
                     <div className="min-w-0 flex-1 pr-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -516,7 +516,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 });
                 setNewPriceInput((p.amountMinor / 100).toString());
               }}
-              className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between hover:border-slate-700 cursor-pointer text-xs"
+              className="admin-console-panel admin-console-row rounded-2xl p-4 flex items-center justify-between cursor-pointer text-sm transition-colors"
             >
               <div>
                 <span className="font-bold text-white block">
@@ -537,7 +537,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Reports Tab (§3.6 & §7.5) */}
       {activeTab === 'reports' && (
         <div className="space-y-3">
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               onClick={() => handleTriggerAiReport('ACCOUNTING')}
               disabled={reportGenerating}
@@ -560,7 +560,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {reports.map((r) => (
               <div
                 key={r.id}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2 text-xs"
+                className="admin-console-panel rounded-2xl p-4 space-y-3 text-xs"
               >
                 <div className="flex items-center justify-between">
                   <span
@@ -595,7 +595,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Edit Top 15 Price Modal (Replaces window.prompt) */}
       {editingPrice && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-xs w-full space-y-4 shadow-2xl animate-scale-up">
+          <div className="admin-console-modal bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-xs w-full space-y-4 shadow-2xl animate-scale-up">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-xs font-bold text-white uppercase tracking-wider">
                 Update Top 15 Price
@@ -652,7 +652,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Delete Craftsman Confirmation Modal (Replaces window.confirm) */}
       {deleteConfirmCraftsmanId && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-xs w-full space-y-4 shadow-2xl animate-scale-up text-center">
+          <div className="admin-console-modal bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-xs w-full space-y-4 shadow-2xl animate-scale-up text-center">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
               <Trash2 className="w-6 h-6" />
             </div>
