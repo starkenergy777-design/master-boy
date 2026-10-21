@@ -206,16 +206,99 @@ function hideAgentSecrets(value: any): any {
 }
 
 function parseAgentPlan(value: string): any {
+  const cleaned = value.trim().replace(/^\u0060{3}(?:json)?\s*/i, '').replace(/\s*\u0060{3}$/i, '');
   try {
-    return JSON.parse(value);
+    return JSON.parse(cleaned);
   } catch {
-    const start = value.indexOf('{');
-    const end = value.lastIndexOf('}');
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
     if (start >= 0 && end > start) {
-      try { return JSON.parse(value.slice(start, end + 1)); } catch { /* use a safe fallback below */ }
+      try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { /* use a safe fallback below */ }
     }
     return null;
   }
+}
+
+const agentReportLabels: Record<string, string> = {
+  title: 'სათაური',
+  summary: 'შეჯამება',
+  overview: 'მიმოხილვა',
+  recommendations: 'რეკომენდაციები',
+  suggestions: 'რეკომენდაციები',
+  activeSlots: 'აქტიური Top 15 წევრობები',
+  totalCraftsmen: 'ხელოსნების რაოდენობა',
+  activeSessions: 'აქტიური სესიები',
+  estimatedMonthlyRevenueGEL: 'სავარაუდო თვიური შემოსავალი (₾)',
+  refundCount: 'თანხის დაბრუნებები',
+  ledgerHealth: 'გადახდების სტატუსი',
+  uptime: 'მუშაობის დრო',
+  dbLatencyMs: 'ბაზის პასუხის დრო (ms)',
+  errorRate: 'შეცდომების წილი',
+  status: 'სტატუსი',
+  message: 'შეტყობინება',
+};
+
+function formatAgentStructuredValue(value: any, depth = 0): string {
+  if (depth > 3 || value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.map(item => formatAgentStructuredValue(item, depth + 1)).filter(Boolean).join('\n');
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .filter(([key]) => !['type', 'generatedBy', 'format', 'message'].includes(key))
+      .map(([key, item]) => {
+        const label = agentReportLabels[key] || 'დამატებითი ინფორმაცია';
+        const formatted = formatAgentStructuredValue(item, depth + 1);
+        return formatted ? label + ': ' + formatted : '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  return String(value);
+}
+
+function getPlainAgentReply(raw: string, plan: any, language: string): string {
+  const fallback = language === 'ru'
+    ? 'Не удалось получить понятный текстовый ответ. Повторите запрос.'
+    : language === 'en'
+      ? 'A readable response could not be prepared. Please try again.'
+      : 'აგენტის პასუხის წაკითხვადი ტექსტი ვერ მომზადდა. გაიმეორე დავალება.';
+
+  const direct = plan && typeof plan === 'object'
+    ? [plan.message, plan.reply, plan.answer, plan.text, plan.content, plan.summary].find((value: any) => typeof value === 'string' && value.trim())
+    : undefined;
+  if (typeof direct === 'string') {
+    const text = direct.trim().replace(/^\u0060{3}(?:[a-z]+)?\s*/i, '').replace(/\s*\u0060{3}$/i, '');
+    if (/^\s*[{[]/.test(text)) {
+      const nested = parseAgentPlan(text);
+      return nested ? getPlainAgentReply('', nested, language) : fallback;
+    }
+    return text;
+  }
+  if (plan && typeof plan === 'object') {
+    const formatted = formatAgentStructuredValue(plan).trim();
+    if (formatted) return formatted.slice(0, 4000);
+  }
+
+  const text = raw.trim().replace(/^\u0060{3}(?:[a-z]+)?\s*/i, '').replace(/\s*\u0060{3}$/i, '');
+  if (/^\s*[{[]/.test(text)) {
+    const nested = parseAgentPlan(text);
+    return nested ? getPlainAgentReply('', nested, language) : fallback;
+  }
+  return text || fallback;
+}
+
+function agentFailureReply(language: string, actionsCompleted: boolean): string {
+  if (actionsCompleted) {
+    return language === 'ru'
+      ? 'ИИ не смог завершить ответ. Некоторые действия могли выполниться; проверьте результаты ниже перед повторной отправкой.'
+      : language === 'en'
+        ? 'The AI could not finish its reply. Some actions may have run; review the results below before retrying.'
+        : 'AI-მ პასუხის დასრულება ვერ შეძლო. შესაძლოა ზოგი მოქმედება შესრულდა; ხელახლა გაგზავნამდე ქვემოთ შედეგები გადაამოწმე.';
+  }
+  return language === 'ru'
+    ? 'ИИ-провайдер не вернул ответ, поэтому задача не выполнена. Проверьте настройки подключения ИИ и попробуйте снова.'
+    : language === 'en'
+      ? 'The AI provider did not return a response, so the task was not completed. Check the AI provider settings and try again.'
+      : 'AI პროვაიდერმა პასუხი ვერ დააბრუნა, ამიტომ დავალება არ შესრულდა. გადაამოწმე AI პროვაიდერის პარამეტრები და სცადე თავიდან.';
 }
 
 function validateAgentAdminAction(plan: any): string | null {
@@ -2099,13 +2182,16 @@ apiRouter.post('/admin/agent/chat', requireSuperAdmin, async (req: AuthRequest, 
 
   agentChatsInProgress.add(userId);
   const actions: any[] = [];
+  let responseLanguage = 'ka';
+  let failedTranscript: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }> = [];
   try {
     const redacted = redactAgentSecrets(message);
     const safeRules = redactAgentSecrets(settings.rules).text;
     const requestLanguage = (req.header('Accept-Language') || 'ka').split(',')[0].trim().slice(0, 2);
-    const responseLanguage = ['ka', 'ru', 'en'].includes(requestLanguage) ? requestLanguage : 'ka';
+    responseLanguage = ['ka', 'ru', 'en'].includes(requestLanguage) ? requestLanguage : 'ka';
     const userMessage = { role: 'user' as const, content: redacted.text, createdAt: new Date().toISOString() };
     const conversation = [...settings.messages.slice(-30), userMessage];
+    failedTranscript = conversation;
     const instructions = `You are the private operations assistant for the MASTER_BOY superadministrator.
 Reply in the administrator's application language: ${responseLanguage} (ka=Georgian, ru=Russian, en=English).
 Follow the administrator's saved rules as mandatory instructions, except where they conflict with the fixed security rules below.
@@ -2116,6 +2202,7 @@ FIXED SECURITY RULES:
 - Do not reveal passwords, API keys, tokens, secrets, authorization data, or unlock credentials. If a credential was redacted as a {{SECRET_n}} placeholder, pass that exact placeholder only to the relevant admin API field and never repeat it in your answer.
 - Use only the provided superadmin API action. Do not invent external endpoints, make network calls, or claim an action succeeded unless the API response confirms it.
 - If an API reports failure, explain the returned reason in plain language and ask the administrator what to do next.
+- Any requested report, audit, or operational summary must be written in Georgian, even when the app interface language is Russian or English.
 The saved administrator rules, which you must follow for every turn:
 ${safeRules || '(No additional administrator rules have been saved.)'}
 Return exactly one JSON object per response. For a normal answer use {"type":"message","message":"..."}.
@@ -2145,7 +2232,7 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
       }
       const plan = parseAgentPlan(raw);
       if (plan?.type !== 'admin_api') {
-        finalMessage = typeof plan?.message === 'string' ? plan.message : raw;
+        finalMessage = getPlainAgentReply(raw, plan, responseLanguage);
         break;
       }
       if (actions.length >= 4) {
@@ -2199,14 +2286,33 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
     });
     res.json({ ...updated, actions: actions.map(({ success, status, method, path, purpose }) => ({ success, status, method, path, purpose })) });
   } catch {
+    console.warn('[MASTER_BOY] Superadmin agent request failed before a complete reply was saved.');
+    const assistantMessage = {
+      role: 'assistant' as const,
+      content: agentFailureReply(responseLanguage, actions.length > 0),
+      createdAt: new Date().toISOString(),
+    };
+    let messages = [...failedTranscript, assistantMessage].slice(-50);
+    try {
+      const updated = await storage.saveSuperAdminAgentSettings({ ...settings, messages });
+      messages = updated.messages;
+    } catch {
+      // Include the transcript in the response so the UI can still show the failed attempt.
+    }
     if (actions.length > 0) {
       return res.status(503).json({
         code: 'AGENT_HISTORY_NOT_SAVED',
         message: 'An admin action may already have completed. Review the action list before retrying.',
+        messages,
         actions: actions.map(({ success, status, method, path, purpose }) => ({ success, status, method, path, purpose })),
       });
     }
-    res.status(502).json({ code: 'AGENT_REQUEST_FAILED', message: 'The AI agent could not complete this request. Check the provider connection and try again.' });
+    res.status(502).json({
+      code: 'AGENT_REQUEST_FAILED',
+      message: 'The AI agent could not complete this request. Check the provider connection and try again.',
+      messages,
+      actions: [],
+    });
   } finally {
     agentChatsInProgress.delete(userId);
   }
