@@ -86,7 +86,7 @@ export async function generateAIText(
     const apiKey = db.openAiApiKey || process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error('The selected OpenAI API key is not configured.');
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
       const response = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
@@ -104,7 +104,10 @@ export async function generateAIText(
         }),
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`OpenAI API returned HTTP ${response.status}`);
+      if (!response.ok) {
+        console.warn('[MASTER_BOY] OpenAI generation failed (HTTP ' + response.status + ').');
+        throw new Error('OpenAI API returned HTTP ' + response.status);
+      }
       const data: any = await response.json();
       const outputText = (data.output || [])
         .flatMap((item: any) => item.content || [])
@@ -115,6 +118,11 @@ export async function generateAIText(
         throw new Error('OpenAI returned an empty response.');
       }
       return outputText.trim();
+    } catch (error) {
+      if ((error as any)?.name === 'AbortError') {
+        console.warn('[MASTER_BOY] OpenAI generation timed out after 30 seconds.');
+      }
+      throw error;
     } finally {
       clearTimeout(timeout);
     }
@@ -133,11 +141,17 @@ export async function generateAIText(
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error('Gemini response timeout')), 8000);
+      timeoutId = setTimeout(() => reject(new Error('Gemini response timeout')), 30000);
     });
     const response = await Promise.race([generatePromise, timeoutPromise]);
     if (!response.text?.trim()) throw new Error('Gemini returned an empty response.');
     return response.text.trim();
+  } catch (error) {
+    const status = Number((error as any)?.status || (error as any)?.response?.status);
+    if (status) console.warn('[MASTER_BOY] Gemini generation failed (HTTP ' + status + ').');
+    else if ((error as any)?.message === 'Gemini response timeout') console.warn('[MASTER_BOY] Gemini generation timed out after 30 seconds.');
+    else console.warn('[MASTER_BOY] Gemini generation failed.');
+    throw error;
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
@@ -261,54 +275,92 @@ Keep answers concise, polite, helpful, and directly relevant to MASTER_BOY craft
   };
 }
 
-export async function generatePeriodicReport(type: 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH'): Promise<any> {
-  const totalCraftsmen = db.craftsmen.size;
-  const activeMemberships = Array.from(db.top15Memberships.values()).filter(m => m.status === 'ACTIVE').length;
-  const totalReports = db.aiReports.length;
-
-  if (db.providerConfig.ai.configured) {
-    try {
-      const reportText = await generateAIText(
-        `Generate a short JSON report of type ${type} for MASTER_BOY with ${totalCraftsmen} craftsmen and ${activeMemberships} active Top 15 memberships. Return a valid JSON object only.`,
-        'Return only valid JSON.',
-        true,
-      );
-      return JSON.parse(reportText);
-    } catch {
-      console.warn('Configured AI provider failed to generate a report; using deterministic data.');
+function parseReportJson(value: string): any {
+  const cleaned = value.trim()
+    .replace(/^\u0060{3}(?:json)?\s*/i, '')
+    .replace(/\s*\u0060{3}$/i, '');
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { /* use Georgian fallback */ }
     }
-  }
-
-  // Fallback structured content
-  if (type === 'ACCOUNTING') {
-    return {
-      title: 'Autonomous Financial Audit',
-      activeSlots: activeMemberships,
-      totalCraftsmen,
-      estimatedMonthlyRevenueGEL: activeMemberships * 50,
-      refundCount: 0,
-      ledgerHealth: 'PERFECT',
-      generatedBy: 'AI_ADMIN',
-    };
-  } else if (type === 'RECOMMENDATIONS') {
-    return {
-      title: 'Autonomous System Optimization Advice',
-      suggestions: [
-        'Consider introducing holiday weekend discounts on select craft categories.',
-        'SMS verification latency is nominal across Magti and Silknet networks.',
-        'Recommend keeping 6-month Configuration Lock active for uncompromised runtime integrity.',
-      ],
-      generatedBy: 'AI_ADMIN',
-    };
-  } else {
-    return {
-      title: 'System Health & Latency Metric',
-      uptime: '99.98%',
-      dbLatencyMs: 1.2,
-      errorRate: '0.00%',
-      activeSessions: db.sessions.size,
-      generatedBy: 'AI_ADMIN',
-    };
+    return null;
   }
 }
 
+function hasGeorgianText(value: unknown): value is string {
+  return typeof value === 'string' && /[\u10A0-\u10FF]/.test(value);
+}
+
+function reportFallback(type: 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH', totalCraftsmen: number, activeMemberships: number, activeSessions: number): string {
+  if (type === 'ACCOUNTING') {
+    return [
+      'ფინანსური ანგარიში',
+      'ანგარიშში ნაჩვენებია მხოლოდ ხელმისაწვდომი დათვლები. შემოსავლისა და დაბრუნებების მონაცემები აქ არ არის დადასტურებული.',
+      'ხელოსნების რაოდენობა: ' + totalCraftsmen,
+      'აქტიური Top 15 წევრობები: ' + activeMemberships,
+    ].join('\n');
+  }
+  if (type === 'RECOMMENDATIONS') {
+    return [
+      'სისტემის რეკომენდაციები',
+      'შეადარე ხელოსნების რაოდენობა წინა პერიოდს.',
+      'შეადარე აქტიური Top 15 წევრობები წინა პერიოდს.',
+      'გადაამოწმე გადახდების სტატუსი შესაბამის საბანკო ჩანაწერებში.',
+    ].join('\n');
+  }
+  return [
+    'სისტემის მდგომარეობის ანგარიში',
+    'აქტიური სესიები: ' + activeSessions,
+    'მუშაობის დრო, ბაზის პასუხის სისწრაფე და შეცდომების მაჩვენებელი ამ ანგარიშში არ იზომება.',
+  ].join('\n');
+}
+
+export async function generatePeriodicReport(type: 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH'): Promise<string> {
+  const totalCraftsmen = db.craftsmen.size;
+  const activeMemberships = Array.from(db.top15Memberships.values()).filter(m => m.status === 'ACTIVE').length;
+  const activeSessions = db.sessions.size;
+  const fallback = reportFallback(type, totalCraftsmen, activeMemberships, activeSessions);
+  if (!db.providerConfig.ai.configured) return fallback;
+
+  try {
+    const reportText = await generateAIText(
+      'შექმენი ' + (type === 'ACCOUNTING' ? 'ფინანსური' : type === 'RECOMMENDATIONS' ? 'რეკომენდაციების' : 'სისტემის მდგომარეობის') +
+        ' მოკლე ანგარიში MASTER_BOY აპლიკაციისთვის. ხელოსნების რაოდენობაა ' + totalCraftsmen +
+        ', აქტიური Top 15 წევრობებია ' + activeMemberships + ', აქტიური სესიებია ' + activeSessions +
+        '. ყველა ადამიანისთვის განკუთვნილი ტექსტი დაწერე ქართულად. გამოიყენე მხოლოდ მოცემული მონაცემები, არ გამოიგონო შემოსავალი, uptime, latency ან სხვა მაჩვენებელი. დააბრუნე მხოლოდ JSON ობიექტი ფორმით {"title":"ქართული სათაური","summary":"ქართული შეჯამება","recommendations":["ქართული რეკომენდაცია"]}.',
+      'ანგარიში სრულად ქართულ ენაზე დაწერე. რიცხვითი ფაქტები გამოიყენე მხოლოდ მოთხოვნაში მოცემული მონაცემებიდან. მხოლოდ ვალიდური JSON დააბრუნე.',
+      true,
+    );
+    const report = parseReportJson(reportText);
+    if (!report || typeof report !== 'object' || Array.isArray(report)) throw new Error('Invalid report format.');
+
+    const title = hasGeorgianText(report.title) ? report.title.trim() : '';
+    const summary = hasGeorgianText(report.summary) ? report.summary.trim() : '';
+    const recommendations = Array.isArray(report.recommendations)
+      ? report.recommendations.filter(hasGeorgianText).map((item: string) => item.trim()).filter(Boolean).slice(0, 6)
+      : [];
+    if (!title && !summary && recommendations.length === 0) throw new Error('Report text was not returned in Georgian.');
+
+    const lines = [title || (type === 'ACCOUNTING' ? 'ფინანსური ანგარიში' : type === 'RECOMMENDATIONS' ? 'სისტემის რეკომენდაციები' : 'სისტემის მდგომარეობის ანგარიში')];
+    if (summary) lines.push(summary);
+    if (type === 'ACCOUNTING') {
+      lines.push('ხელოსნების რაოდენობა: ' + totalCraftsmen);
+      lines.push('აქტიური Top 15 წევრობები: ' + activeMemberships);
+    } else if (type === 'HEALTH') {
+      lines.push('აქტიური სესიები: ' + activeSessions);
+    }
+    if (recommendations.length > 0) {
+      lines.push('რეკომენდაციები:');
+      lines.push(...recommendations.map((item: string) => '• ' + item));
+    }
+    return lines.join('\n');
+  } catch (error) {
+    console.warn('[MASTER_BOY] Configured AI provider failed to generate a Georgian report (' +
+      (error instanceof Error ? error.name : 'unknown') + '); using Georgian fallback.');
+    return fallback;
+  }
+}
