@@ -123,6 +123,12 @@ check('Top15 payment provider selection requires explicit user choice', () => {
   assert.doesNotMatch(top15, /setSelectedProviderId\(provs\[0\]\.id\)/);
   assert.match(top15, /setSelectedProviderId\(''\)/);
 });
+check('Top15 does not reserve a slot when no payment provider is available', () => {
+  const providerFetch = top15.indexOf('const provs = await api.getPaymentProviders();');
+  const unavailableGuard = top15.indexOf('if (provs.length === 0)');
+  const reservationCall = top15.indexOf('const res = await api.reserveTop15Slot');
+  assert.ok(providerFetch >= 0 && providerFetch < unavailableGuard && unavailableGuard < reservationCall);
+});
 check('Top15 payment verifies reservation ownership and payment-status ownership', () => {
   assert.match(routes, /reservation\.craftsmanId !== craftsman\.id/);
   assert.match(routes, /intent\.craftsmanId !== craftsman\.id/);
