@@ -476,7 +476,8 @@ function buildSuperAdminAgentAuditSnapshot() {
   const paymentIntents = Array.from(db.paymentIntents.values());
   const successfulPayments = paymentIntents.filter((payment: any) => payment.status === 'SUCCEEDED');
   const memberships = Array.from(db.top15Memberships.values());
-  const activeMemberships = memberships.filter((membership: any) => membership.status === 'ACTIVE' && isLive(membership.expiresAt));
+  const activeMemberships = db.getActiveTop15Memberships();
+  const activeMembershipIds = new Set(activeMemberships.map((membership) => membership.id));
   const reservations = Array.from(db.top15Reservations.values());
   const users = Array.from(db.users.values());
   const advertisements = Array.from(db.advertisements.values());
@@ -614,7 +615,10 @@ function buildSuperAdminAgentAuditSnapshot() {
       successfulRevenueMinor: totalRevenueMinor,
       pendingReservationCount: reservations.filter((reservation: any) => reservation.status === 'HELD' && isLive(reservation.expiresAt)).length,
       reservationsByStatus: countBy(reservations, (reservation: any) => reservation.status),
-      membershipsByStatus: countBy(memberships, (membership: any) => membership.status === 'ACTIVE' && !isLive(membership.expiresAt) ? 'EXPIRED' : membership.status),
+      membershipsByStatus: countBy(memberships, (membership: any) => {
+        if (membership.status !== 'ACTIVE' || activeMembershipIds.has(membership.id)) return membership.status;
+        return isLive(membership.expiresAt) ? 'INELIGIBLE' : 'EXPIRED';
+      }),
     },
     top15Pricing: {
       count: priceRows.length,
