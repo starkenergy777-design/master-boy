@@ -156,6 +156,9 @@ export async function generateAIText(
     }
   }
 
+  if (db.providerConfig.ai.selectedProvider !== 'gemini') {
+    throw new Error('No AI provider is selected.');
+  }
   const client = getAiClient();
   if (!client) throw new Error('The selected Gemini API key is not configured.');
   const generatePromise = client.models.generateContent({

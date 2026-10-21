@@ -252,7 +252,7 @@ export interface ProviderConfig {
     verifiedAt: string | null;
     lastCallOk: boolean;
     provider: string;
-    selectedProvider: 'gemini' | 'openai';
+    selectedProvider: 'gemini' | 'openai' | null;
     geminiConfigured: boolean;
     openaiConfigured: boolean;
   };

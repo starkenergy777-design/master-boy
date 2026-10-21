@@ -4,7 +4,7 @@ import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, C
 export type AiProvider = 'gemini' | 'openai';
 
 export interface AiProviderSettings {
-  selectedProvider: AiProvider;
+  selectedProvider: AiProvider | null;
   geminiApiKey: string | null;
   openAiApiKey: string | null;
   verifiedAt: string | null;
@@ -22,15 +22,22 @@ export interface SuperAdminAgentSettings {
   messages: SuperAdminAgentMessage[];
 }
 
+const SUPERADMIN_AGENT_MESSAGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 function normalizeSuperAdminAgentSettings(value: any): SuperAdminAgentSettings {
+  const cutoff = Date.now() - SUPERADMIN_AGENT_MESSAGE_RETENTION_MS;
   const messages = Array.isArray(value?.messages)
     ? value.messages
-        .filter((message: any) => (message?.role === 'user' || message?.role === 'assistant') && typeof message?.content === 'string')
+        .filter((message: any) => {
+          if ((message?.role !== 'user' && message?.role !== 'assistant') || typeof message?.content !== 'string') return false;
+          const createdAt = typeof message.createdAt === 'string' ? Date.parse(message.createdAt) : NaN;
+          return Number.isFinite(createdAt) && createdAt >= cutoff;
+        })
         .slice(-50)
         .map((message: any) => ({
           role: message.role as 'user' | 'assistant',
           content: message.content.slice(0, 5000),
-          createdAt: typeof message.createdAt === 'string' ? message.createdAt : new Date().toISOString(),
+          createdAt: message.createdAt as string,
         }))
     : [];
   return {
@@ -148,7 +155,7 @@ export class StorageService {
     const prices: Record<string, Top15Price> = {};
     for (const x of p.rows) prices[x.id] = { cityId:x.city_id, professionId:x.profession_id, amountMinor:Number(x.amount_minor), currency:x.currency, updatedAt:date(x.updated_at), updatedBy:x.updated_by || 'system' };
     const env = process.env;
-    const aiProvider: AiProvider = env.AI_PROVIDER === 'openai' ? 'openai' : 'gemini';
+    const aiProvider: AiProvider | null = env.AI_PROVIDER === 'openai' ? 'openai' : env.AI_PROVIDER === 'gemini' ? 'gemini' : null;
     const envPayment = [
       { id:'prov-bog', name:'საქართველოს ბანკი (Bank of Georgia iPay)', apiKeyMasked:'not configured', clientId:env.BOG_MERCHANT_ID || '', secretKey:env.BOG_SECRET || '', isActive:Boolean(r.bog_active && env.BOG_SECRET) },
       { id:'prov-tbc', name:'თიბისი ბანკი (TBC Bank Checkout / Pay)', apiKeyMasked:'not configured', clientId:env.TBC_CLIENT_ID || '', secretKey:env.TBC_CLIENT_SECRET || '', isActive:Boolean(r.tbc_active && env.TBC_CLIENT_SECRET) },
@@ -167,10 +174,10 @@ export class StorageService {
       listingPrice:{ amountMinor:Number(r.standard_listing_price_minor), currency:'GEL', updatedAt:date(r.updated_at), updatedBy:'system' },
       top15Prices:prices, advertisements:[], providerConfig:{ payment, sms, email,
       ai:{
-        configured:Boolean(aiProvider === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY),
+        configured:Boolean(aiProvider === 'openai' ? env.OPENAI_API_KEY : aiProvider === 'gemini' && env.GEMINI_API_KEY),
         verifiedAt:null,
         lastCallOk:false,
-        provider:aiProvider === 'openai' ? 'OpenAI API' : 'Google Gemini',
+        provider:aiProvider === 'openai' ? 'OpenAI API' : aiProvider === 'gemini' ? 'Google Gemini' : '',
         selectedProvider:aiProvider,
         geminiConfigured:Boolean(env.GEMINI_API_KEY),
         openaiConfigured:Boolean(env.OPENAI_API_KEY),
@@ -183,7 +190,7 @@ export class StorageService {
   }
 
   async loadAiProviderSettings(): Promise<AiProviderSettings> {
-    const envProvider: AiProvider = process.env.AI_PROVIDER === 'openai' ? 'openai' : 'gemini';
+    const envProvider: AiProvider | null = process.env.AI_PROVIDER === 'openai' ? 'openai' : process.env.AI_PROVIDER === 'gemini' ? 'gemini' : null;
     if (!this.pool && process.env.NODE_ENV !== 'production') {
       return {
         selectedProvider: envProvider,
@@ -245,7 +252,50 @@ export class StorageService {
     }
   }
 
+  async pruneSuperAdminAgentMessages(now = Date.now()): Promise<boolean> {
+    const cutoff = new Date(now - SUPERADMIN_AGENT_MESSAGE_RETENTION_MS).toISOString();
+    if (!this.pool && process.env.NODE_ENV !== 'production') {
+      const current = this.superAdminAgentSettings;
+      const normalized = normalizeSuperAdminAgentSettings(current);
+      const changed = normalized.messages.length !== current.messages.length;
+      if (changed) this.superAdminAgentSettings = normalized;
+      return changed;
+    }
+    const result = await this.db().query(
+      `UPDATE public.server_secrets AS config
+       SET secret_value = jsonb_set(
+             config.secret_value,
+             '{superAdminAgent,messages}',
+             COALESCE((
+               SELECT jsonb_agg(message_rows.message ORDER BY message_rows.ordinality)
+               FROM jsonb_array_elements(config.secret_value #> '{superAdminAgent,messages}')
+                    WITH ORDINALITY AS message_rows(message, ordinality)
+               WHERE COALESCE(message_rows.message->>'createdAt', '') >= $1::text
+             ), '[]'::jsonb),
+             true
+           ),
+           updated_at = NOW()
+       WHERE config.secret_name = 'provider_config'
+         AND jsonb_typeof(config.secret_value #> '{superAdminAgent,messages}') = 'array'
+         AND EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements(config.secret_value #> '{superAdminAgent,messages}') AS expired_messages(message)
+           WHERE COALESCE(expired_messages.message->>'createdAt', '') < $1::text
+         )
+       RETURNING config.secret_value #> '{superAdminAgent,messages}' AS messages`,
+      [cutoff]
+    );
+    if (!result.rows.length) return false;
+    this.superAdminAgentSettings = normalizeSuperAdminAgentSettings({
+      ...this.superAdminAgentSettings,
+      messages: result.rows[0].messages,
+    });
+    this.connected = true;
+    return true;
+  }
+
   async loadSuperAdminAgentSettings(): Promise<SuperAdminAgentSettings> {
+    await this.pruneSuperAdminAgentMessages();
     if (!this.pool && process.env.NODE_ENV !== 'production') {
       return normalizeSuperAdminAgentSettings(this.superAdminAgentSettings);
     }
@@ -389,4 +439,15 @@ export class StorageService {
 }
 
 export const storage = new StorageService();
+
+const superAdminAgentRetentionInterval = setInterval(() => {
+  void storage.pruneSuperAdminAgentMessages().catch(() => {
+    console.warn('[MASTER_BOY] Could not apply superadmin agent chat retention cleanup.');
+  });
+}, 60 * 60 * 1000);
+superAdminAgentRetentionInterval.unref?.();
+
+void storage.pruneSuperAdminAgentMessages().catch(() => {
+  console.warn('[MASTER_BOY] Could not apply superadmin agent chat retention cleanup.');
+});
 
