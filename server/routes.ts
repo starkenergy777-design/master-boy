@@ -2466,12 +2466,12 @@ apiRouter.get(['/admin/top15/prices', '/admin/prices'], requireAdmin, (req, res)
 
 apiRouter.get('/admin/top15/members', requireAdmin, (_req, res) => {
   const members = db.getActiveTop15Memberships()
-    .map(membership => {
+    .flatMap(membership => {
       const craftsman = db.craftsmen.get(membership.craftsmanId);
-      if (!craftsman) return null;
+      if (!craftsman) return [];
       const city = db.cities.find(item => item.id === membership.cityId);
       const profession = db.professions.find(item => item.id === membership.professionId);
-      return {
+      return [{
         id: membership.id,
         craftsmanId: craftsman.id,
         craftsmanName: craftsman.name,
@@ -2487,9 +2487,8 @@ apiRouter.get('/admin/top15/members', requireAdmin, (_req, res) => {
         },
         startsAt: membership.startsAt,
         expiresAt: membership.expiresAt,
-      };
+      }];
     })
-    .filter((member): member is NonNullable<typeof member> => member !== null)
     .sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
   res.json(members);
 });
