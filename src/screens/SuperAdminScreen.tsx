@@ -38,14 +38,26 @@ const superAdminAgentCopy = {
     rulesHint: 'ჩაწერე, როგორ უნდა იმუშაოს აგენტმა. პაროლები და API გასაღებები აქ არ შეიყვანო.',
     saveRules: 'წესების შენახვა',
     rulesSaved: 'წესები შენახულია.',
+    addRules: 'წესების დამატება',
+    editRules: 'წესების კორექტირება',
+    deleteRules: 'წესების წაშლა',
+    confirmDeleteRules: 'წაშალო აგენტისთვის შენახული წესები?',
+    rulesDeleted: 'აგენტის წესები წაიშალა.',
+    noRules: 'წესები ჯერ არ არის შენახული.',
+    cancel: 'გაუქმება',
     chat: 'ჩატი აგენტთან',
     chatHint: 'მოქმედებას მხოლოდ მაშინ შეასრულებს, როცა პირდაპირ დაავალებ. მაგალითად, საბანკო ანგარიშის შეცვლა.',
     placeholder: 'დაწერე დავალება...',
     send: 'გაგზავნა',
     waiting: 'ამუშავებს...',
     noMessages: 'ჩატი ჯერ ცარიელია.',
-    privacy: 'ყოველ შეტყობინებაზე აგენტი იღებს პანელის მიმდინარე შეჯამებას: ხელოსნების, ფასების, გადახდების, პროვაიდერებისა და სისტემის სტატუსს. შეჯამებაში საიდუმლო გასაღებები, პაროლები, IBAN-ები, საიდენტიფიკაციო ნომრები და ტელეფონის ნომრები არ არის; ადმინისტრაციული API-ის პასუხებშიც მგრძნობიარე ველები იფარება. ჩატის ტექსტი და შეჯამება იგზავნება არჩეულ AI პროვაიდერთან; ისტორია და წესები ინახება Supabase-ში.',
+    chatRetention: 'ჩატის შეტყობინებები 7 დღის შემდეგ ავტომატურად იშლება.',
+    clearChat: 'ჩატის ისტორიის წაშლა',
+    confirmClearChat: 'წაიშალოს ჩატის მთელი ისტორია? ეს მოქმედება ვერ აღდგება.',
+    chatDeleted: 'ჩატის ისტორია წაიშალა.',
+    privacy: 'ყოველ შეტყობინებაზე აგენტი იღებს პანელის მიმდინარე შეჯამებას: ხელოსნების, ფასების, გადახდების, პროვაიდერებისა და სისტემის სტატუსს. საიდუმლო გასაღებები, პაროლები, IBAN-ები, საიდენტიფიკაციო ნომრები და ტელეფონის ნომრები შეჯამებაში არ შედის; ადმინისტრაციული API-ის პასუხებშიც მგრძნობიარე ველები იფარება. ჩატის ტექსტი და შეჯამება არჩეულ AI პროვაიდერს ეგზავნება. ჩატის ისტორია Supabase-ში ინახება და 7 დღის შემდეგ ავტომატურად იშლება; წესები ცალკე ინახება.',
     actions: 'შესრულებული მოქმედებები',
+    loadFailed: 'აგენტის შენახული პარამეტრები ვერ ჩაიტვირთა.',
     failed: 'აგენტის მოთხოვნა ვერ შესრულდა.',
   },
   ru: {
@@ -59,14 +71,26 @@ const superAdminAgentCopy = {
     rulesHint: 'Укажите, как агент должен работать. Не вводите здесь пароли и API-ключи.',
     saveRules: 'Сохранить правила',
     rulesSaved: 'Правила сохранены.',
+    addRules: 'Добавить правила',
+    editRules: 'Изменить правила',
+    deleteRules: 'Удалить правила',
+    confirmDeleteRules: 'Удалить сохранённые правила агента?',
+    rulesDeleted: 'Правила агента удалены.',
+    noRules: 'Правила ещё не сохранены.',
+    cancel: 'Отмена',
     chat: 'Чат с агентом',
     chatHint: 'Агент действует только по вашему прямому поручению. Например, изменить банковский счёт.',
     placeholder: 'Напишите поручение...',
     send: 'Отправить',
     waiting: 'Обрабатывает...',
     noMessages: 'Чат пока пуст.',
-    privacy: 'При каждом сообщении агент получает текущую сводку панели: мастера, цены, платежи, провайдеры и состояние системы. В сводке нет секретных ключей, паролей, IBAN, идентификационных номеров и телефонов; чувствительные поля также маскируются в ответах административного API. Текст чата и сводка передаются выбранному AI-провайдеру; история и правила хранятся в Supabase.',
+    chatRetention: 'Сообщения чата автоматически удаляются через 7 дней.',
+    clearChat: 'Удалить историю чата',
+    confirmClearChat: 'Удалить всю историю чата? Это действие нельзя отменить.',
+    chatDeleted: 'История чата удалена.',
+    privacy: 'При каждом сообщении агент получает текущую сводку панели: мастера, цены, платежи, провайдеры и состояние системы. Сводка не содержит секретных ключей, паролей, IBAN, идентификационных номеров и телефонов; чувствительные поля также маскируются в ответах административного API. Текст чата и сводка передаются выбранному провайдеру ИИ. История чата хранится в Supabase и автоматически удаляется через 7 дней; правила хранятся отдельно.',
     actions: 'Выполненные действия',
+    loadFailed: 'Не удалось загрузить сохранённые настройки агента.',
     failed: 'Не удалось выполнить запрос агенту.',
   },
   en: {
@@ -80,14 +104,26 @@ const superAdminAgentCopy = {
     rulesHint: 'Set the agent’s operating rules. Do not enter passwords or API keys here.',
     saveRules: 'Save rules',
     rulesSaved: 'Rules saved.',
+    addRules: 'Add rules',
+    editRules: 'Edit rules',
+    deleteRules: 'Delete rules',
+    confirmDeleteRules: 'Delete the saved agent rules?',
+    rulesDeleted: 'Agent rules deleted.',
+    noRules: 'No rules have been saved yet.',
+    cancel: 'Cancel',
     chat: 'Chat with agent',
     chatHint: 'The agent acts only on your direct instruction, such as updating the recipient bank account.',
     placeholder: 'Write a task...',
     send: 'Send',
     waiting: 'Working...',
     noMessages: 'The chat is empty.',
-    privacy: 'Each message includes a live dashboard summary of craftsmen, prices, payments, providers, and system status. The snapshot excludes API keys, passwords, IBANs, tax IDs, and phone numbers; sensitive fields are also masked in admin API responses. Chat text and the summary are sent to the selected AI provider; history and rules are stored in Supabase.',
+    chatRetention: 'Chat messages are automatically deleted after 7 days.',
+    clearChat: 'Delete chat history',
+    confirmClearChat: 'Delete the entire chat history? This cannot be undone.',
+    chatDeleted: 'Chat history deleted.',
+    privacy: 'Each message includes a live dashboard summary of craftsmen, prices, payments, providers, and system status. The snapshot excludes API keys, passwords, IBANs, tax IDs, and phone numbers; sensitive fields are also masked in admin API responses. Chat text and the summary go to the selected AI provider. Chat history is stored in Supabase and automatically deleted after 7 days; rules are stored separately.',
     actions: 'Actions performed',
+    loadFailed: 'Could not load the saved agent settings.',
     failed: 'The agent request failed.',
   },
 } as const;
@@ -109,11 +145,12 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const aiCopy = {
     ka: {
       title: 'AI პროვაიდერი',
-      description: 'აირჩიე Gemini ან OpenAI. API გასაღები ინახება მხოლოდ სერვერზე და უკან არ ბრუნდება.',
+      description: 'აირჩიე AI პროვაიდერი. მისი API გასაღები ინახება მხოლოდ სერვერზე და უკან არ ბრუნდება.',
       active: 'არჩეული',
       ready: 'გასაღები დამატებულია',
       missing: 'გასაღები არ არის',
-      provider: 'აქტიური პროვაიდერი',
+      provider: 'AI პროვაიდერი',
+      chooseProvider: 'ჯერ აირჩიე AI პროვაიდერი.',
       key: 'API გასაღები',
       placeholder: 'ჩასვი გასაღები — შენახვის შემდეგ ველი გასუფთავდება',
       save: 'შემოწმება და შენახვა',
@@ -122,17 +159,18 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       invalid: 'გასაღები უარყოფილია. გადაამოწმე მისი სისწორე და შერჩეულ მოდელზე წვდომა.',
       saveFailed: 'AI პარამეტრები ვერ შეინახა. გადაამოწმე მონაცემთა ბაზის განახლება.',
       adminTools: 'ადმინისტრირების ინსტრუმენტები',
-      note: 'Gemini და OpenAI ორივე მხარდაჭერილია. აირჩიე რომელი იმუშაოს ხელოსნების მხარდაჭერის ჩატსა და ავტომატურ ანგარიშებში.',
+      note: 'ორივე მხარდაჭერილი AI პროვაიდერი ხელმისაწვდომია. აირჩიე სასურველი პროვაიდერი მხარდაჭერის ჩატისა და ავტომატური ანგარიშებისთვის.',
       processing: 'მხარდაჭერის შეტყობინებები დასამუშავებლად არჩეულ AI პროვაიდერს ეგზავნება.',
       billing: 'OpenAI API-ის გამოყენების საფასური ChatGPT-ის გამოწერისგან ცალკეა.'
     },
     ru: {
       title: 'Провайдер ИИ',
-      description: 'Выберите Gemini или OpenAI. API-ключ хранится только на сервере и не возвращается.',
+      description: 'Выберите провайдера ИИ. API-ключ хранится только на сервере и не возвращается.',
       active: 'Выбран',
       ready: 'Ключ добавлен',
       missing: 'Ключ не добавлен',
-      provider: 'Активный провайдер',
+      provider: 'Провайдер ИИ',
+      chooseProvider: 'Сначала выберите провайдера ИИ.',
       key: 'API-ключ',
       placeholder: 'Вставьте ключ — поле очистится после сохранения',
       save: 'Проверить и сохранить',
@@ -141,17 +179,18 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       invalid: 'Ключ отклонён. Проверьте его и доступ к выбранной модели.',
       saveFailed: 'Не удалось сохранить настройки ИИ. Проверьте обновление базы данных.',
       adminTools: 'Инструменты администрирования',
-      note: 'Поддерживаются Gemini и OpenAI. Выберите провайдера для чата поддержки мастеров и автоматических отчётов.',
+      note: 'Оба поддерживаемых провайдера ИИ доступны для чата поддержки мастеров и автоматических отчётов. Выберите подходящий вариант.',
       processing: 'Сообщения поддержки отправляются выбранному провайдеру ИИ для обработки.',
       billing: 'Использование OpenAI API оплачивается отдельно от подписки ChatGPT.'
     },
     en: {
       title: 'AI provider',
-      description: 'Choose Gemini or OpenAI. The API key stays on the server and is never returned.',
+      description: 'Choose an AI provider. Its API key stays on the server and is never returned.',
       active: 'Selected',
       ready: 'Key configured',
       missing: 'Key not set',
-      provider: 'Active provider',
+      provider: 'AI provider',
+      chooseProvider: 'Choose an AI provider first.',
       key: 'API key',
       placeholder: 'Paste the key; this field clears after saving',
       save: 'Verify and save',
@@ -160,23 +199,23 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       invalid: 'The API key was rejected. Check that it is valid and has access to the selected model.',
       saveFailed: 'AI settings could not be saved. Check the database migration and try again.',
       adminTools: 'Administration tools',
-      note: 'Gemini and OpenAI are both supported. Choose the provider used by craftsman support chat and automated reports.',
+      note: 'Both supported AI providers are available for craftsman support chat and automated reports. Choose the option you prefer.',
       processing: 'Support messages are sent to the selected AI provider for processing.',
       billing: 'OpenAI API usage is billed separately from a ChatGPT subscription.'
     },
   }[lang] || {
-    title: 'AI provider', description: 'Choose Gemini or OpenAI. The API key stays on the server and is never returned.',
-    active: 'Selected', ready: 'Key configured', missing: 'Key not set', provider: 'Active provider',
+    title: 'AI provider', description: 'Choose an AI provider. Its API key stays on the server and is never returned.',
+    active: 'Selected', ready: 'Key configured', missing: 'Key not set', provider: 'AI provider', chooseProvider: 'Choose an AI provider first.',
     key: 'API key', placeholder: 'Paste the key; this field clears after saving', save: 'Verify and save',
     saved: 'AI provider verified and settings saved securely in Supabase.', required: 'Add an API key for the selected provider first.',
-    adminTools: 'Administration tools', note: 'Gemini and OpenAI are both supported.',
+    adminTools: 'Administration tools', note: 'Both supported AI providers are available.',
     billing: 'OpenAI API usage is billed separately from a ChatGPT subscription.',
     processing: 'Support messages are sent to the selected AI provider for processing.',
   };
 
   // AI provider state. API keys are write-only and never restored to the browser.
   const [aiKeyInput, setAiKeyInput] = useState('');
-  const [selectedAIProvider, setSelectedAIProvider] = useState<'gemini' | 'openai'>('gemini');
+  const [selectedAIProvider, setSelectedAIProvider] = useState<'gemini' | 'openai' | ''>('');
   const [geminiStatus, setGeminiStatus] = useState<any>(null);
 
   const [agentConfig, setAgentConfig] = useState<{ enabled: boolean; rules: string; messages: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }> }>({
@@ -185,6 +224,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     messages: [],
   });
   const [agentRulesDraft, setAgentRulesDraft] = useState('');
+  const [agentRulesEditing, setAgentRulesEditing] = useState(false);
   const [agentInput, setAgentInput] = useState('');
   const [agentBusy, setAgentBusy] = useState(false);
   const [agentError, setAgentError] = useState('');
@@ -258,8 +298,11 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       if (agentStat) {
         setAgentConfig(agentStat);
         setAgentRulesDraft(agentStat.rules || '');
+        setAgentRulesEditing(false);
+      } else {
+        setAgentError(superAdminAgentCopy[lang].loadFailed);
       }
-      setSelectedAIProvider(aiStat.selectedProvider === 'openai' ? 'openai' : 'gemini');
+      setSelectedAIProvider(aiStat.selectedProvider === 'openai' || aiStat.selectedProvider === 'gemini' ? aiStat.selectedProvider : '');
       setRecipient(recStat);
       setConfigLock(lockStat);
       setBootstrapStatus(bootStat);
@@ -283,9 +326,28 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     loadAll();
   }, []);
 
+  useEffect(() => {
+    const cleanupExpiredChatMessages = () => {
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      setAgentConfig(current => {
+        const messages = current.messages.filter(message => {
+          const createdAt = Date.parse(message.createdAt);
+          return Number.isFinite(createdAt) && createdAt >= cutoff;
+        });
+        return messages.length === current.messages.length ? current : { ...current, messages };
+      });
+    };
+    const timer = window.setInterval(cleanupExpiredChatMessages, 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   // Verify and save the selected AI provider. The key is cleared from the form afterwards.
   const handleSaveAiProvider = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedAIProvider) {
+      setErrorMsg(aiCopy.chooseProvider);
+      return;
+    }
     const hasSelectedKey = selectedAIProvider === 'gemini'
       ? geminiStatus?.geminiConfigured
       : geminiStatus?.openaiConfigured;
@@ -339,7 +401,44 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       const updated = await api.updateSuperAdminAgent({ rules: agentRulesDraft }) as typeof agentConfig;
       setAgentConfig(updated);
       setAgentRulesDraft(updated.rules || '');
+      setAgentRulesEditing(false);
       setAgentNotice(superAdminAgentCopy[lang].rulesSaved);
+    } catch (err: any) {
+      setAgentError(err.message || superAdminAgentCopy[lang].failed);
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const handleDeleteAgentRules = async () => {
+    if (!window.confirm(superAdminAgentCopy[lang].confirmDeleteRules)) return;
+    setAgentError('');
+    setAgentNotice('');
+    try {
+      setAgentBusy(true);
+      const updated = await api.updateSuperAdminAgent({ rules: '' }) as typeof agentConfig;
+      setAgentConfig(updated);
+      setAgentRulesDraft('');
+      setAgentRulesEditing(false);
+      setAgentNotice(superAdminAgentCopy[lang].rulesDeleted);
+    } catch (err: any) {
+      setAgentError(err.message || superAdminAgentCopy[lang].failed);
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const handleClearAgentChat = async () => {
+    if (!agentConfig.messages.length || !window.confirm(superAdminAgentCopy[lang].confirmClearChat)) return;
+    setAgentError('');
+    setAgentNotice('');
+    try {
+      setAgentBusy(true);
+      await api.clearSuperAdminAgentChat();
+      setAgentConfig(current => ({ ...current, messages: [] }));
+      setAgentActions([]);
+      setAgentInput('');
+      setAgentNotice(superAdminAgentCopy[lang].chatDeleted);
     } catch (err: any) {
       setAgentError(err.message || superAdminAgentCopy[lang].failed);
     } finally {
@@ -350,14 +449,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const handleAgentChat = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = agentInput.trim();
-    if (!text || !agentConfig.enabled || agentBusy) return;
+    if (!text || !agentConfig.enabled || agentBusy || agentRulesEditing) return;
     setAgentError('');
     setAgentNotice('');
     try {
       setAgentBusy(true);
       const updated: any = await api.sendSuperAdminAgentMessage(text);
       setAgentConfig({ enabled: updated.enabled, rules: updated.rules || '', messages: updated.messages || [] });
-      setAgentRulesDraft(updated.rules || '');
       setAgentActions(updated.actions || []);
       setAgentInput('');
     } catch (err: any) {
@@ -701,15 +799,16 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             <label className="text-[10px] text-slate-400">{aiCopy.provider}</label>
             <select
               value={selectedAIProvider}
-              onChange={(e) => setSelectedAIProvider(e.target.value as 'gemini' | 'openai')}
+              onChange={(e) => setSelectedAIProvider(e.target.value as 'gemini' | 'openai' | '')}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
             >
+              <option value="" disabled>{aiCopy.chooseProvider}</option>
               <option value="gemini">Google Gemini</option>
               <option value="openai">OpenAI (ChatGPT API)</option>
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">{selectedAIProvider === 'gemini' ? 'Gemini' : 'OpenAI (ChatGPT API)'} — {aiCopy.key}</label>
+            <label className="text-[10px] text-slate-400">{selectedAIProvider === 'gemini' ? 'Gemini' : selectedAIProvider === 'openai' ? 'OpenAI (ChatGPT API)' : aiCopy.key}</label>
             <input
               type="password"
               autoComplete="new-password"
@@ -717,12 +816,12 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               onChange={(e) => setAiKeyInput(e.target.value)}
               placeholder={aiCopy.placeholder}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
-              required={selectedAIProvider === 'gemini' ? !geminiStatus?.geminiConfigured : !geminiStatus?.openaiConfigured}
+              required={selectedAIProvider === 'gemini' ? !geminiStatus?.geminiConfigured : selectedAIProvider === 'openai' ? !geminiStatus?.openaiConfigured : false}
             />
           </div>
           <button
             type="submit"
-            disabled={loading || configLock.locked}
+            disabled={loading || configLock.locked || !selectedAIProvider}
             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition-all disabled:opacity-50"
           >
             {aiCopy.save}
@@ -753,32 +852,91 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="superadmin-agent-rules" className="block text-xs font-semibold text-white">{superAdminAgentCopy[lang].rules}</label>
-          <textarea
-            id="superadmin-agent-rules"
-            value={agentRulesDraft}
-            onChange={(e) => setAgentRulesDraft(e.target.value)}
-            maxLength={6000}
-            rows={4}
-            placeholder={superAdminAgentCopy[lang].rulesHint}
-            className="w-full resize-y rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
-          />
-          <p className="text-[10px] text-slate-500">{superAdminAgentCopy[lang].rulesHint}</p>
-          <button
-            type="button"
-            onClick={handleSaveAgentRules}
-            disabled={agentBusy || agentRulesDraft.length > 6000}
-            className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
-          >
-            {superAdminAgentCopy[lang].saveRules}
-          </button>
+          <h4 className="text-xs font-semibold text-white">{superAdminAgentCopy[lang].rules}</h4>
+          {agentRulesEditing ? (
+            <>
+              <textarea
+                id="superadmin-agent-rules"
+                value={agentRulesDraft}
+                onChange={(e) => setAgentRulesDraft(e.target.value)}
+                maxLength={6000}
+                rows={4}
+                placeholder={superAdminAgentCopy[lang].rulesHint}
+                className="w-full resize-y rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
+              />
+              <p className="text-[10px] text-slate-500">{superAdminAgentCopy[lang].rulesHint}</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveAgentRules}
+                  disabled={agentBusy || agentRulesDraft.length > 6000}
+                  className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
+                >
+                  {superAdminAgentCopy[lang].saveRules}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAgentRulesDraft(agentConfig.rules || '');
+                    setAgentRulesEditing(false);
+                  }}
+                  disabled={agentBusy}
+                  className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+                >
+                  {superAdminAgentCopy[lang].cancel}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="min-h-12 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200">
+                {agentConfig.rules.trim()
+                  ? <p className="whitespace-pre-wrap break-words">{agentConfig.rules}</p>
+                  : <p className="text-slate-500">{superAdminAgentCopy[lang].noRules}</p>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAgentRulesDraft(agentConfig.rules || '');
+                    setAgentRulesEditing(true);
+                  }}
+                  disabled={agentBusy}
+                  className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
+                >
+                  {agentConfig.rules.trim() ? superAdminAgentCopy[lang].editRules : superAdminAgentCopy[lang].addRules}
+                </button>
+                {agentConfig.rules.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAgentRules}
+                    disabled={agentBusy}
+                    className="rounded-xl bg-rose-900/70 px-4 py-2 text-xs font-bold text-rose-100 hover:bg-rose-800 disabled:opacity-50"
+                  >
+                    {superAdminAgentCopy[lang].deleteRules}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="space-y-2 border-t border-slate-800 pt-4">
-          <div>
-            <h4 className="text-xs font-bold text-white">{superAdminAgentCopy[lang].chat}</h4>
-            <p className="mt-1 text-[10px] text-slate-400">{superAdminAgentCopy[lang].chatHint}</p>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h4 className="text-xs font-bold text-white">{superAdminAgentCopy[lang].chat}</h4>
+              <p className="mt-1 text-[10px] text-slate-400">{superAdminAgentCopy[lang].chatHint}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearAgentChat}
+              disabled={agentBusy || agentConfig.messages.length === 0}
+              className="shrink-0 rounded-lg bg-rose-900/70 px-2.5 py-1.5 text-[10px] font-bold text-rose-100 hover:bg-rose-800 disabled:opacity-50"
+            >
+              {superAdminAgentCopy[lang].clearChat}
+            </button>
           </div>
+          <p className="text-[10px] text-slate-500">{superAdminAgentCopy[lang].chatRetention}</p>
           <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950 p-3" aria-live="polite">
             {agentConfig.messages.length === 0 && <p className="text-xs text-slate-500">{superAdminAgentCopy[lang].noMessages}</p>}
             {agentConfig.messages.map((message, index) => (
@@ -793,13 +951,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               onChange={(e) => setAgentInput(e.target.value)}
               maxLength={4000}
               rows={2}
-              disabled={!agentConfig.enabled || agentBusy}
+              disabled={!agentConfig.enabled || agentBusy || agentRulesEditing}
               placeholder={superAdminAgentCopy[lang].placeholder}
               className="min-w-0 flex-1 resize-y rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!agentConfig.enabled || agentBusy || !agentInput.trim()}
+              disabled={!agentConfig.enabled || agentBusy || agentRulesEditing || !agentInput.trim()}
               className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
             >
               {agentBusy ? superAdminAgentCopy[lang].waiting : superAdminAgentCopy[lang].send}
@@ -1231,7 +1389,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                   type="text"
                   value={providerForm.clientId}
                   onChange={(e) => setProviderForm({ ...providerForm, clientId: e.target.value })}
-                  placeholder="მაგ: tbc_client_... ან bog_client_..."
+                  placeholder="მაგ: პროვაიდერის მიერ მოწოდებული Merchant ID"
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
                 />
               </div>
