@@ -66,6 +66,16 @@ class Database {
     { id: 'prof-heating', name: { ka: 'გათბობის ხელოსანი', ru: 'Мастер по отоплению', en: 'Heating Specialist' } },
     { id: 'prof-demolition-drill', name: { ka: 'პერფერატორით დანგრევა', ru: 'Демонтаж перфоратором', en: 'Demolition with a hammer drill' } },
     { id: 'prof-waste-removal', name: { ka: 'ნაგვის გატანა', ru: 'Вывоз мусора', en: 'Waste removal' } },
+    { id: 'prof-gas-water-heater', name: { ka: 'გაზის კალონკის ხელოსანი', ru: 'Мастер по газовым колонкам', en: 'Gas water heater technician' } },
+    { id: 'prof-sewer-cleaning', name: { ka: 'კანალიზაციის გაწმენდის სპეციალისტი', ru: 'Специалист по прочистке канализации', en: 'Sewer cleaning specialist' } },
+    { id: 'prof-drywall', name: { ka: 'გიფსოკარდონის ხელოსანი', ru: 'Мастер по гипсокартону', en: 'Drywall installer' } },
+    { id: 'prof-stretch-ceiling', name: { ka: 'ფრანგული ჭერის ხელოსანი', ru: 'Мастер по натяжным потолкам', en: 'Stretch ceiling installer' } },
+    { id: 'prof-plasterer', name: { ka: 'მლესავი', ru: 'Штукатур', en: 'Plasterer' } },
+    { id: 'prof-masonry', name: { ka: 'მშენებელი (ქვისა და ბლოკის წყობა)', ru: 'Строитель (кладка камня и блока)', en: 'Builder (stone and block masonry)' } },
+    { id: 'prof-window-door', name: { ka: 'კარ-ფანჯრის ხელოსანი', ru: 'Мастер по дверям и окнам', en: 'Door and window installer' } },
+    { id: 'prof-door-lock', name: { ka: 'კარისა და საკეტის ხელოსანი', ru: 'Мастер по дверям и замкам', en: 'Door and lock specialist' } },
+    { id: 'prof-cctv-alarm', name: { ka: 'ვიდეოკამერებისა და სიგნალიზაციის ხელოსანი', ru: 'Мастер по видеонаблюдению и сигнализации', en: 'CCTV and alarm technician' } },
+    { id: 'prof-welder', name: { ka: 'ელექტროშემდუღებელი (სვარკა)', ru: 'Электросварщик', en: 'Welder' } },
   ];
 
   users: Map<string, User> = new Map();
