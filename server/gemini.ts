@@ -40,14 +40,106 @@ export async function testGeminiKey(apiKey: string): Promise<boolean> {
         },
       },
     });
-    const response = await testAi.models.generateContent({
+    const testPromise = testAi.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: 'Ping',
     });
-    return !!response.text;
-  } catch (err) {
-    console.error('Gemini Key verification failed:', err);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Gemini key check timeout')), 8000);
+      });
+      const response = await Promise.race([testPromise, timeoutPromise]);
+      return !!response.text;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  } catch {
+    console.warn('Gemini API key verification failed.');
     return false;
+  }
+}
+
+export async function testOpenAIKey(apiKey: string): Promise<boolean> {
+  const model = process.env.OPENAI_MODEL || 'gpt-6-luna';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`https://api.openai.com/v1/models/${encodeURIComponent(model)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function generateAIText(
+  input: string,
+  instructions = '',
+  jsonOutput = false,
+): Promise<string> {
+  if (db.providerConfig.ai.selectedProvider === 'openai') {
+    const apiKey = db.openAiApiKey || process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error('The selected OpenAI API key is not configured.');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL || 'gpt-6-luna',
+          instructions,
+          input,
+          store: false,
+          max_output_tokens: 800,
+          ...(jsonOutput ? { text: { format: { type: 'json_object' } } } : {}),
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`OpenAI API returned HTTP ${response.status}`);
+      const data: any = await response.json();
+      const outputText = (data.output || [])
+        .flatMap((item: any) => item.content || [])
+        .filter((part: any) => part.type === 'output_text' && typeof part.text === 'string')
+        .map((part: any) => part.text)
+        .join('\n') || data.output_text || '';
+      if (typeof outputText !== 'string' || !outputText.trim()) {
+        throw new Error('OpenAI returned an empty response.');
+      }
+      return outputText.trim();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const client = getAiClient();
+  if (!client) throw new Error('The selected Gemini API key is not configured.');
+  const generatePromise = client.models.generateContent({
+    model: 'gemini-3.8-flash',
+    contents: input,
+    config: {
+      ...(instructions ? { systemInstruction: instructions } : {}),
+      ...(jsonOutput ? { responseMimeType: 'application/json' } : {}),
+    },
+  });
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Gemini response timeout')), 8000);
+    });
+    const response = await Promise.race([generatePromise, timeoutPromise]);
+    if (!response.text?.trim()) throw new Error('Gemini returned an empty response.');
+    return response.text.trim();
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
@@ -75,7 +167,6 @@ export async function generateSupportReply(
   const lowerMsg = userMessage.toLowerCase();
   const isFinancialDispute = disputeKeywords.some(keyword => lowerMsg.includes(keyword));
 
-  const client = getAiClient();
   let replyText = '';
 
   const systemInstruction = `
@@ -98,22 +189,11 @@ Rules & Capabilities (§3.6, §3.7 of MASTER_BOY specification):
 Keep answers concise, polite, helpful, and directly relevant to MASTER_BOY craftsmen.
 `;
 
-  if (client) {
+  if (db.providerConfig.ai.configured) {
     try {
-      const generatePromise = client.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: userMessage,
-        config: {
-          systemInstruction,
-        },
-      });
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('AI response timeout')), 3500)
-      );
-      const response = await Promise.race([generatePromise, timeoutPromise]);
-      replyText = response.text || '';
-    } catch (err) {
-      console.warn('Gemini generateContent timed out or failed, using local reasoning:', err);
+      replyText = await generateAIText(userMessage, systemInstruction);
+    } catch {
+      console.warn('Configured AI provider failed, using the built-in support reply.');
     }
   }
 
@@ -155,7 +235,7 @@ Keep answers concise, polite, helpful, and directly relevant to MASTER_BOY craft
         phone: craftsman?.phone,
         messageSnippet: userMessage.substring(0, 300),
         disputeStatus: 'PENDING_HUMAN_REVIEW',
-        geminiAssessment: 'Craftsman reported potential payment anomaly or refund inquiry. Flagged for review.',
+        aiAssessment: 'Craftsman reported potential payment anomaly or refund inquiry. Flagged for review.',
       },
       createdAt: new Date().toISOString(),
     });
@@ -166,7 +246,7 @@ Keep answers concise, polite, helpful, and directly relevant to MASTER_BOY craft
   db.auditLog.unshift({
     id: `audit-${Date.now()}`,
     actorType: 'AI_ADMIN',
-    actorId: 'gemini-autonomous-agent',
+    actorId: 'ai-autonomous-agent',
     action: isFinancialDispute ? 'SUPPORT_REPLY_DISPUTE_ESCALATED' : 'SUPPORT_REPLY_SENT',
     targetType: 'CRAFTSMAN',
     targetId: craftsmanId,
@@ -182,28 +262,20 @@ Keep answers concise, polite, helpful, and directly relevant to MASTER_BOY craft
 }
 
 export async function generatePeriodicReport(type: 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH'): Promise<any> {
-  const client = getAiClient();
   const totalCraftsmen = db.craftsmen.size;
   const activeMemberships = Array.from(db.top15Memberships.values()).filter(m => m.status === 'ACTIVE').length;
   const totalReports = db.aiReports.length;
 
-  if (client) {
+  if (db.providerConfig.ai.configured) {
     try {
-      const generatePromise = client.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: `Generate a short JSON report of type ${type} for craftsman app MASTER_BOY with ${totalCraftsmen} craftsmen and ${activeMemberships} active Top 15 memberships. Return valid JSON only.`,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('AI report generation timeout')), 3500)
+      const reportText = await generateAIText(
+        `Generate a short JSON report of type ${type} for MASTER_BOY with ${totalCraftsmen} craftsmen and ${activeMemberships} active Top 15 memberships. Return a valid JSON object only.`,
+        'Return only valid JSON.',
+        true,
       );
-      const response = await Promise.race([generatePromise, timeoutPromise]);
-      const parsed = JSON.parse(response.text || '{}');
-      return parsed;
-    } catch (err) {
-      console.warn('AI report generation error or timed out, using deterministic generator:', err);
+      return JSON.parse(reportText);
+    } catch {
+      console.warn('Configured AI provider failed to generate a report; using deterministic data.');
     }
   }
 
