@@ -167,6 +167,23 @@ function requireSuperAdmin(req: AuthRequest, res: Response, next: NextFunction) 
 type AgentSecretBundle = { text: string; values: string[] };
 
 const agentChatsInProgress = new Set<string>();
+const reportGenerationsInProgress = new Set<string>();
+
+function stableAgentActionKey(plan: any): string {
+  const normalize = (value: any): any => {
+    if (Array.isArray(value)) return value.map(normalize);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, normalize(value[key])]));
+    }
+    return value;
+  };
+  return JSON.stringify({
+    method: String(plan.method || '').toUpperCase(),
+    path: String(plan.path || ''),
+    query: normalize(plan.query || {}),
+    body: normalize(plan.body || {}),
+  }) || '';
+}
 
 function redactAgentSecrets(text: string): AgentSecretBundle {
   const values: string[] = [];
@@ -422,6 +439,21 @@ function canManageAccount(req: AuthRequest, res: Response, target: User, action:
   }
 
   return true;
+}
+
+async function persistAdminMutation(res: Response, rollback: () => void): Promise<boolean> {
+  try {
+    await db.persistRuntimeState();
+    return true;
+  } catch {
+    rollback();
+    console.warn('[MASTER_BOY] Admin account change could not be persisted.');
+    res.status(503).json({
+      code: 'ADMIN_MUTATION_NOT_PERSISTED',
+      message: 'The database did not save this change. Refresh the page and try again.',
+    });
+    return false;
+  }
 }
 
 function revokeUserSessions(userId: string): void {
@@ -1853,8 +1885,13 @@ apiRouter.get('/admin/craftsmen', requireAdmin, (req, res) => {
   if (query) {
     list = list.filter(c => c.name.toLowerCase().includes(query) || c.phone.includes(query));
   }
-  if (status) {
-    list = list.filter(c => c.status === status || c.listingStatus === status);
+  if (status === 'DELETED') {
+    list = list.filter(c => c.status === 'DELETED');
+  } else {
+    list = list.filter(c => c.status !== 'DELETED');
+    if (status && status !== 'ALL') {
+      list = list.filter(c => c.status === status || c.listingStatus === status);
+    }
   }
 
   const offset = (page - 1) * size;
@@ -1894,31 +1931,60 @@ apiRouter.get('/admin/reports', requireAdmin, (req, res) => {
 
 // POST /admin/reports/generate (autonomous report generator)
 apiRouter.post('/admin/reports/generate', requireAdmin, async (req: AuthRequest, res) => {
-  const type = (req.body.type || 'RECOMMENDATIONS') as 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH';
-  const content = await generatePeriodicReport(type);
-  const repId = `rep-${Date.now()}`;
-  const newReport = {
-    id: repId,
-    type,
-    periodFrom: new Date().toISOString().split('T')[0],
-    periodTo: new Date().toISOString().split('T')[0],
-    content,
-    createdAt: new Date().toISOString(),
-  };
-  db.aiReports.unshift(newReport);
+  const requestedType = req.body?.type ?? 'RECOMMENDATIONS';
+  if (typeof requestedType !== 'string' || !['ACCOUNTING', 'RECOMMENDATIONS', 'HEALTH'].includes(requestedType)) {
+    return res.status(400).json({ code: 'INVALID_REPORT_TYPE', message: 'Choose ACCOUNTING, RECOMMENDATIONS, or HEALTH.' });
+  }
+  const type = requestedType as 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH';
+  const reportKey = `${req.user!.id}:${type}`;
+  if (reportGenerationsInProgress.has(reportKey)) {
+    return res.status(409).json({ code: 'REPORT_GENERATION_IN_PROGRESS', message: 'A report of this type is already being generated.' });
+  }
+  reportGenerationsInProgress.add(reportKey);
 
-  db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
-    actorType: 'AI_ADMIN',
-    actorId: 'gemini-autonomous-agent',
-    action: 'REPORT_GENERATED',
-    targetType: 'REPORT',
-    targetId: repId,
-    reason: `Automated on-demand report: ${type}`,
-    createdAt: new Date().toISOString(),
-  });
+  let newReport: any = null;
+  let auditEntry: any = null;
+  try {
+    const content = await generatePeriodicReport(type);
+    const repId = `rep-${crypto.randomUUID()}`;
+    newReport = {
+      id: repId,
+      type,
+      periodFrom: new Date().toISOString().split('T')[0],
+      periodTo: new Date().toISOString().split('T')[0],
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    db.aiReports.unshift(newReport);
 
-  res.json(newReport);
+    auditEntry = {
+      id: `audit-${crypto.randomUUID()}`,
+      actorType: 'AI_ADMIN',
+      actorId: req.user!.id,
+      action: 'REPORT_GENERATED',
+      targetType: 'REPORT',
+      targetId: repId,
+      reason: `Automated on-demand report: ${type}`,
+      createdAt: new Date().toISOString(),
+    };
+    db.auditLog.unshift(auditEntry);
+
+    await db.persistRuntimeState();
+    return res.json(newReport);
+  } catch {
+    if (newReport) {
+      const reportIndex = db.aiReports.indexOf(newReport);
+      if (reportIndex >= 0) db.aiReports.splice(reportIndex, 1);
+    }
+    if (auditEntry) {
+      const auditIndex = db.auditLog.indexOf(auditEntry);
+      if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+    }
+    console.warn('[MASTER_BOY] Admin report could not be saved to durable storage.');
+    return res.status(503).json({ code: 'REPORT_NOT_PERSISTED', message: 'The report could not be saved. Try again after checking the database connection.' });
+  } finally {
+    reportGenerationsInProgress.delete(reportKey);
+  }
 });
 
 // GET /admin/users?query=&page=
@@ -1945,119 +2011,142 @@ apiRouter.get('/admin/users', requireAdmin, (req, res) => {
 });
 
 // PUT /admin/users/:id/block & /admin/craftsmen/:id/block
-apiRouter.put(['/admin/users/:id/block', '/admin/craftsmen/:id/block'], requireAdmin, (req: AuthRequest, res) => {
+apiRouter.put(['/admin/users/:id/block', '/admin/craftsmen/:id/block'], requireAdmin, async (req: AuthRequest, res) => {
   let user = db.users.get(req.params.id);
   let craftsman = db.craftsmen.get(req.params.id);
 
-  if (!user && craftsman?.userId) {
-    user = db.users.get(craftsman.userId);
-  }
-  if (!craftsman && user) {
-    craftsman = Array.from(db.craftsmen.values()).find(c => c.userId === user.id);
-  }
+  if (!user && craftsman?.userId) user = db.users.get(craftsman.userId);
+  if (!craftsman && user) craftsman = Array.from(db.craftsmen.values()).find(c => c.userId === user!.id);
 
   if (!user && !craftsman) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'User or craftsman not found' });
   }
-
   if (user && !canManageAccount(req, res, user, 'block')) return;
-  if (user && user.status === 'DELETED') {
+  if (user?.status === 'DELETED' || craftsman?.status === 'DELETED') {
     return res.status(409).json({ code: 'DELETED_ACCOUNT_CANNOT_BE_BLOCKED', message: 'Deleted accounts cannot be blocked.' });
   }
 
-  if (user) user.status = 'BLOCKED';
-  if (craftsman) craftsman.status = 'BLOCKED';
-  if (user) revokeUserSessions(user.id);
-
-  for (const c of db.craftsmen.values()) {
-    if (user && c.userId === user.id) c.status = 'BLOCKED';
+  const relatedCraftsmen = user
+    ? Array.from(db.craftsmen.values()).filter(c => c.userId === user!.id)
+    : craftsman ? [craftsman] : [];
+  if ((!user || user.status === 'BLOCKED') && relatedCraftsmen.every(c => c.status === 'BLOCKED')) {
+    return res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
   }
 
-  db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
-    actorType: 'USER',
+  const previousUserStatus = user?.status;
+  const previousCraftsmanStatuses = relatedCraftsmen.map(item => ({ item, status: item.status }));
+  if (user) user.status = 'BLOCKED';
+  for (const item of relatedCraftsmen) item.status = 'BLOCKED';
+  if (user) revokeUserSessions(user.id);
+
+  const auditEntry = {
+    id: `audit-${crypto.randomUUID()}`,
+    actorType: 'USER' as const,
     actorId: req.user!.id,
     action: 'BLOCK_USER',
-    targetType: 'USER',
+    targetType: 'USER' as const,
     targetId: user ? user.id : craftsman!.id,
     createdAt: new Date().toISOString(),
-  });
+  };
+  db.auditLog.unshift(auditEntry);
+  if (!await persistAdminMutation(res, () => {
+    if (user && previousUserStatus) user.status = previousUserStatus;
+    for (const previous of previousCraftsmanStatuses) previous.item.status = previous.status;
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
 
   res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
 });
 
 // PUT /admin/users/:id/unblock & /admin/craftsmen/:id/unblock
-apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requireAdmin, (req: AuthRequest, res) => {
+apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requireAdmin, async (req: AuthRequest, res) => {
   let user = db.users.get(req.params.id);
   let craftsman = db.craftsmen.get(req.params.id);
 
-  if (!user && craftsman?.userId) {
-    user = db.users.get(craftsman.userId);
-  }
-  if (!craftsman && user) {
-    craftsman = Array.from(db.craftsmen.values()).find(c => c.userId === user.id);
-  }
+  if (!user && craftsman?.userId) user = db.users.get(craftsman.userId);
+  if (!craftsman && user) craftsman = Array.from(db.craftsmen.values()).find(c => c.userId === user!.id);
 
   if (!user && !craftsman) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'User or craftsman not found' });
   }
-
   if (user && !canManageAccount(req, res, user, 'unblock')) return;
-  if (user && user.status !== 'BLOCKED') {
-    return res.status(409).json({ code: 'ACCOUNT_NOT_BLOCKED', message: 'Only blocked accounts can be unblocked.' });
+  if (user?.status === 'DELETED' || craftsman?.status === 'DELETED') {
+    return res.status(409).json({ code: 'DELETED_ACCOUNT_CANNOT_BE_RESTORED', message: 'Deleted accounts cannot be reactivated.' });
   }
 
+  const relatedCraftsmen = user
+    ? Array.from(db.craftsmen.values()).filter(c => c.userId === user!.id)
+    : craftsman ? [craftsman] : [];
+  const hasBlockedState = user?.status === 'BLOCKED' || relatedCraftsmen.some(c => c.status === 'BLOCKED');
+  if (!hasBlockedState) {
+    return res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+  }
+
+  const previousUserStatus = user?.status;
+  const previousCraftsmanStatuses = relatedCraftsmen.map(item => ({ item, status: item.status }));
   if (user) user.status = 'ACTIVE';
-  if (craftsman) craftsman.status = 'ACTIVE';
+  for (const item of relatedCraftsmen) item.status = 'ACTIVE';
 
-  for (const c of db.craftsmen.values()) {
-    if (user && c.userId === user.id) c.status = 'ACTIVE';
-  }
-
-  db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
-    actorType: 'USER',
+  const auditEntry = {
+    id: `audit-${crypto.randomUUID()}`,
+    actorType: 'USER' as const,
     actorId: req.user!.id,
     action: 'UNBLOCK_USER',
-    targetType: 'USER',
+    targetType: 'USER' as const,
     targetId: user ? user.id : craftsman!.id,
     createdAt: new Date().toISOString(),
-  });
+  };
+  db.auditLog.unshift(auditEntry);
+  if (!await persistAdminMutation(res, () => {
+    if (user && previousUserStatus) user.status = previousUserStatus;
+    for (const previous of previousCraftsmanStatuses) previous.item.status = previous.status;
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
 
   res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
 });
 
 // DELETE /admin/craftsmen/:id & /admin/users/:id
-apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, (req: AuthRequest, res) => {
-  let c = db.craftsmen.get(req.params.id);
-  let u = db.users.get(req.params.id);
+apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, async (req: AuthRequest, res) => {
+  let craftsman = db.craftsmen.get(req.params.id);
+  let user = db.users.get(req.params.id);
 
-  const currentU = u;
-  if (!c && currentU) {
-    c = Array.from(db.craftsmen.values()).find(item => item.userId === currentU.id);
-  }
-  if (!u && c?.userId) {
-    u = db.users.get(c.userId);
+  if (!craftsman && user) craftsman = Array.from(db.craftsmen.values()).find(item => item.userId === user!.id);
+  if (!user && craftsman?.userId) user = db.users.get(craftsman.userId);
+
+  if (!craftsman && !user) return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  if (user && !canManageAccount(req, res, user, 'delete')) return;
+  if ((!user || user.status === 'DELETED') && (!craftsman || craftsman.status === 'DELETED')) {
+    return res.json({ success: true, alreadyDeleted: true });
   }
 
-  if (!c && !u) return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
-  if (u && !canManageAccount(req, res, u, 'delete')) return;
-  if (u && u.status === 'DELETED') {
-    return res.status(409).json({ code: 'ACCOUNT_ALREADY_DELETED', message: 'Account is already deleted.' });
-  }
-  if (c) c.status = 'DELETED';
-  if (u) u.status = 'DELETED';
-  if (u) revokeUserSessions(u.id);
+  const previousUserStatus = user?.status;
+  const affectedCraftsmen = user
+    ? Array.from(db.craftsmen.values()).filter(c => c.userId === user!.id)
+    : craftsman ? [craftsman] : [];
+  const previousCraftsmanStatuses = affectedCraftsmen.map(item => ({ item, status: item.status }));
+  if (user) user.status = 'DELETED';
+  for (const item of affectedCraftsmen) item.status = 'DELETED';
+  if (user) revokeUserSessions(user.id);
 
-  db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
-    actorType: 'USER',
+  const auditEntry = {
+    id: `audit-${crypto.randomUUID()}`,
+    actorType: 'USER' as const,
     actorId: req.user!.id,
     action: 'DELETE_CRAFTSMAN',
-    targetType: 'CRAFTSMAN',
-    targetId: c ? c.id : (u ? u.id : req.params.id),
+    targetType: 'CRAFTSMAN' as const,
+    targetId: craftsman ? craftsman.id : (user ? user.id : req.params.id),
     createdAt: new Date().toISOString(),
-  });
+  };
+  db.auditLog.unshift(auditEntry);
+  if (!await persistAdminMutation(res, () => {
+    if (user && previousUserStatus) user.status = previousUserStatus;
+    for (const previous of previousCraftsmanStatuses) previous.item.status = previous.status;
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
 
   res.json({ success: true });
 });
@@ -2220,6 +2309,7 @@ For one administrative API operation use {"type":"admin_api","method":"GET|POST|
 Only use /admin/... routes, one action per response. Never return Markdown outside the JSON object.`;
 
     let finalMessage = '';
+    const attemptedAgentActions = new Set<string>();
     for (let round = 0; round < 5; round += 1) {
       const input = JSON.stringify({
         recentConversation: conversation,
@@ -2253,6 +2343,17 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
             : 'ამ შეტყობინებაზე შესრულებულია მაქსიმუმ ოთხი ადმინისტრაციული მოქმედება. დანარჩენი დავალება მომწერე ცალკე შეტყობინებაში.';
         break;
       }
+      const actionKey = stableAgentActionKey(plan);
+      if (attemptedAgentActions.has(actionKey)) {
+        finalMessage = responseLanguage === 'ru'
+          ? 'Повтор того же действия остановлен. Проверьте результат в списке действий.'
+          : responseLanguage === 'en'
+            ? 'The repeated action was stopped. Review its result in the action list.'
+            : 'იგივე მოქმედების განმეორება შეჩერდა. შედეგი მოქმედებების სიაში გადაამოწმე.';
+        break;
+      }
+      attemptedAgentActions.add(actionKey);
+
       const invalidAction = validateAgentAdminAction(plan);
       if (invalidAction) {
         actions.push({ success: false, status: 403, data: { message: invalidAction } });

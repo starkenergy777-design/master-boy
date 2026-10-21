@@ -109,6 +109,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [prices, setPrices] = useState<any[]>([]);
   const [reports, setReports] = useState<AiReport[]>([]);
   const [loading, setLoading] = useState(false);
+  const [reportGenerating, setReportGenerating] = useState(false);
+  const [deletingCraftsman, setDeletingCraftsman] = useState(false);
+  const [craftsmanActionsInProgress, setCraftsmanActionsInProgress] = useState<Set<string>>(() => new Set());
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -126,17 +129,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newPriceInput, setNewPriceInput] = useState('');
   const [priceUpdating, setPriceUpdating] = useState(false);
 
+  const loadAllCraftsmen = async () => {
+    const firstPage = await api.getAdminCraftsmen('', '', 1, 50);
+    const allCraftsmen = [...(firstPage.content || [])];
+    const totalPages = Number(firstPage.totalPages) || 1;
+    for (let page = 2; page <= totalPages; page += 4) {
+      const pageNumbers = Array.from({ length: Math.min(4, totalPages - page + 1) }, (_, index) => page + index);
+      const pageResults = await Promise.all(pageNumbers.map(pageNumber => api.getAdminCraftsmen('', '', pageNumber, 50)));
+      for (const pageResult of pageResults) allCraftsmen.push(...(pageResult.content || []));
+    }
+    return allCraftsmen;
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
       const [anData, cmData, prData, repData] = await Promise.all([
         api.getAnalytics(),
-        api.getAdminCraftsmen(),
+        loadAllCraftsmen(),
         api.getAdminTop15Prices(),
         api.getReports(),
       ]);
       setAnalytics(anData);
-      setCraftsmen(cmData.content || []);
+      setCraftsmen(cmData);
       setPrices(prData || []);
       setReports(repData.content || []);
     } catch (err: any) {
@@ -151,42 +166,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     loadData();
   }, []);
 
-  const handleBlockUser = async (userId: string, isBlocked: boolean) => {
+  const handleBlockUser = async (craftsmanId: string, isBlocked: boolean) => {
+    if (!craftsmanId || craftsmanActionsInProgress.has(craftsmanId)) return;
     setErrorMsg('');
     setSuccessMsg('');
+    setCraftsmanActionsInProgress(current => new Set(current).add(craftsmanId));
     try {
       if (isBlocked) {
-        await api.unblockUser(userId);
-        setSuccessMsg('User unblocked');
+        await api.unblockUser(craftsmanId);
+        setSuccessMsg(lang === 'ka' ? 'ხელოსანი განიბლოკა' : lang === 'ru' ? 'Мастер разблокирован' : 'Craftsman unblocked');
       } else {
-        await api.blockUser(userId);
-        setSuccessMsg('User blocked');
+        await api.blockUser(craftsmanId);
+        setSuccessMsg(lang === 'ka' ? 'ხელოსანი დაიბლოკა' : lang === 'ru' ? 'Мастер заблокирован' : 'Craftsman blocked');
       }
-      loadData();
+      await loadData();
     } catch (err: any) {
-      if (err.status === 423) {
-        setErrorMsg('423 CONFIG_LOCKED: Configuration is locked for 6 months. Human edits are prohibited.');
-      } else {
-        setErrorMsg(err.message);
-      }
+      setErrorMsg(err.message || (lang === 'ka' ? 'მოქმედება ვერ შესრულდა' : 'The action failed'));
+    } finally {
+      setCraftsmanActionsInProgress(current => {
+        const next = new Set(current);
+        next.delete(craftsmanId);
+        return next;
+      });
     }
   };
 
   const confirmDeleteCraftsman = async () => {
-    if (!deleteConfirmCraftsmanId) return;
+    if (!deleteConfirmCraftsmanId || deletingCraftsman) return;
     setErrorMsg('');
     setSuccessMsg('');
+    setDeletingCraftsman(true);
     try {
       await api.deleteCraftsman(deleteConfirmCraftsmanId);
-      setSuccessMsg('Craftsman deleted');
+      setSuccessMsg(lang === 'ka' ? 'ხელოსანი სიიდან წაიშალა' : lang === 'ru' ? 'Мастер удалён из списка' : 'Craftsman removed from the list');
       setDeleteConfirmCraftsmanId(null);
-      loadData();
+      await loadData();
     } catch (err: any) {
-      if (err.status === 423) {
-        setErrorMsg('423 CONFIG_LOCKED: Configuration is locked for 6 months. Cannot delete during lock.');
-      } else {
-        setErrorMsg(err.message);
-      }
+      setErrorMsg(err.message || (lang === 'ka' ? 'წაშლა ვერ შესრულდა' : 'Delete failed'));
+    } finally {
+      setDeletingCraftsman(false);
     }
   };
 
@@ -213,15 +231,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleTriggerAiReport = async (type: string) => {
+    if (reportGenerating) return;
+    setErrorMsg('');
+    setSuccessMsg('');
+    setReportGenerating(true);
     try {
-      setLoading(true);
       await api.generateReport(type);
       setSuccessMsg(lang === 'ru' ? 'Отчёт создан на грузинском языке.' : lang === 'en' ? 'Report created in Georgian.' : 'ანგარიში ქართულ ენაზე შეიქმნა.');
-      loadData();
+      await loadData();
     } catch (err: any) {
-      setErrorMsg(err.message);
+      setErrorMsg(err.message || (lang === 'ka' ? 'ანგარიშის შექმნა ვერ მოხერხდა' : 'Report generation failed'));
     } finally {
-      setLoading(false);
+      setReportGenerating(false);
     }
   };
 
@@ -449,8 +470,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </a>
                       )}
                       <button
-                        onClick={() => handleBlockUser(c.userId, isBlocked)}
+                        onClick={() => handleBlockUser(c.id, isBlocked)}
                         title={isBlocked ? 'Unblock' : 'Block'}
+                        aria-label={isBlocked ? 'Unblock craftsman' : 'Block craftsman'}
+                        disabled={craftsmanActionsInProgress.has(c.id)}
                         className={`p-1.5 rounded-lg border text-xs ${
                           isBlocked
                             ? 'bg-emerald-950 border-emerald-800 text-emerald-400'
@@ -462,7 +485,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <button
                         onClick={() => setDeleteConfirmCraftsmanId(c.id)}
                         title="Delete"
-                        className="p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-400"
+                        aria-label="Delete craftsman"
+                        disabled={deletingCraftsman || craftsmanActionsInProgress.has(c.id)}
+                        className="p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-400 disabled:opacity-50 disabled:cursor-wait"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -515,13 +540,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="flex gap-2">
             <button
               onClick={() => handleTriggerAiReport('ACCOUNTING')}
-              className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold py-2 rounded-xl text-amber-300"
+              disabled={reportGenerating}
+              aria-busy={reportGenerating}
+              className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold py-2 rounded-xl text-amber-300 disabled:opacity-50 disabled:cursor-wait"
             >
               + Accounting Report
             </button>
             <button
               onClick={() => handleTriggerAiReport('RECOMMENDATIONS')}
-              className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold py-2 rounded-xl text-indigo-300"
+              disabled={reportGenerating}
+              aria-busy={reportGenerating}
+              className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold py-2 rounded-xl text-indigo-300 disabled:opacity-50 disabled:cursor-wait"
             >
               + Strategy Report
             </button>
@@ -629,9 +658,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div>
-              <h3 className="text-sm font-bold text-white mb-1">Delete Craftsman</h3>
+              <h3 className="text-sm font-bold text-white mb-1">
+                {lang === 'ka' ? 'ხელოსნის წაშლა' : lang === 'ru' ? 'Удалить мастера' : 'Remove craftsman'}
+              </h3>
               <p className="text-xs text-slate-400">
-                Are you sure you want to permanently delete this craftsman profile?
+                {lang === 'ka'
+                  ? 'ხელოსნის პროფილი სიიდან დაიმალება და ანგარიშზე წვდომა გაითიშება.'
+                  : lang === 'ru'
+                    ? 'Анкета мастера будет скрыта из списка, доступ к аккаунту будет отключён.'
+                    : 'The craftsman profile will be hidden from the list and account access will be disabled.'}
               </p>
             </div>
 
@@ -639,16 +674,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setDeleteConfirmCraftsmanId(null)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+                disabled={deletingCraftsman}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold disabled:opacity-50"
               >
-                Cancel
+                {lang === 'ka' ? 'გაუქმება' : lang === 'ru' ? 'Отмена' : 'Cancel'}
               </button>
               <button
                 type="button"
                 onClick={confirmDeleteCraftsman}
-                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
+                disabled={deletingCraftsman}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-wait"
               >
-                Delete
+                {deletingCraftsman ? '...' : lang === 'ka' ? 'წაშლა' : lang === 'ru' ? 'Удалить' : 'Remove'}
               </button>
             </div>
           </div>
