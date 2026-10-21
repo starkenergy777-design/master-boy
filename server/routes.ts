@@ -193,7 +193,9 @@ function redactAgentSecrets(text: string): AgentSecretBundle {
   };
   const redacted = text
     .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{10,})\b/g, (secret) => addSecret(secret))
-    .replace(/(?:password|passwd|пароль||პაროლი)\s*(?:is\s+|[:=]\s*)([^\s,;]+)/gi, (_match, secret: string) => addSecret(secret));
+    .replace(/\b[A-Z]{2}\d{2}(?:[\s-]?[A-Z0-9]){11,30}\b/gi, (secret) => addSecret(secret))
+    .replace(/(?:\+?995[\s-]?)?5\d{2}(?:[\s-]?\d{2}){3}\b/g, (secret) => addSecret(secret))
+    .replace(/(?:password|passwd|пароль|პაროლი)\s*(?:is\s+|[:=]\s*)([^\s,;]+)/gi, (_match, secret: string) => addSecret(secret));
   return { text: redacted, values };
 }
 
@@ -213,8 +215,8 @@ function hideAgentSecrets(value: any): any {
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [
       key,
-      /(?:password|passwd|secret|authorization|access.?token|refresh.?token|api.?key|unlock.?credential|signature)/i.test(key)
-        && !/(?:configured|masked)$/i.test(key)
+      /(?:password|passwd|secret|authorization|access.?token|refresh.?token|api.?key|unlock.?credential|signature|iban|bank.?account|account.?number|tax.?number|tax.?id|client.?id|phone|email|beneficiary)/i.test(key)
+        && !/(?:configured|masked|present)$/i.test(key)
         ? '[hidden]'
         : hideAgentSecrets(item),
     ]));
@@ -433,6 +435,228 @@ async function runSuperAdminAgentAction(req: AuthRequest, plan: any, secretValue
   } finally {
     clearTimeout(timeout);
   }
+}
+
+
+function buildSuperAdminAgentAuditSnapshot() {
+  const now = Date.now();
+  const capturedAt = new Date(now).toISOString();
+  const countBy = (items: any[], keyFor: (item: any) => unknown) => items.reduce((counts: Record<string, number>, item) => {
+    const key = String(keyFor(item) || 'უცნობია');
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+  const hasValue = (value: unknown) => typeof value === 'string' ? value.trim().length > 0 : value !== null && value !== undefined;
+  const isLive = (value: unknown) => {
+    const timestamp = typeof value === 'number' ? value : Date.parse(String(value || ''));
+    return Number.isFinite(timestamp) && timestamp > now;
+  };
+  const cities = Array.isArray(db.cities) ? db.cities : [];
+  const professions = Array.isArray(db.professions) ? db.professions : [];
+  const cityNames = new Map<string, string>(cities.map((city: any) => [city.id, city.name?.ka || city.id] as [string, string]));
+  const professionNames = new Map<string, string>(professions.map((profession: any) => [profession.id, profession.name?.ka || profession.id] as [string, string]));
+  const craftsmen = Array.from(db.craftsmen.values());
+  const listedCraftsmen = craftsmen.filter((craftsman: any) => craftsman.status !== 'DELETED');
+  const paymentProviders = Array.isArray(db.providerConfig.payment) ? db.providerConfig.payment : [];
+  const safeProviderState = (provider: any) => {
+    const maskedKey = String(provider.apiKeyMasked || '').trim();
+    const apiKeyConfigured = hasValue(provider.apiKey) ||
+      (maskedKey.length > 0 && !/^(not configured|not set|unset|empty)$/i.test(maskedKey));
+    return {
+      name: provider.name || 'უცნობი პროვაიდერი',
+      active: Boolean(provider.isActive),
+      credentials: {
+        clientIdConfigured: hasValue(provider.clientId),
+        apiKeyConfigured,
+        secretKeyConfigured: hasValue(provider.secretKey),
+        webhookSecretConfigured: hasValue(provider.webhookSecret),
+      },
+    };
+  };
+  const paymentIntents = Array.from(db.paymentIntents.values());
+  const successfulPayments = paymentIntents.filter((payment: any) => payment.status === 'SUCCEEDED');
+  const memberships = Array.from(db.top15Memberships.values());
+  const activeMemberships = memberships.filter((membership: any) => membership.status === 'ACTIVE' && isLive(membership.expiresAt));
+  const reservations = Array.from(db.top15Reservations.values());
+  const users = Array.from(db.users.values());
+  const advertisements = Array.from(db.advertisements.values());
+  const reports = Array.isArray(db.aiReports) ? db.aiReports : [];
+  const reportFingerprints = new Map<string, number>();
+  const normalizeForFingerprint = (value: any): any => {
+    if (Array.isArray(value)) return value.map(normalizeForFingerprint);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.keys(value).sort().map((key) => [key, normalizeForFingerprint(value[key])]));
+    }
+    return value;
+  };
+  for (const report of reports) {
+    const fingerprint = String(report.type || 'UNKNOWN') + ':' + JSON.stringify(normalizeForFingerprint(report.content || {}));
+    reportFingerprints.set(fingerprint, (reportFingerprints.get(fingerprint) || 0) + 1);
+  }
+  const repeatedReportGroups = Array.from(reportFingerprints.values()).filter((count) => count > 1).length;
+  const priceRows = Array.from(db.top15Prices.values()).map((price: any) => ({
+    city: cityNames.get(price.cityId) || 'უცნობი ქალაქი',
+    profession: professionNames.get(price.professionId) || 'უცნობი პროფესია',
+    amountMinor: Number(price.amountMinor) || 0,
+    currency: price.currency || 'GEL',
+  }));
+  const sortedPriceRows = [...priceRows].sort((a, b) => a.amountMinor - b.amountMinor);
+  const recipient = db.recipientAccount || {};
+  const activePaymentProviders = paymentProviders.filter((provider: any) => Boolean(provider.isActive));
+  const storageStatus = storage.getStatus();
+  const missingSetup: string[] = [];
+  if (!db.providerConfig.ai.configured) missingSetup.push('არჩეული AI პროვაიდერის გასაღები არ არის დადასტურებული');
+  if (activePaymentProviders.length === 0) missingSetup.push('აქტიური საგადახდო პროვაიდერი არ არის');
+  if (!hasValue(recipient.bankName)) missingSetup.push('მიმღები ბანკი მითითებული არ არის');
+  if (!hasValue(recipient.iban)) missingSetup.push('მიმღების IBAN მითითებული არ არის');
+  if (!hasValue(recipient.beneficiary)) missingSetup.push('მიმღები იურიდიული პირი მითითებული არ არის');
+  if (!storageStatus.databaseConnected) missingSetup.push('Supabase მონაცემთა ბაზასთან აქტიური კავშირი არ დასტურდება');
+  const usersByRole: Record<string, number> = {};
+  for (const user of users as any[]) {
+    for (const role of Array.isArray(user.roles) ? user.roles : []) {
+      usersByRole[role] = (usersByRole[role] || 0) + 1;
+    }
+  }
+  const totalRevenueMinor = successfulPayments.reduce((sum: number, payment: any) => sum + (Number(payment.amountMinor) || 0), 0);
+  const adsActive = advertisements.filter((ad: any) => Boolean(ad.is_active) && isLive(ad.expires_at));
+  const auditActionsByType = countBy(Array.isArray(db.auditLog) ? db.auditLog : [], (entry: any) => entry.action || 'UNKNOWN');
+  return {
+    capturedAt,
+    source: 'სერვერის მიმდინარე მდგომარეობა, რომელსაც სუპერადმინის API იყენებს',
+    overview: {
+      storedCraftsmen: craftsmen.length,
+      listedCraftsmen: listedCraftsmen.length,
+      activeCraftsmen: listedCraftsmen.filter((craftsman: any) => craftsman.status === 'ACTIVE').length,
+      blockedCraftsmen: listedCraftsmen.filter((craftsman: any) => craftsman.status === 'BLOCKED').length,
+      deletedCraftsmen: craftsmen.length - listedCraftsmen.length,
+      activeTop15Memberships: activeMemberships.length,
+      successfulPayments: successfulPayments.length,
+      recordedRevenueMinor: totalRevenueMinor,
+      currency: 'GEL',
+      totalUsers: users.length,
+      activeSessions: db.sessions.size,
+      disputes: reports.filter((report: any) => report.type === 'DISPUTE').length,
+    },
+    craftsmen: {
+      byStatus: countBy(craftsmen, (craftsman: any) => craftsman.status),
+      listedByCity: countBy(listedCraftsmen, (craftsman: any) => cityNames.get(craftsman.cityId) || 'უცნობი ქალაქი'),
+      listedByProfession: countBy(listedCraftsmen, (craftsman: any) => professionNames.get(craftsman.professionId) || 'უცნობი პროფესია'),
+      requiredFieldGaps: {
+        name: listedCraftsmen.filter((craftsman: any) => !hasValue(craftsman.name)).length,
+        phone: listedCraftsmen.filter((craftsman: any) => !hasValue(craftsman.phone)).length,
+        city: listedCraftsmen.filter((craftsman: any) => !cityNames.has(craftsman.cityId)).length,
+        profession: listedCraftsmen.filter((craftsman: any) => !professionNames.has(craftsman.professionId)).length,
+        bankAccount: listedCraftsmen.filter((craftsman: any) => !hasValue(craftsman.bankAccount)).length,
+      },
+      totalListingsByStatus: countBy(Array.from(db.craftsmanListings.values()), (listing: any) => listing.status),
+    },
+    users: {
+      byStatus: countBy(users, (user: any) => user.status),
+      byRole: usersByRole,
+    },
+    catalog: {
+      cities: { total: cities.length, active: cities.filter((city: any) => city.isActive !== false).length, names: cities.map((city: any) => city.name?.ka).filter(Boolean) },
+      professions: { total: professions.length, names: professions.map((profession: any) => profession.name?.ka).filter(Boolean) },
+    },
+    providers: {
+      ai: {
+        selected: db.providerConfig.ai.selectedProvider,
+        displayName: db.providerConfig.ai.provider,
+        selectedProviderConfigured: Boolean(db.providerConfig.ai.configured),
+        geminiConfigured: Boolean(db.providerConfig.ai.geminiConfigured),
+        openaiConfigured: Boolean(db.providerConfig.ai.openaiConfigured),
+        lastCallOk: Boolean(db.providerConfig.ai.lastCallOk),
+        verifiedAt: db.providerConfig.ai.verifiedAt || null,
+      },
+      payment: paymentProviders.map(safeProviderState),
+      activePaymentProviderCount: activePaymentProviders.length,
+      sms: (db.providerConfig.sms || []).map((provider: any) => ({
+        name: provider.provider || provider.name || 'უცნობი SMS პროვაიდერი',
+        active: Boolean(provider.isActive),
+        senderIdConfigured: hasValue(provider.senderId),
+      })),
+      email: (db.providerConfig.email || []).map((provider: any) => ({
+        name: provider.provider || provider.name || 'უცნობი ელფოსტის პროვაიდერი',
+        active: Boolean(provider.isActive),
+        hostConfigured: hasValue(provider.host),
+      })),
+    },
+    configuration: {
+      listingPrice: { amountMinor: Number(db.listingPrice.amountMinor) || 0, currency: db.listingPrice.currency || 'GEL' },
+      paidListingPriceIsZero: Number(db.listingPrice.amountMinor) === 0,
+      recipientAccount: {
+        bankNameConfigured: hasValue(recipient.bankName),
+        ibanConfigured: hasValue(recipient.iban),
+        beneficiaryConfigured: hasValue(recipient.beneficiary),
+        taxNumberConfigured: hasValue(recipient.taxNumber),
+      },
+      top15PriceCount: priceRows.length,
+      configLock: {
+        locked: Boolean(db.configLock.locked),
+        lockedUntil: db.configLock.lockedUntil || null,
+      },
+      bootstrap: {
+        enabled: Boolean(db.bootstrap.enabled),
+        invalidated: Boolean(db.bootstrap.invalidated),
+        completedAt: db.bootstrap.completedAt || null,
+      },
+      backendUrlConfigured: hasValue(db.backendConfig.baseUrl),
+      persistence: {
+        databaseConfigured: Boolean(storageStatus.databaseConfigured),
+        databaseConnected: Boolean(storageStatus.databaseConnected),
+      },
+      missingSetup,
+    },
+    payments: {
+      processingMode: process.env.NODE_ENV === 'production'
+        ? 'production_payment_routes_are_blocked_until_a_real_gateway_integration_is_implemented'
+        : process.env.PAYMENTS_SIMULATION === 'true' ? 'simulation_only' : 'not_configured',
+      transactionsByStatus: countBy(paymentIntents, (payment: any) => payment.status),
+      transactionsByProvider: countBy(paymentIntents, (payment: any) => paymentProviders.find((provider: any) => provider.id === payment.providerId)?.name || 'უცნობი პროვაიდერი'),
+      successfulRevenueMinor: totalRevenueMinor,
+      pendingReservationCount: reservations.filter((reservation: any) => reservation.status === 'HELD' && isLive(reservation.expiresAt)).length,
+      reservationsByStatus: countBy(reservations, (reservation: any) => reservation.status),
+      membershipsByStatus: countBy(memberships, (membership: any) => membership.status === 'ACTIVE' && !isLive(membership.expiresAt) ? 'EXPIRED' : membership.status),
+    },
+    top15Pricing: {
+      count: priceRows.length,
+      minAmountMinor: sortedPriceRows[0]?.amountMinor ?? null,
+      maxAmountMinor: sortedPriceRows[sortedPriceRows.length - 1]?.amountMinor ?? null,
+      zeroPriceCount: priceRows.filter((row) => row.amountMinor === 0).length,
+      entries: sortedPriceRows.slice(0, 100),
+      additionalEntriesOmitted: Math.max(0, sortedPriceRows.length - 100),
+    },
+    advertisements: {
+      total: advertisements.length,
+      active: adsActive.length,
+      expiredOrInactive: advertisements.length - adsActive.length,
+      byPaymentStatus: countBy(advertisements, (ad: any) => ad.payment_status || 'UNKNOWN'),
+      totalRecordedPriceGEL: advertisements.reduce((sum: number, ad: any) => sum + (Number(ad.price_gel) || 0), 0),
+    },
+    reports: {
+      total: reports.length,
+      byType: countBy(reports, (report: any) => report.type),
+      repeatedContentGroups: repeatedReportGroups,
+      latest: reports.slice(0, 10).map((report: any) => ({ type: report.type, createdAt: report.createdAt })),
+    },
+    support: {
+      totalMessages: Array.isArray(db.supportMessages) ? db.supportMessages.length : 0,
+      flaggedForHuman: Array.isArray(db.supportMessages) ? db.supportMessages.filter((message: any) => Boolean(message.flaggedForHuman)).length : 0,
+    },
+    audit: {
+      totalEvents: Array.isArray(db.auditLog) ? db.auditLog.length : 0,
+      actionsByType: auditActionsByType,
+      latestActions: (Array.isArray(db.auditLog) ? db.auditLog : []).slice(0, 10).map((entry: any) => ({
+        action: entry.action,
+        targetType: entry.targetType,
+        createdAt: entry.createdAt,
+      })),
+    },
+    registration: {
+      smsVerificationRequiredForCraftsmen: false,
+      freeCraftsmanRegistrationWhenListingPriceIsZero: true,
+    },
+  };
 }
 
 function requireCraftsman(req: AuthRequest, res: Response, next: NextFunction) {
@@ -2347,7 +2571,13 @@ FIXED SECURITY RULES:
 - Any requested report, audit, or operational summary must be written in Georgian, even when the app interface language is Russian or English.
 AVAILABLE REGISTERED ADMIN API ROUTES (authoritative; use only these exact method and path combinations):
 ${getAgentAdminRouteCatalog().map(route => '- ' + route).join('\n')}
-For a system overview, use GET /admin/analytics. To count currently listed craftsmen, use GET /admin/craftsmen with query status=ALL, page=1, and size=50, then read totalElements. Use status=DELETED only when asked for deleted records. The analytics field totalCraftsmen counts stored rows and may include soft-deleted craftsmen. The routes /admin/masters and /admin/dashboard do not exist. This route catalog overrides route names in old chat history or API data.
+The input includes currentAdminSnapshot, a server-built snapshot of the same live data used by the authenticated superadmin dashboard. It refreshes on every agent turn and after each completed action. Use it as the source of truth for counts, prices, configured providers, missing fields, operational status, and revenue. Snapshot values are current as of capturedAt; distinguish storedCraftsmen (may include soft-deleted records) from listedCraftsmen. If you need record-level details, use only registered GET routes from the API catalog and explicitly report when a source fails.
+- For an audit or economic recommendation, review every relevant snapshot section before answering. List concrete values and missing setup items; do not invent values or claim that a provider is configured unless its configured/active flag says so.
+- Every amountMinor value is in tetri (100 tetri = 1 GEL). Convert it to GEL before writing amounts for the administrator, and separate recorded results from estimates.
+- The snapshot contains operational summaries, catalog labels, price tables, and configuration-presence flags only. It does not contain raw API keys, passwords, IBANs, tax numbers, personal phone numbers, or unlock credentials. Never ask for or expose those values in an audit; recommend that the superadministrator enter missing values in the protected settings form.
+- If no payment provider is active, present Bank of Georgia or TBC as the first local options for a Georgian service, conditional on the administrator already having a merchant agreement; do not invent fees or claim a gateway is working from credentials alone. In production, distinguish configuration from real gateway processing: the current server blocks payment routes until a real gateway integration is implemented.
+- AI provider keys are required for AI chat and automated reports. SMS verification is not required for craftsman registration. A zero listing price makes craftsman registration free, but does not by itself enable paid Top 15 transactions.
+The routes /admin/masters and /admin/dashboard do not exist. This route catalog overrides route names in old chat history or API data.
 The saved administrator rules, which you must follow for every turn:
 ${safeRules || '(No additional administrator rules have been saved.)'}
 Return exactly one JSON object per response. For a normal answer use {"type":"message","message":"..."}.
@@ -2359,6 +2589,7 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
     for (let round = 0; round < 5; round += 1) {
       const input = JSON.stringify({
         recentConversation: conversation,
+        currentAdminSnapshot: buildSuperAdminAgentAuditSnapshot(),
         completedAdminActions: actions,
         remainingAdminActions: Math.max(0, 4 - actions.length),
       });
