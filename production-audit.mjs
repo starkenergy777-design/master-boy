@@ -111,7 +111,7 @@ check('fresh-install seed has no placeholder credentials or demo accounts', () =
   assert.doesNotMatch(seed, /UNUSABLE_SEED_PASSWORD|INSERT INTO users|INSERT INTO craftsmen|Demo Craftsman/i);
 });
 check('craftsman registration does not default to a payment bank', () => {
-  assert.match(wizard, /setSelectedProviderId\(''\)/);
+  assert.match(wizard, /useState\(''\)/);
   assert.doesNotMatch(wizard, /prov-bog/);
   assert.match(wizard, /!isFreeRegistration && !selectedProviderId/);
 });
