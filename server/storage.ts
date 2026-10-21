@@ -1,6 +1,15 @@
 import { Pool, PoolClient } from 'pg';
 import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, CraftsmanDraft, CraftsmanListing, ListingPrice, Profession, ProviderConfig, RecipientAccount, ConfigLock, Top15Membership, Top15Price, Top15Reservation, User } from './types.js';
 
+export type AiProvider = 'gemini' | 'openai';
+
+export interface AiProviderSettings {
+  selectedProvider: AiProvider;
+  geminiApiKey: string | null;
+  openAiApiKey: string | null;
+  verifiedAt: string | null;
+}
+
 export interface SuperAdminPersistedConfig {
   listingPrice: ListingPrice;
   top15Prices: Record<string, Top15Price>;
@@ -105,6 +114,7 @@ export class StorageService {
     const prices: Record<string, Top15Price> = {};
     for (const x of p.rows) prices[x.id] = { cityId:x.city_id, professionId:x.profession_id, amountMinor:Number(x.amount_minor), currency:x.currency, updatedAt:date(x.updated_at), updatedBy:x.updated_by || 'system' };
     const env = process.env;
+    const aiProvider: AiProvider = env.AI_PROVIDER === 'openai' ? 'openai' : 'gemini';
     const payment = [
       { id:'prov-bog', name:'საქართველოს ბანკი (Bank of Georgia iPay)', apiKeyMasked:'not configured', clientId:env.BOG_MERCHANT_ID || '', secretKey:env.BOG_SECRET || '', isActive:Boolean(r.bog_active && env.BOG_SECRET) },
       { id:'prov-tbc', name:'თიბისი ბანკი (TBC Bank Checkout / Pay)', apiKeyMasked:'not configured', clientId:env.TBC_CLIENT_ID || '', secretKey:env.TBC_CLIENT_SECRET || '', isActive:Boolean(r.tbc_active && env.TBC_CLIENT_SECRET) },
@@ -117,12 +127,54 @@ export class StorageService {
         { id:'sms-magti', provider:'Magti SMS Gateway', senderId:'MASTER_BOY', isActive:Boolean(env.SMS_WEBHOOK_URL) },
         { id:'sms-geocell', provider:'Silknet/Geocell Direct', senderId:'MASTERBOY', isActive:false },
       ], email:[{ id:'email-ses', provider:'AWS SES / Sendgrid', host:env.SMTP_HOST || '', isActive:Boolean(env.SMTP_HOST) }],
-      ai:{ configured:Boolean(env.GEMINI_API_KEY), verifiedAt:null, lastCallOk:false, provider:'Google Gemini Pro / Flash' } },
+      ai:{
+        configured:Boolean(aiProvider === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY),
+        verifiedAt:null,
+        lastCallOk:false,
+        provider:aiProvider === 'openai' ? 'OpenAI API' : 'Google Gemini',
+        selectedProvider:aiProvider,
+        geminiConfigured:Boolean(env.GEMINI_API_KEY),
+        openaiConfigured:Boolean(env.OPENAI_API_KEY),
+      } },
       recipientAccount:{ iban:r.recipient_iban || '', bankName:r.recipient_bank_name || '', beneficiary:r.recipient_company_name || '', taxNumber:r.recipient_tax_id || '', updatedAt:date(r.updated_at) },
       configLock:{ locked:Boolean(r.config_locked), lockedUntil:r.lock_expires_at ? date(r.lock_expires_at) : null, lockedAt:null, unlockCredentialHash:r.config_unlock_hash || undefined },
       bootstrap:{ phone:env.BOOTSTRAP_PHONE || '', password:'', enabled:Boolean(env.BOOTSTRAP_PASSWORD), invalidated:false, completedAt:null },
       backendConfig:{ baseUrl:env.APP_URL || '', issuedAt:date(r.updated_at), signature:'' }, version:1, lastPersistedAt:date(r.updated_at),
     };
+  }
+
+  async loadAiProviderSettings(): Promise<AiProviderSettings> {
+    const envProvider: AiProvider = process.env.AI_PROVIDER === 'openai' ? 'openai' : 'gemini';
+    if (!this.pool && process.env.NODE_ENV !== 'production') {
+      return {
+        selectedProvider: envProvider,
+        geminiApiKey: process.env.GEMINI_API_KEY || null,
+        openAiApiKey: process.env.OPENAI_API_KEY || null,
+        verifiedAt: null,
+      };
+    }
+    const result = await this.db().query(
+      "SELECT secret_value FROM public.server_secrets WHERE secret_name='ai_provider' LIMIT 1"
+    );
+    const value = result.rows[0]?.secret_value || {};
+    return {
+      selectedProvider: value.selectedProvider === 'openai' ? 'openai' : value.selectedProvider === 'gemini' ? 'gemini' : envProvider,
+      geminiApiKey: (typeof value.geminiApiKey === 'string' && value.geminiApiKey) || process.env.GEMINI_API_KEY || null,
+      openAiApiKey: (typeof value.openAiApiKey === 'string' && value.openAiApiKey) || process.env.OPENAI_API_KEY || null,
+      verifiedAt: typeof value.verifiedAt === 'string' ? value.verifiedAt : null,
+    };
+  }
+
+  async saveAiProviderSettings(settings: AiProviderSettings): Promise<void> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') return;
+    await this.db().query(
+      `INSERT INTO public.server_secrets (secret_name, secret_value, updated_at)
+       VALUES ('ai_provider', $1::jsonb, NOW())
+       ON CONFLICT (secret_name) DO UPDATE
+       SET secret_value=EXCLUDED.secret_value, updated_at=NOW()`,
+      [JSON.stringify(settings)]
+    );
+    this.connected = true;
   }
 
   async saveSuperAdminConfig(config: SuperAdminPersistedConfig): Promise<{ success:boolean; database:boolean; snapshot:boolean; error?:string }> {
@@ -132,7 +184,7 @@ export class StorageService {
       const val = (id:string) => p.find((x) => x.id===id)?.isActive || false;
       await this.db().query(
         "INSERT INTO public.system_config (id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at) VALUES ('global_config',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) ON CONFLICT(id) DO UPDATE SET config_locked=EXCLUDED.config_locked,lock_expires_at=EXCLUDED.lock_expires_at,config_unlock_hash=EXCLUDED.config_unlock_hash,recipient_bank_name=EXCLUDED.recipient_bank_name,recipient_iban=EXCLUDED.recipient_iban,recipient_tax_id=EXCLUDED.recipient_tax_id,recipient_company_name=EXCLUDED.recipient_company_name,standard_listing_price_minor=EXCLUDED.standard_listing_price_minor,gemini_api_key_configured=EXCLUDED.gemini_api_key_configured,bog_active=EXCLUDED.bog_active,tbc_active=EXCLUDED.tbc_active,stripe_active=EXCLUDED.stripe_active,updated_at=NOW()",
-        [config.configLock.locked,config.configLock.lockedUntil,config.configLock.unlockCredentialHash || null,config.recipientAccount.bankName,config.recipientAccount.iban,config.recipientAccount.taxNumber,config.recipientAccount.beneficiary,config.listingPrice.amountMinor,Boolean(process.env.GEMINI_API_KEY),val('prov-bog'),val('prov-tbc'),val('prov-stripe')]);
+        [config.configLock.locked,config.configLock.lockedUntil,config.configLock.unlockCredentialHash || null,config.recipientAccount.bankName,config.recipientAccount.iban,config.recipientAccount.taxNumber,config.recipientAccount.beneficiary,config.listingPrice.amountMinor,Boolean(config.providerConfig.ai.geminiConfigured || process.env.GEMINI_API_KEY),val('prov-bog'),val('prov-tbc'),val('prov-stripe')]);
       this.connected=true; return { success:true,database:true,snapshot:false };
     } catch(e:any) { this.connected=false; return { success:false,database:false,snapshot:false,error:e.message }; }
   }

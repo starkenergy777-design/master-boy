@@ -359,14 +359,14 @@ class ApiClient {
     });
   }
 
-  updateGeminiKey(apiKey: string, otpCode: string) {
+  updateAiProvider(provider: 'gemini' | 'openai', apiKey?: string) {
     return this.request('/admin/providers/ai', {
       method: 'PUT',
-      body: JSON.stringify({ apiKey, otpCode }),
+      body: JSON.stringify({ provider, apiKey }),
     });
   }
 
-  getGeminiStatus() {
+  getAiProviderStatus() {
     return this.request('/admin/providers/ai/status');
   }
 

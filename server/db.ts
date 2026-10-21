@@ -122,11 +122,15 @@ class Database {
       configured: false,
       verifiedAt: null,
       lastCallOk: false,
-      provider: 'Google Gemini Pro / Flash',
+      provider: process.env.AI_PROVIDER === 'openai' ? 'OpenAI API' : 'Google Gemini',
+      selectedProvider: process.env.AI_PROVIDER === 'openai' ? 'openai' : 'gemini',
+      geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+      openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
     },
   };
 
   geminiApiKey: string | null = process.env.GEMINI_API_KEY || null;
+  openAiApiKey: string | null = process.env.OPENAI_API_KEY || null;
 
   // Recipient Account (§3.5, §6.6)
   recipientAccount: RecipientAccount = {
@@ -1005,6 +1009,19 @@ class Database {
       } else {
         await this.persistSuperAdminConfig();
       }
+
+      const aiSettings = await storage.loadAiProviderSettings();
+      this.geminiApiKey = aiSettings.geminiApiKey;
+      this.openAiApiKey = aiSettings.openAiApiKey;
+      this.providerConfig.ai.selectedProvider = aiSettings.selectedProvider;
+      this.providerConfig.ai.geminiConfigured = Boolean(this.geminiApiKey);
+      this.providerConfig.ai.openaiConfigured = Boolean(this.openAiApiKey);
+      this.providerConfig.ai.configured = aiSettings.selectedProvider === 'openai'
+        ? Boolean(this.openAiApiKey)
+        : Boolean(this.geminiApiKey);
+      this.providerConfig.ai.provider = aiSettings.selectedProvider === 'openai' ? 'OpenAI API' : 'Google Gemini';
+      this.providerConfig.ai.verifiedAt = aiSettings.verifiedAt;
+      this.providerConfig.ai.lastCallOk = Boolean(aiSettings.verifiedAt);
 
       const runtimeMaps: Array<[string, Map<string, any>]> = [
         ['users', this.users],

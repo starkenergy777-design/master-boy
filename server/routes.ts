@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { db, verifyPassword, hashPassword } from './db.js';
 import { storage } from './storage.js';
-import { generateSupportReply, generatePeriodicReport, testGeminiKey, resetAiClient } from './gemini.js';
+import { generateSupportReply, generatePeriodicReport, testGeminiKey, testOpenAIKey, resetAiClient } from './gemini.js';
 import {
   Language,
   Role,
@@ -1534,7 +1534,7 @@ apiRouter.get('/support/messages', requireCraftsman, (req: AuthRequest, res) => 
   });
 });
 
-// POST /support/messages & /support/chat (7 msg/day limit, Gemini response with autonomous fallback)
+// POST /support/messages & /support/chat (7 msg/day limit, configured AI response with autonomous fallback)
 apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (req: AuthRequest, res) => {
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
@@ -1576,7 +1576,7 @@ apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (
   };
   db.supportMessages.push(userMsg);
 
-  // Autonomous Gemini reply or verified platform fallback
+  // Autonomous selected-provider reply or verified platform fallback
   let replyResult = {
     reply: lang === 'ka'
       ? 'გამარჯობა! თქვენი შეტყობინება მიღებულია. MASTER_BOY პლატფორმის მონაცემების განახლება შეგიძლიათ თქვენი პირადი კაბინეტიდან.'
@@ -1586,7 +1586,7 @@ apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (
     flaggedForHuman: false,
   };
 
-  if (db.providerConfig.ai.configured && db.geminiApiKey) {
+  if (db.providerConfig.ai.configured) {
     try {
       replyResult = await generateSupportReply(c.id, text, lang);
     } catch {
@@ -2020,47 +2020,72 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
   res.json({ success: true, provider: safeProvider(item) });
 });
 
-// PUT /admin/providers/ai (write-only Gemini API key; OTP re-confirmation)
+// PUT /admin/providers/ai (write-only provider key and active provider selection)
 apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
-  const { apiKey, otpCode } = req.body;
-  if (!apiKey || typeof apiKey !== 'string') {
-    return res.status(400).json({ code: 'INVALID_KEY', message: 'API key required' });
+  const { provider, apiKey } = req.body || {};
+  if (provider !== 'gemini' && provider !== 'openai') {
+    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Choose Gemini or OpenAI as the AI provider.' });
+  }
+  if (apiKey !== undefined && typeof apiKey !== 'string') {
+    return res.status(400).json({ code: 'INVALID_KEY', message: 'API key must be text.' });
   }
 
-  // Super Admin re-confirms with OTP per §3.8
-  const reauthCode = process.env.ADMIN_REAUTH_CODE;
-  if (!reauthCode || !otpCode || otpCode !== reauthCode) {
-    return res.status(403).json({ code: 'OTP_REQUIRED', message: 'Valid administrator re-confirmation code required before updating Gemini API key' });
+  const cleanKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (cleanKey.length > 512 || /[\r\n]/.test(cleanKey)) {
+    return res.status(400).json({ code: 'INVALID_KEY', message: 'API key format is invalid.' });
+  }
+  const nextGeminiKey = provider === 'gemini' && cleanKey ? cleanKey : db.geminiApiKey;
+  const nextOpenAiKey = provider === 'openai' && cleanKey ? cleanKey : db.openAiApiKey;
+  const selectedKey = provider === 'gemini' ? nextGeminiKey : nextOpenAiKey;
+  if (!selectedKey) {
+    return res.status(400).json({ code: 'AI_KEY_REQUIRED', message: 'Enter an API key for the selected provider first.' });
   }
 
-  const isValid = await testGeminiKey(apiKey);
+  const isValid = provider === 'gemini'
+    ? await testGeminiKey(selectedKey)
+    : await testOpenAIKey(selectedKey);
   if (!isValid) {
-    return res.status(422).json({ code: 'AI_KEY_INVALID', message: 'Gemini API key verification failed' });
+    return res.status(422).json({ code: 'AI_KEY_INVALID', message: `${provider === 'gemini' ? 'Gemini' : 'OpenAI'} API key verification failed.` });
   }
 
-  resetAiClient(apiKey);
-  db.providerConfig.ai.configured = true;
-  db.providerConfig.ai.verifiedAt = new Date().toISOString();
+  const verifiedAt = new Date().toISOString();
+  const settings = {
+    selectedProvider: provider,
+    geminiApiKey: nextGeminiKey,
+    openAiApiKey: nextOpenAiKey,
+    verifiedAt,
+  } as const;
+
+  try {
+    await storage.saveAiProviderSettings(settings);
+  } catch (error) {
+    console.error('Could not persist AI provider settings to the restricted Supabase secrets table.');
+    return res.status(503).json({ code: 'AI_SETTINGS_PERSIST_FAILED', message: 'AI settings could not be saved. Check that the latest database migration is installed.' });
+  }
+
+  if (provider === 'gemini' && cleanKey) db.geminiApiKey = cleanKey;
+  if (provider === 'openai' && cleanKey) db.openAiApiKey = cleanKey;
+  resetAiClient();
+  db.providerConfig.ai.selectedProvider = provider;
+  db.providerConfig.ai.geminiConfigured = Boolean(db.geminiApiKey);
+  db.providerConfig.ai.openaiConfigured = Boolean(db.openAiApiKey);
+  db.providerConfig.ai.configured = Boolean(selectedKey);
+  db.providerConfig.ai.provider = provider === 'gemini' ? 'Google Gemini' : 'OpenAI API';
+  db.providerConfig.ai.verifiedAt = verifiedAt;
   db.providerConfig.ai.lastCallOk = true;
 
   db.auditLog.unshift({
     id: `audit-${Date.now()}`,
     actorType: 'USER',
     actorId: req.user!.id,
-    action: 'CONFIGURE_GEMINI_KEY',
+    action: 'CONFIGURE_AI_PROVIDER',
     targetType: 'SYSTEM',
-    reason: 'Super Admin updated Gemini AI provider key with OTP verification',
-    createdAt: new Date().toISOString(),
+    reason: `Super Admin verified and selected ${provider === 'gemini' ? 'Gemini' : 'OpenAI'} for AI features.`,
+    createdAt: verifiedAt,
   });
 
   await db.persistSuperAdminConfig();
-
-  // Never return the key! Only status
-  res.json({
-    configured: true,
-    verifiedAt: db.providerConfig.ai.verifiedAt,
-    lastCallOk: true,
-  });
+  res.json(db.providerConfig.ai);
 });
 
 // GET /admin/providers/ai/status
@@ -2254,11 +2279,11 @@ apiRouter.get('/admin/config/lock', requireSuperAdmin, (req, res) => {
 
 // POST /admin/config/lock (6 months lock)
 apiRouter.post('/admin/config/lock', requireSuperAdmin, async (req: AuthRequest, res) => {
-  // Lock can only be activated if Gemini AI is configured per §3.8
+  // Configuration lock requires a verified key for the selected provider.
   if (!db.providerConfig.ai.configured) {
     return res.status(400).json({
-      code: 'GEMINI_KEY_REQUIRED',
-      message: 'Configuration lock can only be activated when a tested, working Gemini API key exists.',
+      code: 'AI_KEY_REQUIRED',
+      message: 'Configuration lock can only be activated when the selected AI provider has a verified API key.',
     });
   }
 

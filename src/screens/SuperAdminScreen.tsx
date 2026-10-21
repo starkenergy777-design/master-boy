@@ -28,18 +28,87 @@ interface SuperAdminScreenProps {
   lang: Language;
   currentUser: User;
   onBack: () => void;
+  onOpenAdminTools: () => void;
 }
 
 export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   lang,
   currentUser,
   onBack,
+  onOpenAdminTools,
 }) => {
   const t = translations[lang] || translations.ka;
+  const aiCopy = {
+    ka: {
+      title: 'AI პროვაიდერი',
+      description: 'აირჩიე Gemini ან OpenAI. API გასაღები ინახება მხოლოდ სერვერზე და უკან არ ბრუნდება.',
+      active: 'არჩეული',
+      ready: 'გასაღები დამატებულია',
+      missing: 'გასაღები არ არის',
+      provider: 'აქტიური პროვაიდერი',
+      key: 'API გასაღები',
+      placeholder: 'ჩასვი გასაღები — შენახვის შემდეგ ველი გასუფთავდება',
+      save: 'შემოწმება და შენახვა',
+      saved: 'AI პროვაიდერი შემოწმდა და პარამეტრები Supabase-ში უსაფრთხოდ შეინახა.',
+      required: 'არჩეული პროვაიდერის API გასაღები ჯერ უნდა დაამატო.',
+      invalid: 'გასაღები უარყოფილია. გადაამოწმე მისი სისწორე და შერჩეულ მოდელზე წვდომა.',
+      saveFailed: 'AI პარამეტრები ვერ შეინახა. გადაამოწმე მონაცემთა ბაზის განახლება.',
+      adminTools: 'ადმინისტრირების ინსტრუმენტები',
+      note: 'Gemini და OpenAI ორივე მხარდაჭერილია. აირჩიე რომელი იმუშაოს ხელოსნების მხარდაჭერის ჩატსა და ავტომატურ ანგარიშებში.',
+      processing: 'მხარდაჭერის შეტყობინებები დასამუშავებლად არჩეულ AI პროვაიდერს ეგზავნება.',
+      billing: 'OpenAI API-ის გამოყენების საფასური ChatGPT-ის გამოწერისგან ცალკეა.'
+    },
+    ru: {
+      title: 'Провайдер ИИ',
+      description: 'Выберите Gemini или OpenAI. API-ключ хранится только на сервере и не возвращается.',
+      active: 'Выбран',
+      ready: 'Ключ добавлен',
+      missing: 'Ключ не добавлен',
+      provider: 'Активный провайдер',
+      key: 'API-ключ',
+      placeholder: 'Вставьте ключ — поле очистится после сохранения',
+      save: 'Проверить и сохранить',
+      saved: 'Провайдер ИИ проверен, настройки безопасно сохранены в Supabase.',
+      required: 'Сначала добавьте API-ключ выбранного провайдера.',
+      invalid: 'Ключ отклонён. Проверьте его и доступ к выбранной модели.',
+      saveFailed: 'Не удалось сохранить настройки ИИ. Проверьте обновление базы данных.',
+      adminTools: 'Инструменты администрирования',
+      note: 'Поддерживаются Gemini и OpenAI. Выберите провайдера для чата поддержки мастеров и автоматических отчётов.',
+      processing: 'Сообщения поддержки отправляются выбранному провайдеру ИИ для обработки.',
+      billing: 'Использование OpenAI API оплачивается отдельно от подписки ChatGPT.'
+    },
+    en: {
+      title: 'AI provider',
+      description: 'Choose Gemini or OpenAI. The API key stays on the server and is never returned.',
+      active: 'Selected',
+      ready: 'Key configured',
+      missing: 'Key not set',
+      provider: 'Active provider',
+      key: 'API key',
+      placeholder: 'Paste the key; this field clears after saving',
+      save: 'Verify and save',
+      saved: 'AI provider verified and settings saved securely in Supabase.',
+      required: 'Add an API key for the selected provider first.',
+      invalid: 'The API key was rejected. Check that it is valid and has access to the selected model.',
+      saveFailed: 'AI settings could not be saved. Check the database migration and try again.',
+      adminTools: 'Administration tools',
+      note: 'Gemini and OpenAI are both supported. Choose the provider used by craftsman support chat and automated reports.',
+      processing: 'Support messages are sent to the selected AI provider for processing.',
+      billing: 'OpenAI API usage is billed separately from a ChatGPT subscription.'
+    },
+  }[lang] || {
+    title: 'AI provider', description: 'Choose Gemini or OpenAI. The API key stays on the server and is never returned.',
+    active: 'Selected', ready: 'Key configured', missing: 'Key not set', provider: 'Active provider',
+    key: 'API key', placeholder: 'Paste the key; this field clears after saving', save: 'Verify and save',
+    saved: 'AI provider verified and settings saved securely in Supabase.', required: 'Add an API key for the selected provider first.',
+    adminTools: 'Administration tools', note: 'Gemini and OpenAI are both supported.',
+    billing: 'OpenAI API usage is billed separately from a ChatGPT subscription.',
+    processing: 'Support messages are sent to the selected AI provider for processing.',
+  };
 
-  // Gemini State (§3.8)
-  const [geminiKeyInput, setGeminiKeyInput] = useState('');
-  const [geminiOtpCode, setGeminiOtpCode] = useState('');
+  // AI provider state. API keys are write-only and never restored to the browser.
+  const [aiKeyInput, setAiKeyInput] = useState('');
+  const [selectedAIProvider, setSelectedAIProvider] = useState<'gemini' | 'openai'>('gemini');
   const [geminiStatus, setGeminiStatus] = useState<any>(null);
 
   // Recipient Account State (§3.5)
@@ -94,7 +163,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     try {
       setLoading(true);
       const [aiStat, recStat, lockStat, bootStat, backStat, listPriceStat, provStat, adsStat, persistStat] = await Promise.all([
-        api.getGeminiStatus(),
+        api.getAiProviderStatus(),
         api.getRecipientAccount(),
         api.getConfigLock(),
         api.getBootstrapStatus(),
@@ -105,6 +174,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         api.getPersistenceStatus().catch(() => null),
       ]);
       setGeminiStatus(aiStat);
+      setSelectedAIProvider(aiStat.selectedProvider === 'openai' ? 'openai' : 'gemini');
       setRecipient(recStat);
       setConfigLock(lockStat);
       setBootstrapStatus(bootStat);
@@ -128,23 +198,33 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     loadAll();
   }, []);
 
-  // Update Gemini Key with OTP Re-confirmation (§3.8)
-  const handleUpdateGeminiKey = async (e: React.FormEvent) => {
+  // Verify and save the selected AI provider. The key is cleared from the form afterwards.
+  const handleSaveAiProvider = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!geminiKeyInput.trim()) return;
+    const hasSelectedKey = selectedAIProvider === 'gemini'
+      ? geminiStatus?.geminiConfigured
+      : geminiStatus?.openaiConfigured;
+    if (!aiKeyInput.trim() && !hasSelectedKey) {
+      setErrorMsg(aiCopy.required);
+      return;
+    }
     setErrorMsg('');
     setSuccessMsg('');
     try {
       setLoading(true);
-      const res = await api.updateGeminiKey(geminiKeyInput, geminiOtpCode);
+      const res = await api.updateAiProvider(selectedAIProvider, aiKeyInput.trim() || undefined);
       setGeminiStatus(res);
-      setGeminiKeyInput(''); // Never stored in state after submit!
-      setSuccessMsg('Gemini API key verified and stored securely in backend.');
+      setAiKeyInput('');
+      setSuccessMsg(aiCopy.saved);
     } catch (err: any) {
       if (err.status === 423) {
-        setErrorMsg('423 CONFIG_LOCKED: Cannot modify AI key during 6-month lock.');
+        setErrorMsg('423 CONFIG_LOCKED: Cannot modify AI settings during the configuration lock.');
+      } else if (err.status === 422) {
+        setErrorMsg(aiCopy.invalid);
+      } else if (err.status === 503) {
+        setErrorMsg(aiCopy.saveFailed);
       } else {
-        setErrorMsg(err.message || 'Key verification failed');
+        setErrorMsg(err.message || 'AI key verification failed');
       }
     } finally {
       setLoading(false);
@@ -180,7 +260,11 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       setLoading(true);
       const res = await api.activateConfigLock();
       setConfigLock(res);
-      setSuccessMsg('Configuration locked for 6 months. App runs autonomously with Gemini.');
+      setSuccessMsg(lang === 'ka'
+        ? 'კონფიგურაცია 6 თვით ჩაიკეტა. აპი არჩეულ AI პროვაიდერზე იმუშავებს.'
+        : lang === 'ru'
+          ? 'Настройки заблокированы на 6 месяцев. Приложение будет использовать выбранный провайдер ИИ.'
+          : 'Configuration locked for 6 months. The app will use the selected AI provider.');
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -362,10 +446,16 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               </span>
             </h2>
             <p className="text-[10px] text-slate-400">
-              {lang === 'ka' ? 'სისტემური პარამეტრები და უსაფრთხოება' : 'System Settings & Security'}
+              {lang === 'ka' ? 'სისტემური პარამეტრები და უსაფრთხოება' : lang === 'ru' ? 'Настройки системы и безопасность' : 'System Settings & Security'}
             </p>
           </div>
         </div>
+        <button
+          onClick={onOpenAdminTools}
+          className="shrink-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-[10px] font-semibold text-slate-200 hover:bg-slate-800"
+        >
+          {aiCopy.adminTools}
+        </button>
       </div>
 
       {errorMsg && (
@@ -401,7 +491,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         {configLock.locked ? (
           <div className="space-y-2 pt-2 border-t border-slate-800">
             <p className="text-[11px] text-amber-300">
-              Autonomous mode active. Gemini handles chat and audits. Staff edits return 423 CONFIG_LOCKED.
+              {lang === 'ka' ? 'ავტონომიური რეჟიმი ჩართულია. ჩატი და ანგარიშები იყენებს არჩეულ AI პროვაიდერს. პარამეტრების ცვლილება დაბლოკილია.' : lang === 'ru' ? 'Автономный режим включён. Чат и отчёты используют выбранный провайдер ИИ. Изменение настроек заблокировано.' : 'Autonomous mode is active. Chat and reports use the selected AI provider. Configuration edits are locked.'}
             </p>
             <div className="flex gap-2">
               <input
@@ -430,73 +520,71 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         )}
       </div>
 
-      {/* 2. Gemini AI Provider & Write-Only Key (§3.8) */}
+      {/* 2. AI provider setup: Gemini and OpenAI */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
               <Cpu className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-white">Gemini (AI) Provider</h3>
-              <p className="text-[10px] text-slate-400">
-                Write-only key input with OTP re-confirmation
-              </p>
+              <h3 className="text-xs font-bold text-white">{aiCopy.title}</h3>
+              <p className="text-[10px] text-slate-400">{aiCopy.description}</p>
             </div>
           </div>
-
-          <span
-            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-              geminiStatus?.configured
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                : 'bg-rose-500/20 text-rose-400 border-rose-500/40'
-            }`}
-          >
-            {geminiStatus?.configured ? 'Configured' : 'Not Set'}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${geminiStatus?.configured ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : 'bg-rose-500/20 text-rose-400 border-rose-500/40'}`}>
+            {geminiStatus?.configured ? aiCopy.ready : aiCopy.missing}
           </span>
         </div>
 
-        <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-3 text-[11px] text-indigo-300 space-y-1">
-          <p className="font-semibold text-white">
-            🔑 Gemini AI-ის გააქტიურება:
-          </p>
-          <p className="text-[10px] text-slate-300 leading-relaxed">
-            სუპერადმინისტრატორის მიერ API გასაღების დამატების შემდეგ აპლიკაციაში ამოქმედდება Google Gemini: ხელოსნების მხარდაჭერის ჩატი და ავტომატური ანგარიშები.
-          </p>
+        <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-3 text-[11px] text-indigo-300 space-y-2">
+          <p className="font-semibold text-white">{aiCopy.note}</p>
+          <p className="text-[10px] text-slate-300">{aiCopy.billing}</p>
+          <p className="text-[10px] text-slate-400">{aiCopy.processing}</p>
+          <div className="flex flex-wrap gap-2">
+            <span className={`text-[10px] rounded-full border px-2 py-1 ${geminiStatus?.geminiConfigured ? 'text-emerald-300 border-emerald-500/40' : 'text-slate-400 border-slate-700'}`}>
+              Gemini: {geminiStatus?.geminiConfigured ? aiCopy.ready : aiCopy.missing}
+            </span>
+            <span className={`text-[10px] rounded-full border px-2 py-1 ${geminiStatus?.openaiConfigured ? 'text-emerald-300 border-emerald-500/40' : 'text-slate-400 border-slate-700'}`}>
+              OpenAI: {geminiStatus?.openaiConfigured ? aiCopy.ready : aiCopy.missing}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-3 pt-1 text-[10px]">
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-300 underline underline-offset-2">Google AI Studio — Gemini key</a>
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-indigo-300 underline underline-offset-2">OpenAI Platform — API key</a>
+          </div>
         </div>
 
-        <form onSubmit={handleUpdateGeminiKey} className="space-y-2.5 pt-1">
+        <form onSubmit={handleSaveAiProvider} className="space-y-2.5 pt-1">
           <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Gemini API Key (Invisible / Masked)</label>
+            <label className="text-[10px] text-slate-400">{aiCopy.provider}</label>
+            <select
+              value={selectedAIProvider}
+              onChange={(e) => setSelectedAIProvider(e.target.value as 'gemini' | 'openai')}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
+            >
+              <option value="gemini">Google Gemini</option>
+              <option value="openai">OpenAI (ChatGPT API)</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400">{selectedAIProvider === 'gemini' ? 'Gemini' : 'OpenAI (ChatGPT API)'} — {aiCopy.key}</label>
             <input
               type="password"
-              autoComplete="off"
-              value={geminiKeyInput}
-              onChange={(e) => setGeminiKeyInput(e.target.value)}
-              placeholder="AIzaSy... (Write-only, never returned)"
+              autoComplete="new-password"
+              value={aiKeyInput}
+              onChange={(e) => setAiKeyInput(e.target.value)}
+              placeholder={aiCopy.placeholder}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
-              required
+              required={selectedAIProvider === 'gemini' ? !geminiStatus?.geminiConfigured : !geminiStatus?.openaiConfigured}
             />
           </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] text-slate-400">Re-confirm OTP Code</label>
-            <input
-              type="text"
-              value={geminiOtpCode}
-              onChange={(e) => setGeminiOtpCode(e.target.value)}
-              placeholder="6-digit code"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
-              required
-            />
-          </div>
-
           <button
             type="submit"
             disabled={loading || configLock.locked}
             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition-all disabled:opacity-50"
           >
-            Verify & Save Gemini Key
+            {aiCopy.save}
           </button>
         </form>
       </div>
@@ -856,7 +944,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                 Activate 6-Month Lock
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Activate 6-month configuration lock? Human edits to prices, recipients, and roles will be strictly blocked. The app runs autonomously with Gemini AI.
+                Activate 6-month configuration lock? Human edits to prices, recipients, and roles will be strictly blocked. The app runs autonomously with the selected AI provider.
               </p>
             </div>
 

@@ -252,6 +252,9 @@ export interface ProviderConfig {
     verifiedAt: string | null;
     lastCallOk: boolean;
     provider: string;
+    selectedProvider: 'gemini' | 'openai';
+    geminiConfigured: boolean;
+    openaiConfigured: boolean;
   };
 }
 
