@@ -696,29 +696,56 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   };
 
   return localizeTree(lang, (
-    <div className="flex-1 flex flex-col p-4 pb-20 space-y-5 animate-fade-in text-slate-100">
-      {/* Top Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <div>
-            <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
-              <span>{t.superAdminCabinet}</span>
-              <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.2 rounded border border-purple-500/30">
-                SUPER_ADMIN
+    <div className="superadmin-dashboard relative isolate mx-auto flex w-full max-w-[1480px] flex-1 flex-col gap-5 px-4 pb-24 pt-5 text-slate-100 animate-fade-in sm:gap-6 lg:px-6">
+      {/* Cabinet identity and service overview */}
+      <header className="relative overflow-hidden rounded-[1.75rem] border border-cyan-400/20 bg-[radial-gradient(ellipse_at_top_right,_rgba(56,189,248,0.13),_transparent_46%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(17,24,39,0.96)_58%,_rgba(30,27,75,0.82))] p-5 shadow-[0_18px_50px_rgba(2,6,23,0.35)] sm:p-6">
+        <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full border border-cyan-300/10" />
+        <div className="pointer-events-none absolute right-8 top-8 h-32 w-32 rounded-full bg-cyan-400/5 blur-3xl" />
+        <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-400/10 text-cyan-200 shadow-inner shadow-cyan-100/5">
+              <ShieldAlert className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
+                  <span>{t.superAdminCabinet}</span>
+                </h2>
+                <span className="rounded-full border border-violet-300/25 bg-violet-400/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.14em] text-violet-200">
+                  SUPER_ADMIN
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-300">
+                {lang === 'ka' ? 'სისტემის მართვა • უსაფრთხოება • ინტეგრაციები' : lang === 'ru' ? 'Система • безопасность • интеграции' : 'System control • security • integrations'}
+              </p>
+            </div>
+          </div>
+          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${configLock.locked ? 'border-amber-400/25 bg-amber-400/10 text-amber-200' : 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200'}`}>
+                {configLock.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                {configLock.locked ? (lang === 'ka' ? 'ჩაკეტილია' : lang === 'ru' ? 'Заблокировано' : 'Locked') : (lang === 'ka' ? 'ღიაა' : lang === 'ru' ? 'Открыто' : 'Unlocked')}
               </span>
-            </h2>
-            <p className="text-[10px] text-slate-400">
-              {lang === 'ka' ? 'სისტემური პარამეტრები და უსაფრთხოება' : lang === 'ru' ? 'Настройки системы и безопасность' : 'System Settings & Security'}
-            </p>
+              <span className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${geminiStatus?.configured ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-100' : 'border-slate-600 bg-slate-800/70 text-slate-300'}`}>
+                <Cpu className="h-3.5 w-3.5" />
+                AI · {geminiStatus?.configured ? aiCopy.ready : aiCopy.missing}
+              </span>
+              {persistenceStatus && (
+                <span className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${persistenceStatus.databaseConnected ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100' : 'border-rose-400/25 bg-rose-400/10 text-rose-200'}`}>
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  DB · {persistenceStatus.databaseConnected ? t.databaseConnected : t.databaseDisconnected}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={onOpenAdminTools}
+              className="min-h-10 shrink-0 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:border-cyan-200/40 hover:bg-cyan-300/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+            >
+              {aiCopy.adminTools}
+            </button>
           </div>
         </div>
-        <button
-          onClick={onOpenAdminTools}
-          className="shrink-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-[10px] font-semibold text-slate-200 hover:bg-slate-800"
-        >
-          {aiCopy.adminTools}
-        </button>
-      </div>
+      </header>
 
       {errorMsg && (
         <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-300 flex items-center gap-2">
@@ -734,8 +761,9 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         </div>
       )}
 
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
       {/* 1. Configuration Lock (§3.5 & §3.6) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+      <div className="superadmin-panel rounded-3xl p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className={`p-2 rounded-xl border ${configLock.locked ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
@@ -783,7 +811,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       </div>
 
       {/* 2. AI provider setup: Gemini and OpenAI */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+      <div className="superadmin-panel rounded-3xl p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
@@ -851,9 +879,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </button>
         </form>
       </div>
+      </div>
 
       {/* Superadmin agent: tools, mandatory rules, and chat */}
-      <section className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-4" aria-labelledby="superadmin-agent-title">
+      <section className="superadmin-panel superadmin-panel-featured rounded-3xl p-5 sm:p-6 space-y-5" aria-labelledby="superadmin-agent-title">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 id="superadmin-agent-title" className="text-sm font-bold text-white">{superAdminAgentCopy[lang].title}</h3>
@@ -1024,8 +1053,9 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         </div>
       </section>
 
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
       {/* 3. Recipient Account (§3.5) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+      <div className="superadmin-panel rounded-3xl p-5 sm:p-6 space-y-4">
         <div className="flex items-center gap-2">
           <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
             <Building2 className="w-5 h-5" />
@@ -1078,7 +1108,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       </div>
 
       {/* 4. Craftsman Listing Subscription Price (§6.6, R-25) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+      <div className="superadmin-panel rounded-3xl p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
@@ -1119,7 +1149,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
       {/* 4. Mandatory Credential Migration */}
       {bootstrapStatus?.bootstrapEnabled && (
-        <div className="bg-purple-950/40 border border-purple-500/40 rounded-3xl p-4 space-y-3">
+        <div className="superadmin-panel superadmin-panel-migration rounded-3xl p-5 sm:p-6 space-y-4 xl:col-span-2">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-purple-400" />
             <div>
@@ -1175,9 +1205,11 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </form>
         </div>
       )}
+      </div>
 
+      <div className="grid grid-cols-1 items-start gap-4 2xl:grid-cols-2">
       {/* 5. Payment Providers Configuration (BOG, TBC Bank, Stripe) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+      <div className="superadmin-panel rounded-3xl p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
@@ -1250,7 +1282,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       </div>
 
       {/* 6. Commercial Advertisements Management (§Task 10) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+      <div className="superadmin-panel rounded-3xl p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
@@ -1328,10 +1360,12 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </div>
         )}
       </div>
+      </div>
 
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
       {/* 7. Signed Backend URL */}
       {backendConfig && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 text-xs space-y-1">
+        <div className="superadmin-panel rounded-2xl p-4 text-xs space-y-2">
           <div className="flex items-center gap-1.5 text-slate-400">
             <Link className="w-3.5 h-3.5 text-amber-400" />
             <span className="font-bold text-[11px]">Signed Backend URL</span>
@@ -1347,7 +1381,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
       {/* 8. SuperAdmin Persistent Storage Status */}
       {persistenceStatus && (
-        <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-3 text-xs space-y-1.5 shadow-sm">
+        <div className="superadmin-panel rounded-2xl border-emerald-400/20 p-4 text-xs space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[11px]">
               <CheckCircle className="w-3.5 h-3.5" />
@@ -1365,6 +1399,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </div>
         </div>
       )}
+      </div>
 
       {/* Lock Confirmation Modal (Replaces window.confirm) */}
       {showLockConfirmModal && (
