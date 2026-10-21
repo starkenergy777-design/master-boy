@@ -187,21 +187,30 @@ export class StorageService {
 
   async saveSuperAdminConfig(config: SuperAdminPersistedConfig): Promise<{ success:boolean; database:boolean; snapshot:boolean; error?:string }> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return { success:false,database:false,snapshot:false };
+    let client: PoolClient | null = null;
     try {
+      client = await this.db().connect();
+      await client.query('BEGIN');
       const p = config.providerConfig.payment || [];
       const val = (id:string) => p.find((x) => x.id===id)?.isActive || false;
-      await this.db().query(
+      await client.query(
         "INSERT INTO public.system_config (id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at) VALUES ('global_config',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) ON CONFLICT(id) DO UPDATE SET config_locked=EXCLUDED.config_locked,lock_expires_at=EXCLUDED.lock_expires_at,config_unlock_hash=EXCLUDED.config_unlock_hash,recipient_bank_name=EXCLUDED.recipient_bank_name,recipient_iban=EXCLUDED.recipient_iban,recipient_tax_id=EXCLUDED.recipient_tax_id,recipient_company_name=EXCLUDED.recipient_company_name,standard_listing_price_minor=EXCLUDED.standard_listing_price_minor,gemini_api_key_configured=EXCLUDED.gemini_api_key_configured,bog_active=EXCLUDED.bog_active,tbc_active=EXCLUDED.tbc_active,stripe_active=EXCLUDED.stripe_active,updated_at=NOW()",
         [config.configLock.locked,config.configLock.lockedUntil,config.configLock.unlockCredentialHash || null,config.recipientAccount.bankName,config.recipientAccount.iban,config.recipientAccount.taxNumber,config.recipientAccount.beneficiary,config.listingPrice.amountMinor,Boolean(config.providerConfig.ai.geminiConfigured || process.env.GEMINI_API_KEY),val('prov-bog'),val('prov-tbc'),val('prov-stripe')]);
-      await this.db().query(
+      await client.query(
         `INSERT INTO public.server_secrets (secret_name, secret_value, updated_at)
          VALUES ('provider_config', $1::jsonb, NOW())
          ON CONFLICT (secret_name) DO UPDATE
          SET secret_value=EXCLUDED.secret_value, updated_at=NOW()`,
         [JSON.stringify({ providerConfig: config.providerConfig, backendConfig: config.backendConfig })]
       );
+      await client.query('COMMIT');
       this.connected=true; return { success:true,database:true,snapshot:false };
-    } catch(e:any) { this.connected=false; return { success:false,database:false,snapshot:false,error:e.message }; }
+    } catch(e:any) {
+      if (client) await client.query('ROLLBACK').catch(() => undefined);
+      this.connected=false; return { success:false,database:false,snapshot:false,error:e.message };
+    } finally {
+      client?.release();
+    }
   }
 
   async loadRuntimeCollection<T=any>(name:string): Promise<Record<string,T>> {
