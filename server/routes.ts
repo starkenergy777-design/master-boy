@@ -238,15 +238,21 @@ const agentReportLabels: Record<string, string> = {
   message: 'შეტყობინება',
 };
 
-function formatAgentStructuredValue(value: any, depth = 0): string {
+function formatAgentStructuredValue(value: any, depth = 0, reportMode = false): string {
   if (depth > 3 || value === null || value === undefined) return '';
-  if (Array.isArray(value)) return value.map(item => formatAgentStructuredValue(item, depth + 1)).filter(Boolean).join('\n');
+  if (typeof value === 'string') {
+    if (reportMode && /[A-Za-z]{3}/.test(value) && !/[\u10A0-\u10FF]/.test(value)) return 'ქართული თარგმანი ვერ მომზადდა.';
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(item => formatAgentStructuredValue(item, depth + 1, reportMode)).filter(Boolean).join('\n');
   if (typeof value === 'object') {
+    const reportFields = ['title', 'summary', 'overview', 'recommendations', 'suggestions', 'activeSlots', 'totalCraftsmen', 'activeSessions'];
+    const isReport = reportMode || Object.keys(value).some(key => reportFields.includes(key));
     return Object.entries(value)
       .filter(([key]) => !['type', 'generatedBy', 'format', 'message'].includes(key))
       .map(([key, item]) => {
         const label = agentReportLabels[key] || 'დამატებითი ინფორმაცია';
-        const formatted = formatAgentStructuredValue(item, depth + 1);
+        const formatted = formatAgentStructuredValue(item, depth + 1, isReport);
         return formatted ? label + ': ' + formatted : '';
       })
       .filter(Boolean)
@@ -255,34 +261,38 @@ function formatAgentStructuredValue(value: any, depth = 0): string {
   return String(value);
 }
 
-function getPlainAgentReply(raw: string, plan: any, language: string): string {
-  const fallback = language === 'ru'
-    ? 'Не удалось получить понятный текстовый ответ. Повторите запрос.'
-    : language === 'en'
-      ? 'A readable response could not be prepared. Please try again.'
-      : 'აგენტის პასუხის წაკითხვადი ტექსტი ვერ მომზადდა. გაიმეორე დავალება.';
+function getPlainAgentReply(raw: string, plan: any, language: string, reportRequested = false): string {
+  const fallback = reportRequested
+    ? 'ანგარიშის ტექსტი ქართულად ვერ მომზადდა. სცადე თავიდან.'
+    : language === 'ru'
+      ? 'Не удалось получить понятный текстовый ответ. Повторите запрос.'
+      : language === 'en'
+        ? 'A readable response could not be prepared. Please try again.'
+        : 'აგენტის პასუხის წაკითხვადი ტექსტი ვერ მომზადდა. გაიმეორე დავალება.';
 
   const direct = plan && typeof plan === 'object'
-    ? [plan.message, plan.reply, plan.answer, plan.text, plan.content, plan.summary].find((value: any) => typeof value === 'string' && value.trim())
+    ? [plan.message, plan.reply, plan.answer, plan.text, plan.content].find((value: any) => typeof value === 'string' && value.trim())
     : undefined;
   if (typeof direct === 'string') {
     const text = direct.trim().replace(/^\u0060{3}(?:[a-z]+)?\s*/i, '').replace(/\s*\u0060{3}$/i, '');
     if (/^\s*[{[]/.test(text)) {
       const nested = parseAgentPlan(text);
-      return nested ? getPlainAgentReply('', nested, language) : fallback;
+      return nested ? getPlainAgentReply('', nested, language, reportRequested) : fallback;
     }
+    if (reportRequested && /[A-Za-z]{3}/.test(text) && !/[\u10A0-\u10FF]/.test(text)) return fallback;
     return text;
   }
   if (plan && typeof plan === 'object') {
-    const formatted = formatAgentStructuredValue(plan).trim();
+    const formatted = formatAgentStructuredValue(plan, 0, reportRequested).trim();
     if (formatted) return formatted.slice(0, 4000);
   }
 
   const text = raw.trim().replace(/^\u0060{3}(?:[a-z]+)?\s*/i, '').replace(/\s*\u0060{3}$/i, '');
   if (/^\s*[{[]/.test(text)) {
     const nested = parseAgentPlan(text);
-    return nested ? getPlainAgentReply('', nested, language) : fallback;
+    return nested ? getPlainAgentReply('', nested, language, reportRequested) : fallback;
   }
+  if (reportRequested && /[A-Za-z]{3}/.test(text) && !/[\u10A0-\u10FF]/.test(text)) return fallback;
   return text || fallback;
 }
 
@@ -2232,7 +2242,7 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
       }
       const plan = parseAgentPlan(raw);
       if (plan?.type !== 'admin_api') {
-        finalMessage = getPlainAgentReply(raw, plan, responseLanguage);
+        finalMessage = getPlainAgentReply(raw, plan, responseLanguage, /(?:ანგარიშ|აუდიტ|შეჯამ|report|audit|summary|summar|отч[её]т|аудит|сводк)/i.test(message));
         break;
       }
       if (actions.length >= 4) {
