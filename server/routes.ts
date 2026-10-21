@@ -328,6 +328,56 @@ function agentFailureReply(language: string, actionsCompleted: boolean): string 
       : 'AI პროვაიდერმა პასუხი ვერ დააბრუნა, ამიტომ დავალება არ შესრულდა. გადაამოწმე AI პროვაიდერის პარამეტრები და სცადე თავიდან.';
 }
 
+function isAgentAdminRouteDisabled(path: string): boolean {
+  const normalizedPath = path.toLowerCase();
+  return normalizedPath.startsWith('/admin/agent/') ||
+    normalizedPath === '/admin/agent' ||
+    normalizedPath === '/admin/bootstrap/migrate' ||
+    /(?:^|\/)password(?:\/|$)/.test(normalizedPath) ||
+    normalizedPath.includes('superadmin-credentials');
+}
+
+function getAgentAdminRouteCatalog(): string[] {
+  const routeLayers = ((apiRouter as any).stack || []) as any[];
+  const catalog = new Set<string>();
+  for (const layer of routeLayers) {
+    const route = layer?.route;
+    if (!route) continue;
+    const paths = Array.isArray(route.path) ? route.path : [route.path];
+    for (const routePath of paths) {
+      if (typeof routePath !== 'string' || !routePath.startsWith('/admin/') || isAgentAdminRouteDisabled(routePath)) continue;
+      for (const method of ['GET', 'POST', 'PUT', 'DELETE']) {
+        if (route.methods?.[method.toLowerCase()]) catalog.add(`${method} ${routePath}`);
+      }
+    }
+  }
+  return Array.from(catalog).sort();
+}
+
+function agentRoutePathMatches(registeredPath: string, requestedPath: string): boolean {
+  const registeredSegments = registeredPath.split('/');
+  const requestedSegments = requestedPath.split('/');
+  return registeredSegments.length === requestedSegments.length &&
+    registeredSegments.every((segment, index) =>
+      segment.startsWith(':') ? requestedSegments[index].length > 0 && !requestedSegments[index].startsWith(':') : segment === requestedSegments[index]
+    );
+}
+
+function isRegisteredAgentAdminRoute(method: string, path: string): boolean {
+  const routeLayers = ((apiRouter as any).stack || []) as any[];
+  return routeLayers.some((layer) => {
+    const route = layer?.route;
+    if (!route?.methods?.[method.toLowerCase()]) return false;
+    const paths = Array.isArray(route.path) ? route.path : [route.path];
+    return paths.some((registeredPath: unknown) =>
+      typeof registeredPath === 'string' &&
+      registeredPath.startsWith('/admin/') &&
+      !isAgentAdminRouteDisabled(registeredPath) &&
+      agentRoutePathMatches(registeredPath, path)
+    );
+  });
+}
+
 function validateAgentAdminAction(plan: any): string | null {
   const method = typeof plan?.method === 'string' ? plan.method.toUpperCase() : '';
   const path = typeof plan?.path === 'string' ? plan.path : '';
@@ -335,19 +385,12 @@ function validateAgentAdminAction(plan: any): string | null {
   if (path.length > 240 || !/^\/admin\/[A-Za-z0-9/_:-]+$/.test(path) || path.includes('..')) {
     return 'The agent can only use valid superadmin API routes.';
   }
-  const normalizedPath = path.toLowerCase();
-  if (
-    normalizedPath.startsWith('/admin/agent/') ||
-    normalizedPath === '/admin/agent' ||
-    normalizedPath === '/admin/bootstrap/migrate' ||
-    /(?:^|\/)password(?:\/|$)/.test(normalizedPath) ||
-    normalizedPath.includes('superadmin-credentials')
-  ) {
-    return 'This action is disabled for the agent.';
+  if (isAgentAdminRouteDisabled(path)) return 'This action is disabled for the agent.';
+  if (!isRegisteredAgentAdminRoute(method, path)) {
+    return 'This exact method and path is not a registered admin API route. Use an endpoint from the available API catalog.';
   }
   return null;
 }
-
 async function runSuperAdminAgentAction(req: AuthRequest, plan: any, secretValues: string[]) {
   const method = String(plan.method).toUpperCase();
   const path = String(plan.path);
@@ -2302,6 +2345,9 @@ FIXED SECURITY RULES:
 - Use only the provided superadmin API action. Do not invent external endpoints, make network calls, or claim an action succeeded unless the API response confirms it.
 - If an API reports failure, explain the returned reason in plain language and ask the administrator what to do next.
 - Any requested report, audit, or operational summary must be written in Georgian, even when the app interface language is Russian or English.
+AVAILABLE REGISTERED ADMIN API ROUTES (authoritative; use only these exact method and path combinations):
+${getAgentAdminRouteCatalog().map(route => '- ' + route).join('\n')}
+For a system overview, use GET /admin/analytics. To count currently listed craftsmen, use GET /admin/craftsmen with query status=ALL, page=1, and size=50, then read totalElements. Use status=DELETED only when asked for deleted records. The analytics field totalCraftsmen counts stored rows and may include soft-deleted craftsmen. The routes /admin/masters and /admin/dashboard do not exist. This route catalog overrides route names in old chat history or API data.
 The saved administrator rules, which you must follow for every turn:
 ${safeRules || '(No additional administrator rules have been saved.)'}
 Return exactly one JSON object per response. For a normal answer use {"type":"message","message":"..."}.
