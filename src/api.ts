@@ -388,6 +388,12 @@ class ApiClient {
     });
   }
 
+  clearSuperAdminAgentChat() {
+    return this.request('/admin/agent/chat', {
+      method: 'DELETE',
+    });
+  }
+
   getRecipientAccount() {
     return this.request('/admin/payment/recipient-account');
   }
