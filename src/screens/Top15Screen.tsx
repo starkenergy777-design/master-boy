@@ -110,7 +110,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
       setReservation(res);
       setCountdown(res.ttlSeconds || 180);
       setProviders(provs);
-      if (provs.length > 0) setSelectedProviderId(provs[0].id);
+      setSelectedProviderId('');
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to reserve slot');
     } finally {
