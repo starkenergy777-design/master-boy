@@ -24,6 +24,8 @@ import { translations } from '../i18n.js';
 import { Language, User, Advertisement } from '../types.js';
 import { api } from '../api.js';
 
+const AgentMessageContent: React.FC<{ text: string }> = ({ text }) => <>{text}</>;
+
 const superAdminAgentCopy = {
   ka: {
     title: 'სუპერადმინის აგენტი',
@@ -781,7 +783,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             {agentConfig.messages.length === 0 && <p className="text-xs text-slate-500">{superAdminAgentCopy[lang].noMessages}</p>}
             {agentConfig.messages.map((message, index) => (
               <div key={`${message.createdAt}-${index}`} className={`max-w-[90%] whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-xs ${message.role === 'user' ? 'ml-auto bg-indigo-600/30 text-indigo-100' : 'bg-slate-800 text-slate-200'}`}>
-                {message.content}
+                <AgentMessageContent text={message.content} />
               </div>
             ))}
           </div>
