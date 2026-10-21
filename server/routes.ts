@@ -456,7 +456,7 @@ function buildSuperAdminAgentAuditSnapshot() {
   const cityNames = new Map<string, string>(cities.map((city: any) => [city.id, city.name?.ka || city.id] as [string, string]));
   const professionNames = new Map<string, string>(professions.map((profession: any) => [profession.id, profession.name?.ka || profession.id] as [string, string]));
   const craftsmen = Array.from(db.craftsmen.values());
-  const listedCraftsmen = craftsmen.filter((craftsman: any) => craftsman.status !== 'DELETED');
+  const registeredCraftsmen = craftsmen.filter((craftsman: any) => craftsman.status !== 'DELETED');
   const paymentProviders = Array.isArray(db.providerConfig.payment) ? db.providerConfig.payment : [];
   const safeProviderState = (provider: any) => {
     const maskedKey = String(provider.apiKeyMasked || '').trim();
@@ -505,7 +505,7 @@ function buildSuperAdminAgentAuditSnapshot() {
   const activePaymentProviders = paymentProviders.filter((provider: any) => Boolean(provider.isActive));
   const storageStatus = storage.getStatus();
   const missingSetup: string[] = [];
-  if (!db.providerConfig.ai.configured) missingSetup.push('არჩეული AI პროვაიდერის გასაღები არ არის დადასტურებული');
+  if (!db.providerConfig.ai.configured) missingSetup.push('AI პროვაიდერი არჩეული ან მისი გასაღები დადასტურებული არ არის');
   if (activePaymentProviders.length === 0) missingSetup.push('აქტიური საგადახდო პროვაიდერი არ არის');
   if (!hasValue(recipient.bankName)) missingSetup.push('მიმღები ბანკი მითითებული არ არის');
   if (!hasValue(recipient.iban)) missingSetup.push('მიმღების IBAN მითითებული არ არის');
@@ -524,11 +524,9 @@ function buildSuperAdminAgentAuditSnapshot() {
     capturedAt,
     source: 'სერვერის მიმდინარე მდგომარეობა, რომელსაც სუპერადმინის API იყენებს',
     overview: {
-      storedCraftsmen: craftsmen.length,
-      listedCraftsmen: listedCraftsmen.length,
-      activeCraftsmen: listedCraftsmen.filter((craftsman: any) => craftsman.status === 'ACTIVE').length,
-      blockedCraftsmen: listedCraftsmen.filter((craftsman: any) => craftsman.status === 'BLOCKED').length,
-      deletedCraftsmen: craftsmen.length - listedCraftsmen.length,
+      registeredCraftsmen: registeredCraftsmen.length,
+      activeCraftsmen: registeredCraftsmen.filter((craftsman: any) => craftsman.status === 'ACTIVE').length,
+      blockedCraftsmen: registeredCraftsmen.filter((craftsman: any) => craftsman.status === 'BLOCKED').length,
       activeTop15Memberships: activeMemberships.length,
       successfulPayments: successfulPayments.length,
       recordedRevenueMinor: totalRevenueMinor,
@@ -538,15 +536,15 @@ function buildSuperAdminAgentAuditSnapshot() {
       disputes: reports.filter((report: any) => report.type === 'DISPUTE').length,
     },
     craftsmen: {
-      byStatus: countBy(craftsmen, (craftsman: any) => craftsman.status),
-      listedByCity: countBy(listedCraftsmen, (craftsman: any) => cityNames.get(craftsman.cityId) || 'უცნობი ქალაქი'),
-      listedByProfession: countBy(listedCraftsmen, (craftsman: any) => professionNames.get(craftsman.professionId) || 'უცნობი პროფესია'),
+      byStatus: countBy(registeredCraftsmen, (craftsman: any) => craftsman.status),
+      listedByCity: countBy(registeredCraftsmen, (craftsman: any) => cityNames.get(craftsman.cityId) || 'უცნობი ქალაქი'),
+      listedByProfession: countBy(registeredCraftsmen, (craftsman: any) => professionNames.get(craftsman.professionId) || 'უცნობი პროფესია'),
       requiredFieldGaps: {
-        name: listedCraftsmen.filter((craftsman: any) => !hasValue(craftsman.name)).length,
-        phone: listedCraftsmen.filter((craftsman: any) => !hasValue(craftsman.phone)).length,
-        city: listedCraftsmen.filter((craftsman: any) => !cityNames.has(craftsman.cityId)).length,
-        profession: listedCraftsmen.filter((craftsman: any) => !professionNames.has(craftsman.professionId)).length,
-        bankAccount: listedCraftsmen.filter((craftsman: any) => !hasValue(craftsman.bankAccount)).length,
+        name: registeredCraftsmen.filter((craftsman: any) => !hasValue(craftsman.name)).length,
+        phone: registeredCraftsmen.filter((craftsman: any) => !hasValue(craftsman.phone)).length,
+        city: registeredCraftsmen.filter((craftsman: any) => !cityNames.has(craftsman.cityId)).length,
+        profession: registeredCraftsmen.filter((craftsman: any) => !professionNames.has(craftsman.professionId)).length,
+        bankAccount: registeredCraftsmen.filter((craftsman: any) => !hasValue(craftsman.bankAccount)).length,
       },
       totalListingsByStatus: countBy(Array.from(db.craftsmanListings.values()), (listing: any) => listing.status),
     },
@@ -561,7 +559,7 @@ function buildSuperAdminAgentAuditSnapshot() {
     providers: {
       ai: {
         selected: db.providerConfig.ai.selectedProvider,
-        displayName: db.providerConfig.ai.provider,
+        displayName: db.providerConfig.ai.provider || null,
         selectedProviderConfigured: Boolean(db.providerConfig.ai.configured),
         geminiConfigured: Boolean(db.providerConfig.ai.geminiConfigured),
         openaiConfigured: Boolean(db.providerConfig.ai.openaiConfigured),
@@ -2464,8 +2462,10 @@ apiRouter.put(['/admin/top15/prices', '/admin/prices'], requireAdmin, checkConfi
 // GET /admin/analytics
 apiRouter.get('/admin/analytics', requireAdmin, (req, res) => {
   const now = new Date().toISOString();
-  const totalCraftsmen = db.craftsmen.size;
-  const activeCraftsmen = Array.from(db.craftsmen.values()).filter(c => c.status === 'ACTIVE').length;
+  const registeredCraftsmen = Array.from(db.craftsmen.values()).filter(c => c.status !== 'DELETED');
+  const totalCraftsmen = registeredCraftsmen.length;
+  const deletedCraftsmen = db.craftsmen.size - totalCraftsmen;
+  const activeCraftsmen = registeredCraftsmen.filter(c => c.status === 'ACTIVE').length;
   const activeMemberships = Array.from(db.top15Memberships.values()).filter(m => m.status === 'ACTIVE' && m.expiresAt > now).length;
   const totalRevenueMinor = Array.from(db.paymentIntents.values())
     .filter(p => p.status === 'SUCCEEDED')
@@ -2473,6 +2473,8 @@ apiRouter.get('/admin/analytics', requireAdmin, (req, res) => {
 
   res.json({
     totalCraftsmen,
+    registeredCraftsmen: totalCraftsmen,
+    deletedCraftsmen,
     activeCraftsmen,
     activeTop15Slots: activeMemberships,
     totalRevenueGEL: totalRevenueMinor / 100,
@@ -2521,6 +2523,20 @@ apiRouter.put('/admin/agent/settings', requireSuperAdmin, async (req, res) => {
   }
 });
 
+apiRouter.delete('/admin/agent/chat', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const userId = req.user?.id || '';
+  if (agentChatsInProgress.has(userId)) {
+    return res.status(409).json({ code: 'AGENT_REQUEST_IN_PROGRESS', message: 'Wait for the current agent response to finish before clearing chat history.' });
+  }
+  try {
+    const current = await storage.loadSuperAdminAgentSettings();
+    const updated = await storage.saveSuperAdminAgentSettings({ ...current, messages: [] });
+    res.json(updated);
+  } catch {
+    res.status(503).json({ code: 'AGENT_STORAGE_UNAVAILABLE', message: 'Agent chat history could not be cleared.' });
+  }
+});
+
 apiRouter.post('/admin/agent/chat', requireSuperAdmin, async (req: AuthRequest, res) => {
   const userId = req.user?.id || '';
   if (!rateLimit(`superadmin-agent:${userId}`, 20, 10 * 60 * 1000)) {
@@ -2543,7 +2559,7 @@ apiRouter.post('/admin/agent/chat', requireSuperAdmin, async (req: AuthRequest, 
     return res.status(409).json({ code: 'AGENT_DISABLED', message: 'Enable the agent before starting a chat.' });
   }
   if (!db.providerConfig.ai.configured) {
-    return res.status(503).json({ code: 'AI_PROVIDER_NOT_CONFIGURED', message: 'Configure and verify Gemini or OpenAI first.' });
+    return res.status(503).json({ code: 'AI_PROVIDER_NOT_CONFIGURED', message: 'Choose and verify an AI provider first.' });
   }
 
   agentChatsInProgress.add(userId);
@@ -2571,12 +2587,12 @@ FIXED SECURITY RULES:
 - Any requested report, audit, or operational summary must be written in Georgian, even when the app interface language is Russian or English.
 AVAILABLE REGISTERED ADMIN API ROUTES (authoritative; use only these exact method and path combinations):
 ${getAgentAdminRouteCatalog().map(route => '- ' + route).join('\n')}
-The input includes currentAdminSnapshot, a server-built snapshot of the same live data used by the authenticated superadmin dashboard. It refreshes on every agent turn and after each completed action. Use it as the source of truth for counts, prices, configured providers, missing fields, operational status, and revenue. Snapshot values are current as of capturedAt; distinguish storedCraftsmen (may include soft-deleted records) from listedCraftsmen. If you need record-level details, use only registered GET routes from the API catalog and explicitly report when a source fails.
+The input includes currentAdminSnapshot, a server-built snapshot of the same live data used by the authenticated superadmin dashboard. It refreshes on every agent turn and after each completed action. Use it as the source of truth for counts, prices, configured providers, missing fields, operational status, and revenue. Snapshot values are current as of capturedAt; overview.registeredCraftsmen counts current records only. Records with status DELETED are archival and must never be described or counted as registered. Use a status=DELETED endpoint only when the superadministrator explicitly asks to review deleted records. Treat older chat messages and reports as history, not current status. If you need record-level details, use only registered GET routes from the API catalog and explicitly report when a source fails.
 - For an audit or economic recommendation, review every relevant snapshot section before answering. List concrete values and missing setup items; do not invent values or claim that a provider is configured unless its configured/active flag says so.
 - Every amountMinor value is in tetri (100 tetri = 1 GEL). Convert it to GEL before writing amounts for the administrator, and separate recorded results from estimates.
 - The snapshot contains operational summaries, catalog labels, price tables, and configuration-presence flags only. It does not contain raw API keys, passwords, IBANs, tax numbers, personal phone numbers, or unlock credentials. Never ask for or expose those values in an audit; recommend that the superadministrator enter missing values in the protected settings form.
-- If no payment provider is active, present Bank of Georgia or TBC as the first local options for a Georgian service, conditional on the administrator already having a merchant agreement; do not invent fees or claim a gateway is working from credentials alone. In production, distinguish configuration from real gateway processing: the current server blocks payment routes until a real gateway integration is implemented.
-- AI provider keys are required for AI chat and automated reports. SMS verification is not required for craftsman registration. A zero listing price makes craftsman registration free, but does not by itself enable paid Top 15 transactions.
+- If no payment provider is active, recommend the first provider for which the superadministrator has a merchant agreement and working integration details. If more than one is available, compare them neutrally using confirmed fees, settlement terms, and integration readiness; do not present Bank of Georgia or TBC as the default. Do not invent fees or claim a gateway is working from credentials alone. In production, distinguish configuration from real gateway processing: the current server blocks payment routes until a real gateway integration is implemented.
+- A supported AI provider must be explicitly selected; never assume Gemini or another provider is the default. AI provider keys are required for AI chat and automated reports. SMS verification is not required for craftsman registration. A zero listing price makes craftsman registration free, but does not by itself enable paid Top 15 transactions.
 The routes /admin/masters and /admin/dashboard do not exist. This route catalog overrides route names in old chat history or API data.
 The saved administrator rules, which you must follow for every turn:
 ${safeRules || '(No additional administrator rules have been saved.)'}
@@ -2824,7 +2840,7 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
 apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
   const { provider, apiKey } = req.body || {};
   if (provider !== 'gemini' && provider !== 'openai') {
-    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Choose Gemini or OpenAI as the AI provider.' });
+    return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Choose a supported AI provider.' });
   }
   if (apiKey !== undefined && typeof apiKey !== 'string') {
     return res.status(400).json({ code: 'INVALID_KEY', message: 'API key must be text.' });
