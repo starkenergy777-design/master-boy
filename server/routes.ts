@@ -2012,8 +2012,9 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
   if (clientId !== undefined && clientId.trim()) item.clientId = clientId.trim();
   if (webhookSecret !== undefined) item.webhookSecret = webhookSecret.trim();
 
+  const auditId = `audit-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
+    id: auditId,
     actorType: 'USER',
     actorId: req.user!.id,
     action: `UPDATE_PROVIDER_${type.toUpperCase()}`,
@@ -2026,7 +2027,7 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
   const persistence = await db.persistSuperAdminConfig();
   if (!persistence.success) {
     Object.assign(item, previousItem);
-    const auditIndex = db.auditLog.findIndex(entry => entry.targetType === 'PROVIDER' && entry.targetId === item.id);
+    const auditIndex = db.auditLog.findIndex(entry => entry.id === auditId);
     if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
     return res.status(503).json({ code: 'CONFIG_PERSIST_FAILED', message: 'Provider settings could not be saved to Supabase.' });
   }
@@ -2268,8 +2269,9 @@ apiRouter.put('/admin/config/backend-url', requireSuperAdmin, checkConfigLock, a
     signature: `rsa2048_sha256_mb_${Date.now()}`,
   };
 
+  const auditId = `audit-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
+    id: auditId,
     actorType: 'USER',
     actorId: req.user!.id,
     action: 'UPDATE_BACKEND_URL',
@@ -2281,7 +2283,7 @@ apiRouter.put('/admin/config/backend-url', requireSuperAdmin, checkConfigLock, a
   const persistence = await db.persistSuperAdminConfig();
   if (!persistence.success) {
     db.backendConfig = previousBackendConfig;
-    const auditIndex = db.auditLog.findIndex(entry => entry.action === 'UPDATE_BACKEND_URL' && entry.targetType === 'SYSTEM');
+    const auditIndex = db.auditLog.findIndex(entry => entry.id === auditId);
     if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
     return res.status(503).json({ code: 'CONFIG_PERSIST_FAILED', message: 'Backend URL could not be saved to Supabase.' });
   }
