@@ -119,6 +119,10 @@ check('Top15 checkout requires an operational provider before reserving a slot',
   assert.match(routes, /apiRouter\.post\('\/top15\/reserve'[\s\S]{0,260}requireRealPaymentIntegration/);
   assert.match(routes, /const simulationEnabled = process\.env\.NODE_ENV !== 'production'[\s\S]{0,180}PAYMENTS_SIMULATION/);
 });
+check('Top15 payment provider selection requires explicit user choice', () => {
+  assert.doesNotMatch(top15, /setSelectedProviderId\(provs\[0\]\.id\)/);
+  assert.match(top15, /setSelectedProviderId\(''\)/);
+});
 check('Top15 payment verifies reservation ownership and payment-status ownership', () => {
   assert.match(routes, /reservation\.craftsmanId !== craftsman\.id/);
   assert.match(routes, /intent\.craftsmanId !== craftsman\.id/);
