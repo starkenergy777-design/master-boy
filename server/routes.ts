@@ -193,7 +193,9 @@ function redactAgentSecrets(text: string): AgentSecretBundle {
   };
   const redacted = text
     .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{10,})\b/g, (secret) => addSecret(secret))
-    .replace(/(?:password|passwd|пароль||პაროლი)\s*(?:is\s+|[:=]\s*)([^\s,;]+)/gi, (_match, secret: string) => addSecret(secret));
+    .replace(/\b[A-Z]{2}\d{2}(?:[\s-]?[A-Z0-9]){11,30}\b/gi, (secret) => addSecret(secret))
+    .replace(/(?:\+?995[\s-]?)?5\d{2}(?:[\s-]?\d{2}){3}\b/g, (secret) => addSecret(secret))
+    .replace(/(?:password|passwd|пароль|პაროლი)\s*(?:is\s+|[:=]\s*)([^\s,;]+)/gi, (_match, secret: string) => addSecret(secret));
   return { text: redacted, values };
 }
 
@@ -213,8 +215,8 @@ function hideAgentSecrets(value: any): any {
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [
       key,
-      /(?:password|passwd|secret|authorization|access.?token|refresh.?token|api.?key|unlock.?credential|signature)/i.test(key)
-        && !/(?:configured|masked)$/i.test(key)
+      /(?:password|passwd|secret|authorization|access.?token|refresh.?token|api.?key|unlock.?credential|signature|iban|bank.?account|account.?number|tax.?number|tax.?id|client.?id|phone|email|beneficiary)/i.test(key)
+        && !/(?:configured|masked|present)$/i.test(key)
         ? '[hidden]'
         : hideAgentSecrets(item),
     ]));
