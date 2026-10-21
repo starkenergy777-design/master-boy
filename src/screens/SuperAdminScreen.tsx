@@ -359,6 +359,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       setAgentActions(updated.actions || []);
       setAgentInput('');
     } catch (err: any) {
+      if (Array.isArray(err.data?.messages)) {
+        setAgentConfig((current) => ({ ...current, messages: err.data.messages }));
+        setAgentInput('');
+      }
       if (Array.isArray(err.data?.actions)) setAgentActions(err.data.actions);
       setAgentError(err.message || superAdminAgentCopy[lang].failed);
     } finally {
