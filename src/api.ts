@@ -290,8 +290,8 @@ class ApiClient {
   }
 
   // Admin
-  getAdminCraftsmen(query = '', status = '', page = 1) {
-    return this.request(`/admin/craftsmen?query=${query}&status=${status}&page=${page}`);
+  getAdminCraftsmen(query = '', status = '', page = 1, size = 50) {
+    return this.request(`/admin/craftsmen?query=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}&page=${page}&size=${size}`);
   }
 
   getAdminUsers(query = '', page = 1) {
