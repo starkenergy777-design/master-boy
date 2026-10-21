@@ -10,6 +10,36 @@ export interface AiProviderSettings {
   verifiedAt: string | null;
 }
 
+export interface SuperAdminAgentMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface SuperAdminAgentSettings {
+  enabled: boolean;
+  rules: string;
+  messages: SuperAdminAgentMessage[];
+}
+
+function normalizeSuperAdminAgentSettings(value: any): SuperAdminAgentSettings {
+  const messages = Array.isArray(value?.messages)
+    ? value.messages
+        .filter((message: any) => (message?.role === 'user' || message?.role === 'assistant') && typeof message?.content === 'string')
+        .slice(-50)
+        .map((message: any) => ({
+          role: message.role as 'user' | 'assistant',
+          content: message.content.slice(0, 5000),
+          createdAt: typeof message.createdAt === 'string' ? message.createdAt : new Date().toISOString(),
+        }))
+    : [];
+  return {
+    enabled: value?.enabled === true,
+    rules: typeof value?.rules === 'string' ? value.rules.slice(0, 6000) : '',
+    messages,
+  };
+}
+
 export interface SuperAdminPersistedConfig {
   listingPrice: ListingPrice;
   top15Prices: Record<string, Top15Price>;
@@ -40,6 +70,7 @@ export class StorageService {
   private connected = false;
   private connectionError: string | null = null;
   private saveQueue: Promise<void> = Promise.resolve();
+  private superAdminAgentSettings: SuperAdminAgentSettings = { enabled: false, rules: '', messages: [] };
 
   constructor() {
     const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
@@ -197,10 +228,11 @@ export class StorageService {
         "INSERT INTO public.system_config (id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at) VALUES ('global_config',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) ON CONFLICT(id) DO UPDATE SET config_locked=EXCLUDED.config_locked,lock_expires_at=EXCLUDED.lock_expires_at,config_unlock_hash=EXCLUDED.config_unlock_hash,recipient_bank_name=EXCLUDED.recipient_bank_name,recipient_iban=EXCLUDED.recipient_iban,recipient_tax_id=EXCLUDED.recipient_tax_id,recipient_company_name=EXCLUDED.recipient_company_name,standard_listing_price_minor=EXCLUDED.standard_listing_price_minor,gemini_api_key_configured=EXCLUDED.gemini_api_key_configured,bog_active=EXCLUDED.bog_active,tbc_active=EXCLUDED.tbc_active,stripe_active=EXCLUDED.stripe_active,updated_at=NOW()",
         [config.configLock.locked,config.configLock.lockedUntil,config.configLock.unlockCredentialHash || null,config.recipientAccount.bankName,config.recipientAccount.iban,config.recipientAccount.taxNumber,config.recipientAccount.beneficiary,config.listingPrice.amountMinor,Boolean(config.providerConfig.ai.geminiConfigured || process.env.GEMINI_API_KEY),val('prov-bog'),val('prov-tbc'),val('prov-stripe')]);
       await client.query(
-        `INSERT INTO public.server_secrets (secret_name, secret_value, updated_at)
+        `INSERT INTO public.server_secrets AS current_secrets (secret_name, secret_value, updated_at)
          VALUES ('provider_config', $1::jsonb, NOW())
          ON CONFLICT (secret_name) DO UPDATE
-         SET secret_value=EXCLUDED.secret_value, updated_at=NOW()`,
+         SET secret_value=COALESCE(current_secrets.secret_value, '{}'::jsonb) || EXCLUDED.secret_value,
+             updated_at=NOW()`,
         [JSON.stringify({ providerConfig: config.providerConfig, backendConfig: config.backendConfig })]
       );
       await client.query('COMMIT');
@@ -211,6 +243,37 @@ export class StorageService {
     } finally {
       client?.release();
     }
+  }
+
+  async loadSuperAdminAgentSettings(): Promise<SuperAdminAgentSettings> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') {
+      return normalizeSuperAdminAgentSettings(this.superAdminAgentSettings);
+    }
+    const result = await this.db().query(
+      "SELECT secret_value FROM public.server_secrets WHERE secret_name='provider_config' LIMIT 1"
+    );
+    const settings = normalizeSuperAdminAgentSettings(result.rows[0]?.secret_value?.superAdminAgent);
+    this.superAdminAgentSettings = settings;
+    return normalizeSuperAdminAgentSettings(settings);
+  }
+
+  async saveSuperAdminAgentSettings(value: SuperAdminAgentSettings): Promise<SuperAdminAgentSettings> {
+    const settings = normalizeSuperAdminAgentSettings(value);
+    if (!this.pool && process.env.NODE_ENV !== 'production') {
+      this.superAdminAgentSettings = settings;
+      return normalizeSuperAdminAgentSettings(settings);
+    }
+    await this.db().query(
+      `INSERT INTO public.server_secrets AS current_secrets (secret_name, secret_value, updated_at)
+       VALUES ('provider_config', jsonb_build_object('superAdminAgent', $1::jsonb), NOW())
+       ON CONFLICT (secret_name) DO UPDATE
+       SET secret_value=COALESCE(current_secrets.secret_value, '{}'::jsonb) || EXCLUDED.secret_value,
+           updated_at=NOW()`,
+      [JSON.stringify(settings)]
+    );
+    this.superAdminAgentSettings = settings;
+    this.connected = true;
+    return normalizeSuperAdminAgentSettings(settings);
   }
 
   async loadRuntimeCollection<T=any>(name:string): Promise<Record<string,T>> {
