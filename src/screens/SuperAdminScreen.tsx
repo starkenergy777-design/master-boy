@@ -36,6 +36,8 @@ const superAdminAgentCopy = {
     disable: 'აგენტის გამორთვა',
     rules: 'აგენტისთვის სავალდებულო წესები',
     rulesHint: 'ჩაწერე, როგორ უნდა იმუშაოს აგენტმა. პაროლები და API გასაღებები აქ არ შეიყვანო.',
+    reloadRules: 'შენახული წესების ხელახლა ჩატვირთვა',
+    rulesReloaded: 'შენახული წესები ჩაიტვირთა.',
     saveRules: 'წესების შენახვა',
     rulesSaved: 'წესები შენახულია.',
     addRules: 'წესების დამატება',
@@ -69,6 +71,8 @@ const superAdminAgentCopy = {
     disable: 'Выключить агента',
     rules: 'Обязательные правила для агента',
     rulesHint: 'Укажите, как агент должен работать. Не вводите здесь пароли и API-ключи.',
+    reloadRules: 'Загрузить сохранённые правила',
+    rulesReloaded: 'Сохранённые правила загружены.',
     saveRules: 'Сохранить правила',
     rulesSaved: 'Правила сохранены.',
     addRules: 'Добавить правила',
@@ -102,6 +106,8 @@ const superAdminAgentCopy = {
     disable: 'Disable agent',
     rules: 'Mandatory agent rules',
     rulesHint: 'Set the agent’s operating rules. Do not enter passwords or API keys here.',
+    reloadRules: 'Reload saved rules',
+    rulesReloaded: 'Saved rules loaded.',
     saveRules: 'Save rules',
     rulesSaved: 'Rules saved.',
     addRules: 'Add rules',
@@ -388,6 +394,23 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       setAgentNotice(updated.enabled ? superAdminAgentCopy[lang].on : superAdminAgentCopy[lang].off);
     } catch (err: any) {
       setAgentError(err.message || superAdminAgentCopy[lang].failed);
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const handleReloadAgentRules = async () => {
+    setAgentError('');
+    setAgentNotice('');
+    try {
+      setAgentBusy(true);
+      const saved = await api.getSuperAdminAgent() as typeof agentConfig;
+      setAgentConfig(saved);
+      setAgentRulesDraft(saved.rules || '');
+      setAgentRulesEditing(false);
+      setAgentNotice(superAdminAgentCopy[lang].rulesReloaded);
+    } catch (err: any) {
+      setAgentError(err.message || superAdminAgentCopy[lang].loadFailed);
     } finally {
       setAgentBusy(false);
     }
@@ -852,7 +875,19 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         </div>
 
         <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-white">{superAdminAgentCopy[lang].rules}</h4>
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold text-white">{superAdminAgentCopy[lang].rules}</h4>
+            {!agentRulesEditing && (
+              <button
+                type="button"
+                onClick={handleReloadAgentRules}
+                disabled={agentBusy}
+                className="rounded-lg bg-slate-800 px-3 py-1.5 text-[10px] font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+              >
+                {superAdminAgentCopy[lang].reloadRules}
+              </button>
+            )}
+          </div>
           {agentRulesEditing ? (
             <>
               <textarea
@@ -885,6 +920,16 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                 >
                   {superAdminAgentCopy[lang].cancel}
                 </button>
+                {agentConfig.rules.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAgentRules}
+                    disabled={agentBusy}
+                    className="rounded-xl bg-rose-900/70 px-4 py-2 text-xs font-bold text-rose-100 hover:bg-rose-800 disabled:opacity-50"
+                  >
+                    {superAdminAgentCopy[lang].deleteRules}
+                  </button>
+                )}
               </div>
             </>
           ) : (
