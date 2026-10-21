@@ -122,8 +122,8 @@ class Database {
       configured: false,
       verifiedAt: null,
       lastCallOk: false,
-      provider: process.env.AI_PROVIDER === 'openai' ? 'OpenAI API' : 'Google Gemini',
-      selectedProvider: process.env.AI_PROVIDER === 'openai' ? 'openai' : 'gemini',
+      provider: process.env.AI_PROVIDER === 'openai' ? 'OpenAI API' : process.env.AI_PROVIDER === 'gemini' ? 'Google Gemini' : '',
+      selectedProvider: process.env.AI_PROVIDER === 'openai' ? 'openai' : process.env.AI_PROVIDER === 'gemini' ? 'gemini' : null,
       geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
     },
@@ -135,7 +135,7 @@ class Database {
   // Recipient Account (§3.5, §6.6)
   recipientAccount: RecipientAccount = {
     iban: process.env.RECIPIENT_IBAN || '',
-    bankName: 'საქართველოს ბანკი (Bank of Georgia JSC)',
+    bankName: process.env.RECIPIENT_BANK_NAME || '',
     beneficiary: process.env.RECIPIENT_BENEFICIARY || '',
     taxNumber: process.env.RECIPIENT_TAX_NUMBER || '',
     updatedAt: new Date().toISOString(),
@@ -1018,8 +1018,10 @@ class Database {
       this.providerConfig.ai.openaiConfigured = Boolean(this.openAiApiKey);
       this.providerConfig.ai.configured = aiSettings.selectedProvider === 'openai'
         ? Boolean(this.openAiApiKey)
-        : Boolean(this.geminiApiKey);
-      this.providerConfig.ai.provider = aiSettings.selectedProvider === 'openai' ? 'OpenAI API' : 'Google Gemini';
+        : aiSettings.selectedProvider === 'gemini' && Boolean(this.geminiApiKey);
+      this.providerConfig.ai.provider = aiSettings.selectedProvider === 'openai'
+        ? 'OpenAI API'
+        : aiSettings.selectedProvider === 'gemini' ? 'Google Gemini' : '';
       this.providerConfig.ai.verifiedAt = aiSettings.verifiedAt;
       this.providerConfig.ai.lastCallOk = Boolean(aiSettings.verifiedAt);
 
