@@ -1833,6 +1833,10 @@ apiRouter.get('/top15/availability', requireCraftsman, (req, res) => {
 
 // POST /top15/reserve (holds slot 3 min; response has ttlSeconds)
 apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  if (!db.providerConfig.payment.some(provider => provider.isActive)) {
+    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'No active payment provider is available.' });
+  }
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Only registered craftsmen can reserve Top 15 slots' });
@@ -1844,7 +1848,7 @@ apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
   if (!listing || listing.status !== 'ACTIVE') {
     return res.status(403).json({
       code: 'LISTING_ACTIVE_REQUIRED',
-      message: 'Top 15-ის შესაძენად აუცილებელია გქონდეთ აქტიური 6-თვიანი გამოწერა (10 ლარი). განაახლეთ გამოწერა კაბინეტიდან.',
+      message: 'Top 15-ის შესაძენად აუცილებელია აქტიური გამოწერა. განაახლეთ გამოწერა კაბინეტიდან.',
     });
   }
 
@@ -1907,7 +1911,9 @@ apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
 
 // GET /top15/providers
 apiRouter.get('/top15/providers', (req, res) => {
-  const activeProviders = db.providerConfig.payment
+  // The only available production path is fail-closed until a live gateway adapter exists.
+  const simulationEnabled = process.env.NODE_ENV !== 'production' && process.env.PAYMENTS_SIMULATION === 'true';
+  const activeProviders = (simulationEnabled ? db.providerConfig.payment : [])
     .filter(p => p.isActive)
     .map(p => ({
       id: p.id,
@@ -1921,6 +1927,10 @@ apiRouter.get('/top15/providers', (req, res) => {
 // POST /top15/pay & /top15/purchase (Idempotency-Key support)
 apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, (req: AuthRequest, res) => {
   if (!requireRealPaymentIntegration(res)) return;
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!craftsman) {
+    return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'A registered craftsman profile is required.' });
+  }
   const idempotencyKey = req.header('Idempotency-Key')?.trim();
   if (!idempotencyKey || idempotencyKey.length < 16 || idempotencyKey.length > 128) {
     return res.status(400).json({ code: 'INVALID_IDEMPOTENCY_KEY', message: 'Idempotency-Key must be 16-128 characters.' });
@@ -1928,7 +1938,7 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, (req: AuthRe
 
   // Check if idempotency key was already processed
   for (const intent of db.paymentIntents.values()) {
-    if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === getMyCraftsman(req.user!.id)?.id) {
+    if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === craftsman.id) {
       return res.json({
         id: intent.id,
         status: intent.status,
@@ -1943,8 +1953,12 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, (req: AuthRe
   }
 
   const reservation = db.top15Reservations.get(reservationId);
-  if (!reservation) {
+  if (!reservation || reservation.craftsmanId !== craftsman.id) {
     return res.status(404).json({ code: 'RESERVATION_NOT_FOUND', message: 'Reservation not found' });
+  }
+  const paymentProvider = db.providerConfig.payment.find(provider => provider.id === providerId && provider.isActive);
+  if (!paymentProvider) {
+    return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
   }
 
   if (reservation.status !== 'HELD' || reservation.expiresAt < Date.now()) {
@@ -1996,9 +2010,10 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, (req: AuthRe
 });
 
 // GET /top15/payment/:id/status
-apiRouter.get('/top15/payment/:id/status', requireCraftsman, (req, res) => {
+apiRouter.get('/top15/payment/:id/status', requireCraftsman, (req: AuthRequest, res) => {
   const intent = db.paymentIntents.get(req.params.id);
-  if (!intent) {
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!intent || !craftsman || intent.craftsmanId !== craftsman.id) {
     return res.status(404).json({ code: 'PAYMENT_NOT_FOUND', message: 'Payment intent not found' });
   }
   res.json({
@@ -2817,6 +2832,9 @@ apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkConfigLock, asy
   }
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = body;
+  if (type === 'payment' && isActive === true && process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'Online payment is disabled until a verified production gateway is integrated.' });
+  }
   if (typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Provider name is required.' });
   }
@@ -2872,6 +2890,9 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
   const previousItem = { ...item };
 
   const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = req.body;
+  if (type === 'payment' && isActive === true && process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'Online payment is disabled until a verified production gateway is integrated.' });
+  }
   if ((name !== undefined && (typeof name !== 'string' || !name.trim())) ||
       [apiKey, secretKey, clientId, webhookSecret].some(value => value !== undefined && typeof value !== 'string') ||
       (isActive !== undefined && typeof isActive !== 'boolean')) {
@@ -3551,6 +3572,10 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
     });
   }
 
+  const paymentProvider = db.providerConfig.payment.find(provider => provider.isActive);
+  if (!paymentProvider) {
+    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'No active payment provider is available.' });
+  }
   const idempotencyKey = String(req.headers['idempotency-key'] || '').trim();
   if (idempotencyKey.length < 16 || idempotencyKey.length > 128) {
     return res.status(400).json({ code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'A valid Idempotency-Key is required for advertisement payments.' });
@@ -3572,8 +3597,8 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
   db.paymentIntents.set(paymentIntentId, {
     id: paymentIntentId,
     reservationId: ad.id,
-    craftsmanId: ad.id,
-    providerId: 'prov-bog',
+    craftsmanId: null,
+    providerId: paymentProvider.id,
     amountMinor,
     currency: 'GEL',
     idempotencyKey,
@@ -3592,7 +3617,8 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
     success: true,
     paymentIntentId,
     ad: safeAdvertisement(ad),
-    message: `გადახდა წარმატებით შესრულდა (საქართველოს ბანკი - ${priceGel} GEL). რეკლამა გააქტიურებულია ${durationDays} დღით.`,
+    message: `სატესტო გადახდა შესრულდა (${priceGel} GEL). რეკლამა გააქტიურებულია ${durationDays} დღით.`,
+    simulated: true,
   });
 });
 
