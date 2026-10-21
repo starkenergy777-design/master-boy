@@ -63,7 +63,7 @@ export async function testGeminiKey(apiKey: string): Promise<boolean> {
 export async function testOpenAIKey(apiKey: string): Promise<boolean> {
   const model = process.env.OPENAI_MODEL || 'gpt-6-luna';
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 30000);
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
