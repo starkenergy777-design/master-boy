@@ -32,6 +32,7 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [paymentAvailable, setPaymentAvailable] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -45,7 +46,11 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
     try {
       setLoading(true);
       setErrorMsg('');
-      const res = await api.getPartnerAd();
+      const [res, providers] = await Promise.all([
+        api.getPartnerAd(),
+        api.getPaymentProviders().catch(() => []),
+      ]);
+      setPaymentAvailable(providers.length > 0);
       if (res?.ad) {
         setAd(res.ad);
         setCompanyName(res.ad.company_name || '');
@@ -285,6 +290,11 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
               </p>
             </div>
           </div>
+          {!paymentAvailable && (
+            <p className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-200">
+              {lang === 'ka' ? 'ონლაინ გადახდა დროებით მიუწვდომელია.' : lang === 'ru' ? 'Онлайн-оплата пока недоступна.' : 'Online payment is not available yet.'}
+            </p>
+          )}
           <span className="text-sm font-black font-mono text-white bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
             {Number(ad?.price_gel || 50).toFixed(2)} GEL
           </span>
@@ -292,7 +302,7 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
 
         <button
           onClick={handlePay}
-          disabled={!termsAccepted || paying}
+          disabled={!termsAccepted || paying || !paymentAvailable}
           className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-3 rounded-2xl text-xs shadow-md transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {paying ? (
@@ -301,7 +311,9 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
             <CreditCard className="w-4 h-4 stroke-[2.5]" />
           )}
           <span>
-            {!termsAccepted
+            {!paymentAvailable
+              ? (lang === 'ka' ? 'გადახდა მიუწვდომელია' : lang === 'ru' ? 'Оплата недоступна' : 'Payment unavailable')
+              : !termsAccepted
               ? 'ჯერ დაეთანხმეთ სარეკლამო წესებს'
               : isPaidAndActive
               ? ('პაკეტის განახლება / +' + String((ad as any)?.days_duration || 30) + ' დღის დამატება (' + String(ad?.price_gel || 50) + ' GEL)')
