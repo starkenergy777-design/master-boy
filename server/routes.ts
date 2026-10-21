@@ -182,7 +182,7 @@ function stableAgentActionKey(plan: any): string {
     path: String(plan.path || ''),
     query: normalize(plan.query || {}),
     body: normalize(plan.body || {}),
-  });
+  }) || '';
 }
 
 function redactAgentSecrets(text: string): AgentSecretBundle {
