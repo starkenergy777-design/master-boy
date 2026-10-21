@@ -68,6 +68,7 @@ async function runMigrations() {
     '006_georgian_alphabetical_city_order.sql',
     '007_remove_redundant_indexes.sql',
     '008_ai_provider_secrets.sql',
+    '009_superadmin_provider_config_secrets.sql',
   ];
 
   // Verify all files exist

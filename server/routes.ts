@@ -1971,7 +1971,14 @@ apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkConfigLock, asy
     createdAt: new Date().toISOString(),
   });
 
-  await db.persistSuperAdminConfig();
+  const persistence = await db.persistSuperAdminConfig();
+  if (!persistence.success) {
+    const providerIndex = (db.providerConfig[type] as any[]).findIndex(provider => provider.id === newItem.id);
+    if (providerIndex >= 0) (db.providerConfig[type] as any[]).splice(providerIndex, 1);
+    const auditIndex = db.auditLog.findIndex(entry => entry.targetType === 'PROVIDER' && entry.targetId === newItem.id);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+    return res.status(503).json({ code: 'CONFIG_PERSIST_FAILED', message: 'Provider settings could not be saved to Supabase.' });
+  }
 
   res.json(safeProvider(newItem));
 });
@@ -1987,6 +1994,7 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
   if (!item) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Provider not found' });
   }
+  const previousItem = { ...item };
 
   const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = req.body;
   if ((name !== undefined && (typeof name !== 'string' || !name.trim())) ||
@@ -2004,8 +2012,9 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
   if (clientId !== undefined && clientId.trim()) item.clientId = clientId.trim();
   if (webhookSecret !== undefined) item.webhookSecret = webhookSecret.trim();
 
+  const auditId = `audit-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
+    id: auditId,
     actorType: 'USER',
     actorId: req.user!.id,
     action: `UPDATE_PROVIDER_${type.toUpperCase()}`,
@@ -2015,7 +2024,13 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
     createdAt: new Date().toISOString(),
   });
 
-  await db.persistSuperAdminConfig();
+  const persistence = await db.persistSuperAdminConfig();
+  if (!persistence.success) {
+    Object.assign(item, previousItem);
+    const auditIndex = db.auditLog.findIndex(entry => entry.id === auditId);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+    return res.status(503).json({ code: 'CONFIG_PERSIST_FAILED', message: 'Provider settings could not be saved to Supabase.' });
+  }
 
   res.json({ success: true, provider: safeProvider(item) });
 });
@@ -2247,14 +2262,16 @@ apiRouter.put('/admin/config/backend-url', requireSuperAdmin, checkConfigLock, a
     return res.status(400).json({ code: 'INVALID_URL', message: 'Valid HTTPS baseUrl required' });
   }
 
+  const previousBackendConfig = db.backendConfig;
   db.backendConfig = {
     baseUrl,
     issuedAt: new Date().toISOString(),
     signature: `rsa2048_sha256_mb_${Date.now()}`,
   };
 
+  const auditId = `audit-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
+    id: auditId,
     actorType: 'USER',
     actorId: req.user!.id,
     action: 'UPDATE_BACKEND_URL',
@@ -2263,7 +2280,13 @@ apiRouter.put('/admin/config/backend-url', requireSuperAdmin, checkConfigLock, a
     createdAt: new Date().toISOString(),
   });
 
-  await db.persistSuperAdminConfig();
+  const persistence = await db.persistSuperAdminConfig();
+  if (!persistence.success) {
+    db.backendConfig = previousBackendConfig;
+    const auditIndex = db.auditLog.findIndex(entry => entry.id === auditId);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+    return res.status(503).json({ code: 'CONFIG_PERSIST_FAILED', message: 'Backend URL could not be saved to Supabase.' });
+  }
 
   res.json(db.backendConfig);
 });

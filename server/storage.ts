@@ -105,28 +105,36 @@ export class StorageService {
 
   async loadSuperAdminConfig(): Promise<SuperAdminPersistedConfig | null> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return null;
-    const [c, p] = await Promise.all([
+    const [c, p, secrets] = await Promise.all([
       this.db().query("SELECT id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at FROM public.system_config WHERE id='global_config' LIMIT 1"),
       this.db().query('SELECT * FROM public.top15_prices'),
+      this.db().query("SELECT secret_value FROM public.server_secrets WHERE secret_name='provider_config' LIMIT 1"),
     ]);
     const r = c.rows[0];
     if (!r) return null;
+    const persistedSettings = secrets.rows[0]?.secret_value || {};
+    const savedProviders = persistedSettings.providerConfig || {};
     const prices: Record<string, Top15Price> = {};
     for (const x of p.rows) prices[x.id] = { cityId:x.city_id, professionId:x.profession_id, amountMinor:Number(x.amount_minor), currency:x.currency, updatedAt:date(x.updated_at), updatedBy:x.updated_by || 'system' };
     const env = process.env;
     const aiProvider: AiProvider = env.AI_PROVIDER === 'openai' ? 'openai' : 'gemini';
-    const payment = [
+    const envPayment = [
       { id:'prov-bog', name:'საქართველოს ბანკი (Bank of Georgia iPay)', apiKeyMasked:'not configured', clientId:env.BOG_MERCHANT_ID || '', secretKey:env.BOG_SECRET || '', isActive:Boolean(r.bog_active && env.BOG_SECRET) },
       { id:'prov-tbc', name:'თიბისი ბანკი (TBC Bank Checkout / Pay)', apiKeyMasked:'not configured', clientId:env.TBC_CLIENT_ID || '', secretKey:env.TBC_CLIENT_SECRET || '', isActive:Boolean(r.tbc_active && env.TBC_CLIENT_SECRET) },
       { id:'prov-stripe', name:'Stripe (საგადახდო სისტემა / Card Payments)', apiKeyMasked:'not configured', apiKey:env.STRIPE_PUBLISHABLE_KEY || '', secretKey:env.STRIPE_SECRET_KEY || '', webhookSecret:env.STRIPE_WEBHOOK_SECRET || '', isActive:Boolean(r.stripe_active && env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) },
     ];
+    const payment = Array.isArray(savedProviders.payment) ? savedProviders.payment : envPayment;
+    const sms = Array.isArray(savedProviders.sms) ? savedProviders.sms : [
+      { id:'sms-magti', provider:'Magti SMS Gateway', senderId:'MASTER_BOY', isActive:Boolean(env.SMS_WEBHOOK_URL) },
+      { id:'sms-geocell', provider:'Silknet/Geocell Direct', senderId:'MASTERBOY', isActive:false },
+    ];
+    const email = Array.isArray(savedProviders.email) ? savedProviders.email : [
+      { id:'email-ses', provider:'AWS SES / Sendgrid', host:env.SMTP_HOST || '', isActive:Boolean(env.SMTP_HOST) },
+    ];
     this.connected = true;
     return {
       listingPrice:{ amountMinor:Number(r.standard_listing_price_minor), currency:'GEL', updatedAt:date(r.updated_at), updatedBy:'system' },
-      top15Prices:prices, advertisements:[], providerConfig:{ payment, sms:[
-        { id:'sms-magti', provider:'Magti SMS Gateway', senderId:'MASTER_BOY', isActive:Boolean(env.SMS_WEBHOOK_URL) },
-        { id:'sms-geocell', provider:'Silknet/Geocell Direct', senderId:'MASTERBOY', isActive:false },
-      ], email:[{ id:'email-ses', provider:'AWS SES / Sendgrid', host:env.SMTP_HOST || '', isActive:Boolean(env.SMTP_HOST) }],
+      top15Prices:prices, advertisements:[], providerConfig:{ payment, sms, email,
       ai:{
         configured:Boolean(aiProvider === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY),
         verifiedAt:null,
@@ -139,7 +147,7 @@ export class StorageService {
       recipientAccount:{ iban:r.recipient_iban || '', bankName:r.recipient_bank_name || '', beneficiary:r.recipient_company_name || '', taxNumber:r.recipient_tax_id || '', updatedAt:date(r.updated_at) },
       configLock:{ locked:Boolean(r.config_locked), lockedUntil:r.lock_expires_at ? date(r.lock_expires_at) : null, lockedAt:null, unlockCredentialHash:r.config_unlock_hash || undefined },
       bootstrap:{ phone:env.BOOTSTRAP_PHONE || '', password:'', enabled:Boolean(env.BOOTSTRAP_PASSWORD), invalidated:false, completedAt:null },
-      backendConfig:{ baseUrl:env.APP_URL || '', issuedAt:date(r.updated_at), signature:'' }, version:1, lastPersistedAt:date(r.updated_at),
+      backendConfig: persistedSettings.backendConfig || { baseUrl:env.APP_URL || '', issuedAt:date(r.updated_at), signature:'' }, version:1, lastPersistedAt:date(r.updated_at),
     };
   }
 
@@ -179,14 +187,30 @@ export class StorageService {
 
   async saveSuperAdminConfig(config: SuperAdminPersistedConfig): Promise<{ success:boolean; database:boolean; snapshot:boolean; error?:string }> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return { success:false,database:false,snapshot:false };
+    let client: PoolClient | null = null;
     try {
+      client = await this.db().connect();
+      await client.query('BEGIN');
       const p = config.providerConfig.payment || [];
       const val = (id:string) => p.find((x) => x.id===id)?.isActive || false;
-      await this.db().query(
+      await client.query(
         "INSERT INTO public.system_config (id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at) VALUES ('global_config',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) ON CONFLICT(id) DO UPDATE SET config_locked=EXCLUDED.config_locked,lock_expires_at=EXCLUDED.lock_expires_at,config_unlock_hash=EXCLUDED.config_unlock_hash,recipient_bank_name=EXCLUDED.recipient_bank_name,recipient_iban=EXCLUDED.recipient_iban,recipient_tax_id=EXCLUDED.recipient_tax_id,recipient_company_name=EXCLUDED.recipient_company_name,standard_listing_price_minor=EXCLUDED.standard_listing_price_minor,gemini_api_key_configured=EXCLUDED.gemini_api_key_configured,bog_active=EXCLUDED.bog_active,tbc_active=EXCLUDED.tbc_active,stripe_active=EXCLUDED.stripe_active,updated_at=NOW()",
         [config.configLock.locked,config.configLock.lockedUntil,config.configLock.unlockCredentialHash || null,config.recipientAccount.bankName,config.recipientAccount.iban,config.recipientAccount.taxNumber,config.recipientAccount.beneficiary,config.listingPrice.amountMinor,Boolean(config.providerConfig.ai.geminiConfigured || process.env.GEMINI_API_KEY),val('prov-bog'),val('prov-tbc'),val('prov-stripe')]);
+      await client.query(
+        `INSERT INTO public.server_secrets (secret_name, secret_value, updated_at)
+         VALUES ('provider_config', $1::jsonb, NOW())
+         ON CONFLICT (secret_name) DO UPDATE
+         SET secret_value=EXCLUDED.secret_value, updated_at=NOW()`,
+        [JSON.stringify({ providerConfig: config.providerConfig, backendConfig: config.backendConfig })]
+      );
+      await client.query('COMMIT');
       this.connected=true; return { success:true,database:true,snapshot:false };
-    } catch(e:any) { this.connected=false; return { success:false,database:false,snapshot:false,error:e.message }; }
+    } catch(e:any) {
+      if (client) await client.query('ROLLBACK').catch(() => undefined);
+      this.connected=false; return { success:false,database:false,snapshot:false,error:e.message };
+    } finally {
+      client?.release();
+    }
   }
 
   async loadRuntimeCollection<T=any>(name:string): Promise<Record<string,T>> {
