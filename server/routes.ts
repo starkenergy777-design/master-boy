@@ -804,14 +804,12 @@ apiRouter.get('/search', (req, res) => {
     activeCraftsmen = activeCraftsmen.filter(c => c.professionId === professionId);
   }
 
-  const now = new Date().toISOString();
   // User Rule: Top 15 craftsmen appear ONLY when BOTH cityId AND professionId are selected!
   const hasBothFilters = !!(cityId && professionId);
   const top15CraftsmanIds = new Set<string>();
 
   if (hasBothFilters) {
-    const eligible = Array.from(db.top15Memberships.values())
-      .filter(mem => mem.status === 'ACTIVE' && mem.expiresAt > now && mem.cityId === cityId && mem.professionId === professionId);
+    const eligible = db.getActiveTop15Memberships(cityId, professionId);
     const epoch30Min = Math.floor(Date.now() / (30 * 60 * 1000));
     const stableHash = (id: string) => {
       let hash = 2166136261;
@@ -1859,15 +1857,12 @@ apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
     });
   }
 
-  // Check if craftsman already has an active Top 15 slot in this category
-  const nowStr = new Date().toISOString();
-  for (const m of db.top15Memberships.values()) {
-    if (m.craftsmanId === c.id && m.cityId === cityId && m.professionId === professionId && m.status === 'ACTIVE' && m.expiresAt > nowStr) {
-      return res.status(409).json({
-        code: 'ALREADY_ACTIVE',
-        message: 'თქვენ უკვე გაქვთ აქტიური Top 15 ადგილი ამ განყოფილებაში (მოქმედებს 30 დღე).',
-      });
-    }
+  // Check against the same eligible memberships used by search and slot counts.
+  if (db.getActiveTop15Memberships(cityId, professionId).some(membership => membership.craftsmanId === c.id)) {
+    return res.status(409).json({
+      code: 'ALREADY_ACTIVE',
+      message: 'თქვენ უკვე გაქვთ აქტიური Top 15 ადგილი ამ განყოფილებაში (მოქმედებს 30 დღე).',
+    });
   }
 
   const { freeSlots, price } = db.getTop15Availability(cityId, professionId);
@@ -2177,7 +2172,7 @@ apiRouter.get('/admin/reports', requireAdmin, (req, res) => {
   const page = parseInt(req.query.page as string) || 1;
   const size = Math.min(parseInt(req.query.size as string) || 20, 50);
 
-  let list = db.aiReports;
+  let list = [...db.aiReports].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   if (type) {
     list = list.filter(r => r.type === type);
   }
@@ -2383,43 +2378,119 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
 
   if (!craftsman && !user) return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
   if (user && !canManageAccount(req, res, user, 'delete')) return;
-  if ((!user || user.status === 'DELETED') && (!craftsman || craftsman.status === 'DELETED')) {
+
+  const affectedCraftsmen = user
+    ? Array.from(db.craftsmen.values()).filter(item => item.userId === user!.id)
+    : craftsman ? [craftsman] : [];
+  const targetCraftsmen = affectedCraftsmen.length ? affectedCraftsmen : craftsman ? [craftsman] : [];
+  const isCraftsmanAccount = targetCraftsmen.length > 0 || user?.roles.includes('CRAFTSMAN') === true;
+
+  if (!isCraftsmanAccount && user?.status === 'DELETED') {
     return res.json({ success: true, alreadyDeleted: true });
   }
 
-  const previousUserStatus = user?.status;
-  const affectedCraftsmen = user
-    ? Array.from(db.craftsmen.values()).filter(c => c.userId === user!.id)
-    : craftsman ? [craftsman] : [];
-  const previousCraftsmanStatuses = affectedCraftsmen.map(item => ({ item, status: item.status }));
-  if (user) user.status = 'DELETED';
-  for (const item of affectedCraftsmen) item.status = 'DELETED';
-  if (user) revokeUserSessions(user.id);
+  const craftsmanIds = new Set(targetCraftsmen.map(item => item.id));
+  const userIds = new Set(targetCraftsmen.map(item => item.userId));
+  if (user) userIds.add(user.id);
+
+  const previousUsers = Array.from(db.users.entries())
+    .filter(([id]) => userIds.has(id))
+    .map(([id, item]) => [id, { ...item }] as const);
+  const previousCraftsmen = targetCraftsmen.map(item => [item.id, item] as const);
+  const previousDrafts = Array.from(db.craftsmanDrafts.entries()).filter(([, draft]) => userIds.has(draft.userId));
+  const previousListings = Array.from(db.craftsmanListings.entries()).filter(([, listing]) => craftsmanIds.has(listing.craftsmanId));
+  const previousReservations = Array.from(db.top15Reservations.entries()).filter(([, reservation]) => craftsmanIds.has(reservation.craftsmanId));
+  const previousMemberships = Array.from(db.top15Memberships.entries()).filter(([, membership]) => craftsmanIds.has(membership.craftsmanId));
+  const previousPayments = Array.from(db.paymentIntents.entries())
+    .filter(([, payment]) => craftsmanIds.has(payment.craftsmanId))
+    .map(([id, payment]) => [id, { ...payment }] as const);
+  const previousSessions = Array.from(db.sessions.entries()).filter(([, session]) => userIds.has(session.userId));
+  const previousSupportMessages = db.supportMessages;
+  const previousAiReports = db.aiReports;
+
+  if (isCraftsmanAccount) {
+    for (const id of craftsmanIds) db.craftsmen.delete(id);
+    for (const [id, listing] of previousListings) db.craftsmanListings.delete(id);
+    for (const [id] of previousReservations) db.top15Reservations.delete(id);
+    for (const [id] of previousMemberships) db.top15Memberships.delete(id);
+    for (const [id, payment] of previousPayments) {
+      db.paymentIntents.set(id, { ...payment, craftsmanId: '' });
+    }
+    for (const id of userIds) {
+      db.craftsmanDrafts.delete(id);
+      db.users.delete(id);
+      revokeUserSessions(id);
+    }
+    db.supportMessages = db.supportMessages.filter(message => !craftsmanIds.has(message.craftsmanId));
+    db.aiReports = db.aiReports.filter(report => !report.craftsmanId || !craftsmanIds.has(report.craftsmanId));
+  } else if (user) {
+    user.status = 'DELETED';
+    revokeUserSessions(user.id);
+  }
 
   const auditEntry = {
     id: `audit-${crypto.randomUUID()}`,
     actorType: 'USER' as const,
     actorId: req.user!.id,
     action: 'DELETE_CRAFTSMAN',
-    targetType: 'CRAFTSMAN' as const,
+    targetType: isCraftsmanAccount ? 'CRAFTSMAN' as const : 'USER' as const,
     targetId: craftsman ? craftsman.id : (user ? user.id : req.params.id),
+    reason: isCraftsmanAccount ? 'Craftsman profile permanently deleted' : undefined,
     createdAt: new Date().toISOString(),
   };
   db.auditLog.unshift(auditEntry);
+
   if (!await persistAdminMutation(res, () => {
-    if (user && previousUserStatus) user.status = previousUserStatus;
-    for (const previous of previousCraftsmanStatuses) previous.item.status = previous.status;
+    for (const [id, item] of previousUsers) db.users.set(id, item);
+    for (const [id, item] of previousCraftsmen) db.craftsmen.set(id, item);
+    for (const [id, item] of previousDrafts) db.craftsmanDrafts.set(id, item);
+    for (const [id, item] of previousListings) db.craftsmanListings.set(id, item);
+    for (const [id, item] of previousReservations) db.top15Reservations.set(id, item);
+    for (const [id, item] of previousMemberships) db.top15Memberships.set(id, item);
+    for (const [id, item] of previousPayments) db.paymentIntents.set(id, item);
+    for (const [id, item] of previousSessions) db.sessions.set(id, item);
+    db.supportMessages = previousSupportMessages;
+    db.aiReports = previousAiReports;
     const auditIndex = db.auditLog.indexOf(auditEntry);
     if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
   })) return;
 
-  res.json({ success: true });
+  res.json({ success: true, deletedFromDatabase: isCraftsmanAccount });
 });
 
 // GET /admin/top15/prices & /admin/prices
 apiRouter.get(['/admin/top15/prices', '/admin/prices'], requireAdmin, (req, res) => {
   const list = Array.from(db.top15Prices.values());
   res.json(list);
+});
+
+apiRouter.get('/admin/top15/members', requireAdmin, (_req, res) => {
+  const members = db.getActiveTop15Memberships()
+    .flatMap(membership => {
+      const craftsman = db.craftsmen.get(membership.craftsmanId);
+      if (!craftsman) return [];
+      const city = db.cities.find(item => item.id === membership.cityId);
+      const profession = db.professions.find(item => item.id === membership.professionId);
+      return [{
+        id: membership.id,
+        craftsmanId: craftsman.id,
+        craftsmanName: craftsman.name,
+        cityName: {
+          ka: city ? db.getLocalizedName(city, 'ka') : membership.cityName,
+          ru: city ? db.getLocalizedName(city, 'ru') : membership.cityName,
+          en: city ? db.getLocalizedName(city, 'en') : membership.cityName,
+        },
+        professionName: {
+          ka: profession ? db.getLocalizedName(profession, 'ka') : membership.professionName,
+          ru: profession ? db.getLocalizedName(profession, 'ru') : membership.professionName,
+          en: profession ? db.getLocalizedName(profession, 'en') : membership.professionName,
+        },
+        startsAt: membership.startsAt,
+        expiresAt: membership.expiresAt,
+      }];
+    })
+    .sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
+  res.json(members);
 });
 
 // PUT /admin/top15/prices & /admin/prices (Protected by config lock!)
@@ -2461,12 +2532,11 @@ apiRouter.put(['/admin/top15/prices', '/admin/prices'], requireAdmin, checkConfi
 
 // GET /admin/analytics
 apiRouter.get('/admin/analytics', requireAdmin, (req, res) => {
-  const now = new Date().toISOString();
   const registeredCraftsmen = Array.from(db.craftsmen.values()).filter(c => c.status !== 'DELETED');
   const totalCraftsmen = registeredCraftsmen.length;
   const deletedCraftsmen = db.craftsmen.size - totalCraftsmen;
   const activeCraftsmen = registeredCraftsmen.filter(c => c.status === 'ACTIVE').length;
-  const activeMemberships = Array.from(db.top15Memberships.values()).filter(m => m.status === 'ACTIVE' && m.expiresAt > now).length;
+  const activeMemberships = db.getActiveTop15Memberships().length;
   const totalRevenueMinor = Array.from(db.paymentIntents.values())
     .filter(p => p.status === 'SUCCEEDED')
     .reduce((sum, p) => sum + p.amountMinor, 0);

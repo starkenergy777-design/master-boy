@@ -2,7 +2,7 @@ import { formatLocalizedDate, formatLocalizedDateTime, localizeTree } from '../i
 import React, { useState, useEffect } from 'react';
 import { Shield, Users, DollarSign, BarChart3, FileText, AlertOctagon, Lock, Unlock, Trash2, Ban, CheckCircle, RefreshCw, X, PhoneCall, Search } from 'lucide-react';
 import { translations } from '../i18n.js';
-import { Language, User, Analytics, AiReport } from '../types.js';
+import { Language, User, Analytics, AiReport, AdminTop15Member } from '../types.js';
 import { api } from '../api.js';
 
 const reportFieldLabels: Record<string, string> = {
@@ -103,10 +103,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const t = translations[lang] || translations.ka;
   const isSuperAdmin = currentUser.roles.includes('SUPER_ADMIN');
 
-  const [activeTab, setActiveTab] = useState<'craftsmen' | 'prices' | 'analytics' | 'reports'>('analytics');
+  const [activeTab, setActiveTab] = useState<'craftsmen' | 'prices' | 'analytics' | 'reports' | 'top15'>('analytics');
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [craftsmen, setCraftsmen] = useState<any[]>([]);
   const [prices, setPrices] = useState<any[]>([]);
+  const [top15Members, setTop15Members] = useState<AdminTop15Member[]>([]);
   const [reports, setReports] = useState<AiReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [reportGenerating, setReportGenerating] = useState(false);
@@ -144,15 +145,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const loadData = async () => {
     try {
       setLoading(true);
-      const [anData, cmData, prData, repData] = await Promise.all([
+      const [anData, cmData, prData, repData, top15Data] = await Promise.all([
         api.getAnalytics(),
         loadAllCraftsmen(),
         api.getAdminTop15Prices(),
         api.getReports(),
+        api.getAdminTop15Members().catch(() => []),
       ]);
       setAnalytics(anData);
       setCraftsmen(cmData);
       setPrices(prData || []);
+      setTop15Members(top15Data || []);
       setReports(repData.content || []);
     } catch (err: any) {
       console.error(err);
@@ -305,7 +308,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* Tabs */}
-      <div className="admin-console-tabs grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-700/70 bg-slate-950/50 p-1.5 text-xs font-semibold sm:grid-cols-4">
+      <div className="admin-console-tabs grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-700/70 bg-slate-950/50 p-1.5 text-xs font-semibold sm:grid-cols-5">
         <button
           onClick={() => setActiveTab('analytics')}
           className={`flex-1 py-1.5 rounded-xl transition-all ${
@@ -331,6 +334,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {lang === 'ka' ? 'Top 15 ფასები' : lang === 'ru' ? 'Цены Top 15' : 'Top 15 Prices'}
         </button>
         <button
+          onClick={() => setActiveTab('top15')}
+          className={`flex-1 py-1.5 rounded-xl transition-all ${
+            activeTab === 'top15' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          {lang === 'ka' ? 'Top 15 წევრები' : lang === 'ru' ? 'Участники Top 15' : 'Top 15 Members'}
+        </button>
+        <button
           onClick={() => setActiveTab('reports')}
           className={`flex-1 py-1.5 rounded-xl transition-all ${
             activeTab === 'reports' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
@@ -339,6 +350,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {lang === 'ka' ? 'AI ანგარიშები' : lang === 'ru' ? 'AI Отчёты' : 'AI Reports'}
         </button>
       </div>
+
+      {/* Current Top 15 members */}
+      {activeTab === 'top15' && (
+        <div className="space-y-3">
+          <section className="admin-console-panel space-y-4 rounded-2xl p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-white">
+                  {lang === 'ka' ? 'აქტიური Top 15 წევრები' : lang === 'ru' ? 'Активные участники Top 15' : 'Active Top 15 members'}
+                </h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  {lang === 'ka'
+                    ? 'აქ ჩანს მხოლოდ მოქმედი წევრობები, რომლებიც წაშლილ ან დაბლოკილ ხელოსნებს არ უკავშირდება.'
+                    : lang === 'ru'
+                    ? 'Здесь показаны действующие членства, не связанные с удалёнными или заблокированными мастерами.'
+                    : 'Only current memberships attached to non-deleted, non-blocked craftsmen are shown.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadData()}
+                disabled={loading}
+                className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-100 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                {lang === 'ka' ? 'განახლება' : lang === 'ru' ? 'Обновить' : 'Refresh'}
+              </button>
+            </div>
+
+            {top15Members.length === 0 ? (
+              <p className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-4 text-sm text-slate-400">
+                {lang === 'ka' ? 'აქტიური Top 15 წევრობა არ მოიძებნა.' : lang === 'ru' ? 'Активных членств Top 15 не найдено.' : 'No active Top 15 memberships found.'}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {top15Members.map((member) => (
+                  <article key={member.id} className="admin-console-panel rounded-xl p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <h4 className="font-bold text-white">{member.craftsmanName}</h4>
+                      <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200">
+                        {lang === 'ka' ? 'აქტიური' : lang === 'ru' ? 'Активно' : 'Active'}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-sm text-slate-300">
+                      {member.cityName[lang]} · {member.professionName[lang]}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      {lang === 'ka' ? 'იწურება:' : lang === 'ru' ? 'Истекает:' : 'Expires:'} {formatLocalizedDateTime(lang, member.expiresAt)}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       {/* Analytics Tab */}
       {activeTab === 'analytics' && analytics && (
@@ -537,6 +604,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Reports Tab (§3.6 & §7.5) */}
       {activeTab === 'reports' && (
         <div className="space-y-3">
+          <section className="admin-console-note space-y-3 rounded-2xl p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-cyan-100">
+                {lang === 'ka' ? 'მონაცემთა ბაზის მიმდინარე სურათი' : lang === 'ru' ? 'Текущий срез базы данных' : 'Current database snapshot'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => void loadData()}
+                disabled={loading}
+                className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-300/20 bg-slate-950/40 px-3 py-2 text-xs font-semibold text-cyan-100 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                {lang === 'ka' ? 'განახლება' : lang === 'ru' ? 'Обновить' : 'Refresh'}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-700/60 bg-slate-950/40 p-3">
+                <p className="text-[11px] text-slate-400">{lang === 'ka' ? 'ხელოსნები' : lang === 'ru' ? 'Мастера' : 'Craftsmen'}</p>
+                <p className="mt-1 text-lg font-bold text-white">{analytics?.totalCraftsmen ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-slate-700/60 bg-slate-950/40 p-3">
+                <p className="text-[11px] text-slate-400">{lang === 'ka' ? 'აქტიური Top 15 წევრობები' : lang === 'ru' ? 'Активные членства Top 15' : 'Active Top 15 memberships'}</p>
+                <p className="mt-1 text-lg font-bold text-emerald-200">{analytics?.activeTop15Slots ?? top15Members.length}</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400">
+              {lang === 'ka'
+                ? 'ქვემოთ მოცემული AI ანგარიშები შენახულია შექმნის დროის მდგომარეობით; თარიღი თითოეულ ანგარიშზეა მითითებული.'
+                : lang === 'ru'
+                ? 'Отчёты ИИ ниже отражают данные на момент создания; дата указана в каждом отчёте.'
+                : 'AI reports below reflect data from when they were created; each report shows its timestamp.'}
+            </p>
+          </section>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               onClick={() => handleTriggerAiReport('ACCOUNTING')}

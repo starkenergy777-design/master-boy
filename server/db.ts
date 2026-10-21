@@ -812,15 +812,26 @@ class Database {
   }
 
   // --- Top 15 availability & hold cleanup (§4.2, §6.1, §6.3) ---
+  getActiveTop15Memberships(cityId?: string, professionId?: string): Top15Membership[] {
+    const now = Date.now();
+    return Array.from(this.top15Memberships.values()).filter((membership) => {
+      const craftsman = this.craftsmen.get(membership.craftsmanId);
+      const expiresAt = Date.parse(membership.expiresAt);
+      const eligibleCraftsman = craftsman?.status === 'ACTIVE' || craftsman?.status === 'EXPIRED';
+
+      return membership.status === 'ACTIVE'
+        && Number.isFinite(expiresAt)
+        && expiresAt > now
+        && eligibleCraftsman
+        && craftsman!.cityId === membership.cityId
+        && craftsman!.professionId === membership.professionId
+        && (cityId === undefined || membership.cityId === cityId)
+        && (professionId === undefined || membership.professionId === professionId);
+    });
+  }
+
   getActiveTop15Count(cityId: string, professionId: string): number {
-    const now = new Date().toISOString();
-    let count = 0;
-    for (const mem of this.top15Memberships.values()) {
-      if (mem.cityId === cityId && mem.professionId === professionId && mem.status === 'ACTIVE' && mem.expiresAt > now) {
-        count++;
-      }
-    }
-    return count;
+    return this.getActiveTop15Memberships(cityId, professionId).length;
   }
 
   getActiveHoldCount(cityId: string, professionId: string): number {
@@ -852,15 +863,9 @@ class Database {
     const prof = this.professions.find(pr => pr.id === c.professionId);
     const primary = c.photos.find(p => p.isPrimary) || c.photos[0];
 
-    // Check if currently top 15
-    const now = new Date().toISOString();
-    let isTop15 = false;
-    for (const mem of this.top15Memberships.values()) {
-      if (mem.craftsmanId === c.id && mem.status === 'ACTIVE' && mem.expiresAt > now) {
-        isTop15 = true;
-        break;
-      }
-    }
+    // Only a live membership attached to a visible, matching profile qualifies.
+    const isTop15 = this.getActiveTop15Memberships(c.cityId, c.professionId)
+      .some((membership) => membership.craftsmanId === c.id);
 
     return {
       id: c.id,

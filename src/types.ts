@@ -119,6 +119,16 @@ export interface Top15Membership {
   status: 'ACTIVE' | 'EXPIRED';
 }
 
+export interface AdminTop15Member {
+  id: string;
+  craftsmanId: string;
+  craftsmanName: string;
+  cityName: { ka: string; ru: string; en: string };
+  professionName: { ka: string; ru: string; en: string };
+  startsAt: string;
+  expiresAt: string;
+}
+
 export interface PaymentProvider {
   id: string;
   name: string;
