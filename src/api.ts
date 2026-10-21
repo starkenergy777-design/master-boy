@@ -370,6 +370,24 @@ class ApiClient {
     return this.request('/admin/providers/ai/status');
   }
 
+  getSuperAdminAgent() {
+    return this.request<{ enabled: boolean; rules: string; messages: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }> }>('/admin/agent');
+  }
+
+  updateSuperAdminAgent(settings: { enabled?: boolean; rules?: string }) {
+    return this.request('/admin/agent/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  sendSuperAdminAgentMessage(message: string) {
+    return this.request('/admin/agent/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+  }
+
   getRecipientAccount() {
     return this.request('/admin/payment/recipient-account');
   }
