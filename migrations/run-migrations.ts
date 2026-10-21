@@ -70,6 +70,7 @@ async function runMigrations() {
     '008_ai_provider_secrets.sql',
     '009_superadmin_provider_config_secrets.sql',
     '010_add_additional_professions.sql',
+    '011_hard_delete_craftsmen_and_reconcile_top15.sql',
   ];
 
   // Verify all files exist
