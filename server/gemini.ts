@@ -351,8 +351,8 @@ function reportFallback(type: 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH', total
 }
 
 export async function generatePeriodicReport(type: 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH'): Promise<string> {
-  const totalCraftsmen = db.craftsmen.size;
-  const activeMemberships = Array.from(db.top15Memberships.values()).filter(m => m.status === 'ACTIVE').length;
+  const totalCraftsmen = Array.from(db.craftsmen.values()).filter(craftsman => craftsman.status !== 'DELETED').length;
+  const activeMemberships = db.getActiveTop15Memberships().length;
   const activeSessions = db.sessions.size;
   const fallback = reportFallback(type, totalCraftsmen, activeMemberships, activeSessions);
   if (!db.providerConfig.ai.configured) return fallback;
