@@ -24,6 +24,72 @@ import { translations } from '../i18n.js';
 import { Language, User, Advertisement } from '../types.js';
 import { api } from '../api.js';
 
+const superAdminAgentCopy = {
+  ka: {
+    title: 'სუპერადმინის აგენტი',
+    description: 'დაავალე აგენტს მართვის მოქმედებები სუპერადმინის ავტორიზაციით. სუპერადმინის პაროლს აგენტი ვერ შეცვლის.',
+    on: 'ჩართულია',
+    off: 'გამორთულია',
+    enable: 'აგენტის ჩართვა',
+    disable: 'აგენტის გამორთვა',
+    rules: 'აგენტისთვის სავალდებულო წესები',
+    rulesHint: 'ჩაწერე, როგორ უნდა იმუშაოს აგენტმა. პაროლები და API გასაღებები აქ არ შეიყვანო.',
+    saveRules: 'წესების შენახვა',
+    rulesSaved: 'წესები შენახულია.',
+    chat: 'ჩატი აგენტთან',
+    chatHint: 'მოქმედებას მხოლოდ მაშინ შეასრულებს, როცა პირდაპირ დაავალებ. მაგალითად, საბანკო ანგარიშის შეცვლა.',
+    placeholder: 'დაწერე დავალება...',
+    send: 'გაგზავნა',
+    waiting: 'ამუშავებს...',
+    noMessages: 'ჩატი ჯერ ცარიელია.',
+    privacy: 'ჩატის ტექსტი და წაკითხული ადმინისტრაციული მონაცემები იგზავნება არჩეულ AI პროვაიდერთან; ჩატის ისტორია და წესები ინახება Supabase-ში.',
+    actions: 'შესრულებული მოქმედებები',
+    failed: 'აგენტის მოთხოვნა ვერ შესრულდა.',
+  },
+  ru: {
+    title: 'Агент суперадминистратора',
+    description: 'Поручайте агенту действия с авторизацией суперадминистратора. Агент не может изменить пароль суперадминистратора.',
+    on: 'Включён',
+    off: 'Выключен',
+    enable: 'Включить агента',
+    disable: 'Выключить агента',
+    rules: 'Обязательные правила для агента',
+    rulesHint: 'Укажите, как агент должен работать. Не вводите здесь пароли и API-ключи.',
+    saveRules: 'Сохранить правила',
+    rulesSaved: 'Правила сохранены.',
+    chat: 'Чат с агентом',
+    chatHint: 'Агент действует только по вашему прямому поручению. Например, изменить банковский счёт.',
+    placeholder: 'Напишите поручение...',
+    send: 'Отправить',
+    waiting: 'Обрабатывает...',
+    noMessages: 'Чат пока пуст.',
+    privacy: 'Текст чата и прочитанные административные данные передаются выбранному AI-провайдеру; история и правила хранятся в Supabase.',
+    actions: 'Выполненные действия',
+    failed: 'Не удалось выполнить запрос агенту.',
+  },
+  en: {
+    title: 'Superadmin agent',
+    description: 'Delegate admin tasks through the authenticated superadmin APIs. The agent cannot change the superadmin password.',
+    on: 'Enabled',
+    off: 'Disabled',
+    enable: 'Enable agent',
+    disable: 'Disable agent',
+    rules: 'Mandatory agent rules',
+    rulesHint: 'Set the agent’s operating rules. Do not enter passwords or API keys here.',
+    saveRules: 'Save rules',
+    rulesSaved: 'Rules saved.',
+    chat: 'Chat with agent',
+    chatHint: 'The agent acts only on your direct instruction, such as updating the recipient bank account.',
+    placeholder: 'Write a task...',
+    send: 'Send',
+    waiting: 'Working...',
+    noMessages: 'The chat is empty.',
+    privacy: 'Chat text and admin data read by the agent are sent to the selected AI provider; chat history and rules are stored in Supabase.',
+    actions: 'Actions performed',
+    failed: 'The agent request failed.',
+  },
+} as const;
+
 interface SuperAdminScreenProps {
   lang: Language;
   currentUser: User;
@@ -111,6 +177,18 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const [selectedAIProvider, setSelectedAIProvider] = useState<'gemini' | 'openai'>('gemini');
   const [geminiStatus, setGeminiStatus] = useState<any>(null);
 
+  const [agentConfig, setAgentConfig] = useState<{ enabled: boolean; rules: string; messages: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }> }>({
+    enabled: false,
+    rules: '',
+    messages: [],
+  });
+  const [agentRulesDraft, setAgentRulesDraft] = useState('');
+  const [agentInput, setAgentInput] = useState('');
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentError, setAgentError] = useState('');
+  const [agentNotice, setAgentNotice] = useState('');
+  const [agentActions, setAgentActions] = useState<Array<{ success: boolean; status: number; method: string; path: string; purpose?: string }>>([]);
+
   // Recipient Account State (§3.5)
   const [recipient, setRecipient] = useState<any>({ iban: '', bankName: '', beneficiary: '' });
 
@@ -162,7 +240,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const loadAll = async () => {
     try {
       setLoading(true);
-      const [aiStat, recStat, lockStat, bootStat, backStat, listPriceStat, provStat, adsStat, persistStat] = await Promise.all([
+      const [aiStat, recStat, lockStat, bootStat, backStat, listPriceStat, provStat, adsStat, persistStat, agentStat] = await Promise.all([
         api.getAiProviderStatus(),
         api.getRecipientAccount(),
         api.getConfigLock(),
@@ -172,8 +250,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         api.getProviders('payment').catch(() => []),
         api.getAdminAds().catch(() => []),
         api.getPersistenceStatus().catch(() => null),
+        api.getSuperAdminAgent().catch(() => null),
       ]);
       setGeminiStatus(aiStat);
+      if (agentStat) {
+        setAgentConfig(agentStat);
+        setAgentRulesDraft(agentStat.rules || '');
+      }
       setSelectedAIProvider(aiStat.selectedProvider === 'openai' ? 'openai' : 'gemini');
       setRecipient(recStat);
       setConfigLock(lockStat);
@@ -228,6 +311,57 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleAgent = async () => {
+    setAgentError('');
+    setAgentNotice('');
+    try {
+      setAgentBusy(true);
+      const updated = await api.updateSuperAdminAgent({ enabled: !agentConfig.enabled }) as typeof agentConfig;
+      setAgentConfig(updated);
+      setAgentNotice(updated.enabled ? superAdminAgentCopy[lang].on : superAdminAgentCopy[lang].off);
+    } catch (err: any) {
+      setAgentError(err.message || superAdminAgentCopy[lang].failed);
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const handleSaveAgentRules = async () => {
+    setAgentError('');
+    setAgentNotice('');
+    try {
+      setAgentBusy(true);
+      const updated = await api.updateSuperAdminAgent({ rules: agentRulesDraft }) as typeof agentConfig;
+      setAgentConfig(updated);
+      setAgentRulesDraft(updated.rules || '');
+      setAgentNotice(superAdminAgentCopy[lang].rulesSaved);
+    } catch (err: any) {
+      setAgentError(err.message || superAdminAgentCopy[lang].failed);
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const handleAgentChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = agentInput.trim();
+    if (!text || !agentConfig.enabled || agentBusy) return;
+    setAgentError('');
+    setAgentNotice('');
+    try {
+      setAgentBusy(true);
+      const updated: any = await api.sendSuperAdminAgentMessage(text);
+      setAgentConfig({ enabled: updated.enabled, rules: updated.rules || '', messages: updated.messages || [] });
+      setAgentRulesDraft(updated.rules || '');
+      setAgentActions(updated.actions || []);
+      setAgentInput('');
+    } catch (err: any) {
+      setAgentError(err.message || superAdminAgentCopy[lang].failed);
+    } finally {
+      setAgentBusy(false);
     }
   };
 
@@ -588,6 +722,97 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </button>
         </form>
       </div>
+
+      {/* Superadmin agent: tools, mandatory rules, and chat */}
+      <section className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-4" aria-labelledby="superadmin-agent-title">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 id="superadmin-agent-title" className="text-sm font-bold text-white">{superAdminAgentCopy[lang].title}</h3>
+            <p className="mt-1 text-[11px] text-slate-400">{superAdminAgentCopy[lang].description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleToggleAgent}
+            disabled={agentBusy}
+            aria-pressed={agentConfig.enabled}
+            className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition-colors disabled:opacity-50 ${agentConfig.enabled ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-200'}`}
+          >
+            {agentConfig.enabled ? superAdminAgentCopy[lang].disable : superAdminAgentCopy[lang].enable}
+          </button>
+        </div>
+
+        <div className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${agentConfig.enabled ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 bg-slate-800 text-slate-400'}`}>
+          {agentConfig.enabled ? superAdminAgentCopy[lang].on : superAdminAgentCopy[lang].off}
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="superadmin-agent-rules" className="block text-xs font-semibold text-white">{superAdminAgentCopy[lang].rules}</label>
+          <textarea
+            id="superadmin-agent-rules"
+            value={agentRulesDraft}
+            onChange={(e) => setAgentRulesDraft(e.target.value)}
+            maxLength={6000}
+            rows={4}
+            placeholder={superAdminAgentCopy[lang].rulesHint}
+            className="w-full resize-y rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
+          />
+          <p className="text-[10px] text-slate-500">{superAdminAgentCopy[lang].rulesHint}</p>
+          <button
+            type="button"
+            onClick={handleSaveAgentRules}
+            disabled={agentBusy || agentRulesDraft.length > 6000}
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {superAdminAgentCopy[lang].saveRules}
+          </button>
+        </div>
+
+        <div className="space-y-2 border-t border-slate-800 pt-4">
+          <div>
+            <h4 className="text-xs font-bold text-white">{superAdminAgentCopy[lang].chat}</h4>
+            <p className="mt-1 text-[10px] text-slate-400">{superAdminAgentCopy[lang].chatHint}</p>
+          </div>
+          <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950 p-3" aria-live="polite">
+            {agentConfig.messages.length === 0 && <p className="text-xs text-slate-500">{superAdminAgentCopy[lang].noMessages}</p>}
+            {agentConfig.messages.map((message, index) => (
+              <div key={`${message.createdAt}-${index}`} className={`max-w-[90%] whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-xs ${message.role === 'user' ? 'ml-auto bg-indigo-600/30 text-indigo-100' : 'bg-slate-800 text-slate-200'}`}>
+                {message.content}
+              </div>
+            ))}
+          </div>
+          <form onSubmit={handleAgentChat} className="flex items-end gap-2">
+            <textarea
+              value={agentInput}
+              onChange={(e) => setAgentInput(e.target.value)}
+              maxLength={4000}
+              rows={2}
+              disabled={!agentConfig.enabled || agentBusy}
+              placeholder={superAdminAgentCopy[lang].placeholder}
+              className="min-w-0 flex-1 resize-y rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!agentConfig.enabled || agentBusy || !agentInput.trim()}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
+            >
+              {agentBusy ? superAdminAgentCopy[lang].waiting : superAdminAgentCopy[lang].send}
+            </button>
+          </form>
+          {agentActions.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-semibold text-slate-300">{superAdminAgentCopy[lang].actions}</p>
+              {agentActions.map((action, index) => (
+                <p key={`${action.path}-${index}`} className={`text-[10px] ${action.success ? 'text-emerald-300' : 'text-rose-300'}`}>
+                  {action.success ? '✓' : '✕'} {action.method} {action.path} · HTTP {action.status}{action.purpose ? ` · ${action.purpose}` : ''}
+                </p>
+              ))}
+            </div>
+          )}
+          {agentError && <p role="alert" className="text-xs text-rose-300">{agentError}</p>}
+          {agentNotice && <p role="status" className="text-xs text-emerald-300">{agentNotice}</p>}
+          <p className="text-[10px] leading-relaxed text-slate-500">{superAdminAgentCopy[lang].privacy}</p>
+        </div>
+      </section>
 
       {/* 3. Recipient Account (§3.5) */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
