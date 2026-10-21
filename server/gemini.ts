@@ -63,10 +63,21 @@ export async function testGeminiKey(apiKey: string): Promise<boolean> {
 export async function testOpenAIKey(apiKey: string): Promise<boolean> {
   const model = process.env.OPENAI_MODEL || 'gpt-6-luna';
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetch(`https://api.openai.com/v1/models/${encodeURIComponent(model)}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        instructions: 'Reply with the single word OK.',
+        input: 'OK',
+        store: false,
+        max_output_tokens: 32,
+      }),
       signal: controller.signal,
     });
     return response.ok;
@@ -88,24 +99,41 @@ export async function generateAIText(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-      const response = await fetch('https://api.openai.com/v1/responses', {
+      const requestBody: Record<string, unknown> = {
+        model: process.env.OPENAI_MODEL || 'gpt-6-luna',
+        instructions,
+        input,
+        store: false,
+        max_output_tokens: 800,
+        ...(jsonOutput ? { text: { format: { type: 'json_object' } } } : {}),
+      };
+      const sendRequest = () => fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || 'gpt-6-luna',
-          instructions,
-          input,
-          store: false,
-          max_output_tokens: 800,
-          ...(jsonOutput ? { text: { format: { type: 'json_object' } } } : {}),
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
+      let response = await sendRequest();
+      if (!response.ok && response.status === 400 && jsonOutput) {
+        const errorBody: any = await response.clone().json().catch(() => null);
+        const providerError = errorBody?.error || {};
+        const errorParam = typeof providerError.param === 'string' ? providerError.param : '';
+        const errorMessage = typeof providerError.message === 'string' ? providerError.message : '';
+        if (errorParam === 'text.format' || errorParam.startsWith('text.format.') || /json.?object|response format|text\.format/i.test(errorMessage)) {
+          console.warn('[MASTER_BOY] OpenAI rejected JSON mode; retrying with the JSON instruction only.');
+          delete requestBody.text;
+          response = await sendRequest();
+        }
+      }
       if (!response.ok) {
-        console.warn('[MASTER_BOY] OpenAI generation failed (HTTP ' + response.status + ').');
+        const errorBody: any = await response.json().catch(() => null);
+        const providerError = errorBody?.error || {};
+        const safeCode = typeof providerError.code === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(providerError.code) ? providerError.code : 'unknown';
+        const safeParam = typeof providerError.param === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(providerError.param) ? providerError.param : 'unknown';
+        console.warn(`[MASTER_BOY] OpenAI generation failed (HTTP ${response.status}, code=${safeCode}, param=${safeParam}).`);
         throw new Error('OpenAI API returned HTTP ' + response.status);
       }
       const data: any = await response.json();
