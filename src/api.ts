@@ -1,4 +1,4 @@
-import { Language, User, Advertisement, AdvertisementPublic } from './types.js';
+import { Language, User, Advertisement, AdvertisementPublic, AdminTop15Member } from './types.js';
 import { localizeApiError } from './i18n.js';
 
 class ApiClient {
@@ -312,6 +312,10 @@ class ApiClient {
 
   getAdminTop15Prices() {
     return this.request('/admin/top15/prices');
+  }
+
+  getAdminTop15Members() {
+    return this.request<AdminTop15Member[]>('/admin/top15/members');
   }
 
   updateTop15Price(cityId: string, professionId: string, amountMinor: number) {
