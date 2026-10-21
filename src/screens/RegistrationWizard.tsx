@@ -35,7 +35,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [selectedProviderId, setSelectedProviderId] = useState('prov-bog');
+  const [selectedProviderId, setSelectedProviderId] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [registrationPrice, setRegistrationPrice] = useState<{ amountMinor: number; currency: string } | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
@@ -45,9 +45,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
     ? `${(registrationPrice.amountMinor / 100).toFixed(2)} ${registrationPrice.currency}`
     : '—';
 
-  const [paymentProviders, setPaymentProviders] = useState<{ id: string; name: string; code?: string }[]>([
-    { id: 'prov-bog', name: 'საქართველოს ბანკი (Bank of Georgia iPay)', code: 'bog' },
-  ]);
+  const [paymentProviders, setPaymentProviders] = useState<{ id: string; name: string; code?: string }[]>([]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -84,9 +82,6 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
         setRegistrationPrice(price);
         const provList = price.amountMinor > 0 ? await api.getPaymentProviders().catch(() => []) : [];
         setPaymentProviders(provList);
-        if (provList.length > 0) {
-          setSelectedProviderId(provList[0].id);
-        }
         if (cList.length > 0 && !formData.cityId) {
           setFormData((prev) => ({ ...prev, cityId: cList[0].id }));
         }
@@ -176,6 +171,14 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
     if (!formData.bankAccount.trim()) {
       setErrorMsg(lang === 'ka' ? 'საბანკო ანგარიში სავალდებულოა' : lang === 'ru' ? 'Банковский счёт обязателен' : 'Bank account is required');
       setStep(1);
+      return;
+    }
+    if (!isFreeRegistration && !selectedProviderId) {
+      setErrorMsg(lang === 'ka'
+        ? 'ონლაინ გადახდა ჯერ ხელმისაწვდომი არ არის. ანგარიში არ შეიქმნება, სანამ გადახდა არ დადასტურდება.'
+        : lang === 'ru'
+          ? 'Онлайн-оплата пока недоступна. Аккаунт не будет создан до подтверждения платежа.'
+          : 'Online payment is not available yet. The account will not be created until payment is confirmed.');
       return;
     }
     try {
@@ -524,7 +527,11 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
                   {lang === 'ka' ? 'აირჩიეთ გადახდის მეთოდი' : lang === 'ru' ? 'Выберите способ оплаты' : 'Select Payment Provider'}
                 </label>
                 <div className="space-y-2">
-                  {paymentProviders.map((prov) => (
+                  {paymentProviders.length === 0 ? (
+                  <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
+                    {lang === 'ka' ? 'გადახდის მეთოდი ჯერ არ არის ხელმისაწვდომი.' : lang === 'ru' ? 'Способ оплаты пока недоступен.' : 'No payment method is available yet.'}
+                  </p>
+                ) : paymentProviders.map((prov) => (
                     <div
                       key={prov.id}
                       onClick={() => setSelectedProviderId(prov.id)}
@@ -565,7 +572,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={loading || priceLoading || !registrationPrice}
+              disabled={loading || priceLoading || !registrationPrice || (!isFreeRegistration && !selectedProviderId)}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {loading ? (

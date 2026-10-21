@@ -265,7 +265,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     secretKey: '',
     apiKey: '',
     webhookSecret: '',
-    isActive: true,
+    isActive: false,
   });
   const [showKeyMask, setShowKeyMask] = useState(false);
 
@@ -1220,6 +1220,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               <p className="text-[10px] text-slate-400">საქართველოს ბანკი, თიბისი და Stripe-ის მონაცემების შეყვანა</p>
             </div>
           </div>
+        </div>
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-100">
+          {lang === 'ka'
+            ? 'ონლაინ გადახდების სერვერული ინტეგრაცია ჯერ დასრულებული არ არის. მონაცემების შენახვა თანხის მიღებას არ ააქტიურებს; წარმოებაში გადახდები უსაფრთხოდ დაბლოკილია.'
+            : lang === 'ru'
+              ? 'Серверная интеграция онлайн-оплаты ещё не завершена. Сохранение данных не включает приём платежей; в рабочей версии платежи безопасно заблокированы.'
+              : 'The server-side online payment integration is not complete. Saving credentials does not enable charges; production payments remain safely disabled.'}
         </div>
 
         <div className="space-y-2.5 pt-1">

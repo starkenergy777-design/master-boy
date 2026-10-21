@@ -105,12 +105,23 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
     setErrorMsg('');
     try {
       setLoading(true);
-      const res = await api.reserveTop15Slot(cityId, professionId);
       const provs = await api.getPaymentProviders();
+      if (provs.length === 0) {
+        setProviders([]);
+        setReservation(null);
+        setSelectedProviderId('');
+        setErrorMsg(lang === 'ka'
+          ? 'Top 15-ის ონლაინ გადახდა ჯერ მიუწვდომელია; ადგილი არ დაჯავშნილა.'
+          : lang === 'ru'
+            ? 'Онлайн-оплата Top 15 пока недоступна; место не зарезервировано.'
+            : 'Top 15 online payment is not available yet; no slot was reserved.');
+        return;
+      }
+      const res = await api.reserveTop15Slot(cityId, professionId);
       setReservation(res);
       setCountdown(res.ttlSeconds || 180);
       setProviders(provs);
-      if (provs.length > 0) setSelectedProviderId(provs[0].id);
+      setSelectedProviderId('');
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to reserve slot');
     } finally {

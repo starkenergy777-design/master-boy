@@ -11,6 +11,7 @@ const craftsman = read('src/screens/CraftsmanDashboard.tsx');
 const api = read('src/api.ts');
 const sim = read('role-simulation.mjs');
 const wizard = read('src/screens/RegistrationWizard.tsx');
+const top15 = read('src/screens/Top15Screen.tsx');
 const superAdmin = read('src/screens/SuperAdminScreen.tsx');
 
 const checks = [];
@@ -108,6 +109,35 @@ check('cities keep major centers first, then follow Georgian alphabetical order'
 });
 check('fresh-install seed has no placeholder credentials or demo accounts', () => {
   assert.doesNotMatch(seed, /UNUSABLE_SEED_PASSWORD|INSERT INTO users|INSERT INTO craftsmen|Demo Craftsman/i);
+});
+check('craftsman registration does not default to a payment bank', () => {
+  assert.match(wizard, /useState\(''\)/);
+  assert.doesNotMatch(wizard, /prov-bog/);
+  assert.match(wizard, /!isFreeRegistration && !selectedProviderId/);
+});
+check('Top15 checkout requires an operational provider before reserving a slot', () => {
+  assert.match(routes, /apiRouter\.post\('\/top15\/reserve'[\s\S]{0,260}requireRealPaymentIntegration/);
+  assert.match(routes, /const simulationEnabled = process\.env\.NODE_ENV !== 'production'[\s\S]{0,180}PAYMENTS_SIMULATION/);
+});
+check('Top15 payment provider selection requires explicit user choice', () => {
+  assert.doesNotMatch(top15, /setSelectedProviderId\(provs\[0\]\.id\)/);
+  assert.match(top15, /setSelectedProviderId\(''\)/);
+});
+check('Top15 does not reserve a slot when no payment provider is available', () => {
+  const providerFetch = top15.indexOf('const provs = await api.getPaymentProviders();');
+  const unavailableGuard = top15.indexOf('if (provs.length === 0)');
+  const reservationCall = top15.indexOf('const res = await api.reserveTop15Slot');
+  assert.ok(providerFetch >= 0 && providerFetch < unavailableGuard && unavailableGuard < reservationCall);
+});
+check('Top15 payment verifies reservation ownership and payment-status ownership', () => {
+  assert.match(routes, /reservation\.craftsmanId !== craftsman\.id/);
+  assert.match(routes, /intent\.craftsmanId !== craftsman\.id/);
+});
+check('ad payment records do not misuse the craftsman foreign key', () => {
+  assert.match(routes, /reservationId: ad\.id,[\s\S]{0,100}craftsmanId: null,[\s\S]{0,100}providerId: paymentProvider\.id/);
+});
+check('super admin is told that saving payment credentials does not enable charges', () => {
+  assert.match(superAdmin, /saving credentials does not enable charges/i);
 });
 
 const failed = checks.filter(x => x.startsWith('FAIL:'));

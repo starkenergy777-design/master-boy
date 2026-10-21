@@ -194,7 +194,7 @@ export interface PaymentProvider {
 export interface PaymentIntent {
   id: string;
   reservationId: string;
-  craftsmanId: string;
+  craftsmanId: string | null;
   providerId: string;
   amountMinor: number;
   currency: string;
