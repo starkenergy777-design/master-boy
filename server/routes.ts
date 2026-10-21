@@ -176,7 +176,7 @@ function redactAgentSecrets(text: string): AgentSecretBundle {
   };
   const redacted = text
     .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{10,})\b/g, (secret) => addSecret(secret))
-    .replace(/\b(?:password|passwd|пароль|პაროლი)\s*(?:is\s*)?[:=]\s*([^\s,;]+)/gi, (_match, secret: string) => addSecret(secret));
+    .replace(/(?:password|passwd|пароль||პაროლი)\s*(?:is\s+|[:=]\s*)([^\s,;]+)/gi, (_match, secret: string) => addSecret(secret));
   return { text: redacted, values };
 }
 
@@ -2190,7 +2190,8 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
             ? 'I could not prepare a safe action plan. Clarify the request and try again.'
             : 'ვერ შევადგინე უსაფრთხო მოქმედების გეგმა. დააზუსტე დავალება და სცადე თავიდან.';
     }
-    finalMessage = finalMessage.replace(/\{\{SECRET_\d+\}\}/g, '[დამალულია]').slice(0, 4000);
+    const hiddenSecretLabel = responseLanguage === 'ru' ? '[скрыто]' : responseLanguage === 'en' ? '[hidden]' : '[დამალულია]';
+    finalMessage = finalMessage.replace(/\{\{SECRET_\d+\}\}/g, hiddenSecretLabel).slice(0, 4000);
     const assistantMessage = { role: 'assistant' as const, content: finalMessage, createdAt: new Date().toISOString() };
     const updated = await storage.saveSuperAdminAgentSettings({
       ...settings,
