@@ -81,6 +81,12 @@ function reportTypeLabel(type: string, lang: Language): string {
   return labels[type]?.[lang] || labels.RECOMMENDATIONS[lang];
 }
 
+const ReadableReportContent: React.FC<{ content: unknown }> = ({ content }) => (
+  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 text-[12px] leading-relaxed text-slate-200 whitespace-pre-wrap break-words">
+    {readableReportText(content)}
+  </div>
+);
+
 interface AdminDashboardProps {
   lang: Language;
   currentUser: User;
@@ -550,9 +556,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </p>
                 )}
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 text-[12px] leading-relaxed text-slate-200 whitespace-pre-wrap break-words">
-                  {readableReportText(r.content)}
-                </div>
+                <ReadableReportContent content={r.content} />
               </div>
             ))}
           </div>
