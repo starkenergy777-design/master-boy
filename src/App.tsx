@@ -359,6 +359,7 @@ export default function App() {
               lang={lang}
               currentUser={currentUser}
               onBack={goBack}
+              onOpenAdminTools={() => pushScreen('admin', 'craftsman')}
             />
           )}
 
