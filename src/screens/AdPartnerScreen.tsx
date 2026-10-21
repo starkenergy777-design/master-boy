@@ -278,10 +278,10 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
               <h3 className="text-xs font-bold text-white">სარეკლამო პაკეტის შეძენა</h3>
               <p className="text-[10px] text-slate-400">
                 {lang === 'ka'
-                  ? `საქართველოს ბანკი (BOG iPay) • ${(ad as any)?.days_duration || 30} დღე`
+                  ? `საგადახდო სისტემა • ${(ad as any)?.days_duration || 30} დღე`
                   : lang === 'ru'
-                    ? `Банк Грузии (BOG iPay) • ${(ad as any)?.days_duration || 30} дн.`
-                    : `Bank of Georgia (BOG iPay) • ${(ad as any)?.days_duration || 30} days`}
+                    ? `Платёжная система • ${(ad as any)?.days_duration || 30} дн.`
+                    : `Payment provider • ${(ad as any)?.days_duration || 30} days`}
               </p>
             </div>
           </div>
