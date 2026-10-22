@@ -3057,7 +3057,7 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
 
 // PUT /admin/providers/ai (write-only provider key and active provider selection)
 apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
-  const { provider, apiKey } = req.body || {};
+  const { provider, apiKey, model } = req.body || {};
   if (provider !== 'gemini' && provider !== 'openai') {
     return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Choose a supported AI provider.' });
   }
@@ -3065,6 +3065,11 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
     return res.status(400).json({ code: 'INVALID_KEY', message: 'API key must be text.' });
   }
 
+  const currentModel = provider === 'gemini' ? db.providerConfig.ai.geminiModel : db.providerConfig.ai.openaiModel;
+  const selectedModel = typeof model === 'string' ? model.trim() : (currentModel || '');
+  if (!selectedModel || selectedModel.length > 128 || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/.test(selectedModel)) {
+    return res.status(400).json({ code: 'INVALID_AI_MODEL', message: 'Enter a valid model identifier for the selected provider.' });
+  }
   const cleanKey = typeof apiKey === 'string' ? apiKey.trim() : '';
   if (cleanKey.length > 512 || /[\r\n]/.test(cleanKey)) {
     return res.status(400).json({ code: 'INVALID_KEY', message: 'API key format is invalid.' });
@@ -3079,8 +3084,8 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
   let verification: Awaited<ReturnType<typeof testGeminiKey>> | null = null;
   if (cleanKey) {
     verification = provider === 'gemini'
-      ? await testGeminiKey(cleanKey)
-      : await testOpenAIKey(cleanKey);
+      ? await testGeminiKey(cleanKey, selectedModel)
+      : await testOpenAIKey(cleanKey, selectedModel);
   }
 
   if (verification && !verification.valid) {
@@ -3138,7 +3143,7 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
 
   const verifiedAt = verification?.valid ? new Date().toISOString() : null;
   try {
-    await storage.saveAiProviderSelection(provider, verifiedAt);
+    await storage.saveAiProviderSelection(provider, verifiedAt, selectedModel);
   } catch {
     console.error('Could not persist the selected AI provider to Supabase.');
     return res.status(503).json({ code: 'AI_SETTINGS_PERSIST_FAILED', message: 'The key was saved but the selected AI provider could not be updated.' });
@@ -3146,6 +3151,8 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
 
   resetAiClient();
   db.providerConfig.ai.selectedProvider = provider;
+  if (provider === 'gemini') db.providerConfig.ai.geminiModel = selectedModel;
+  else db.providerConfig.ai.openaiModel = selectedModel;
   db.providerConfig.ai.geminiConfigured = Boolean(db.geminiApiKey);
   db.providerConfig.ai.openaiConfigured = Boolean(db.openAiApiKey);
   db.providerConfig.ai.configured = Boolean(selectedKey);
