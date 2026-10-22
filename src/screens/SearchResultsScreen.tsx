@@ -194,6 +194,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
             allLabel={t.allProfessions}
             searchPlaceholder={t.searchProfession}
             noResultsLabel={t.noProfessionMatch}
+            closeLabel={t.close}
             allowClear
             className="flex-1"
             buttonClassName="min-h-14 rounded-xl px-3 py-2.5 text-lg"
