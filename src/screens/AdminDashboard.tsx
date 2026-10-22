@@ -102,6 +102,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const t = translations[lang] || translations.ka;
   const isSuperAdmin = currentUser.roles.includes('SUPER_ADMIN');
+  const isStaffAdmin = currentUser.roles.includes('ADMIN') && !isSuperAdmin;
+  const adminShareLabel = lang === 'ka' ? 'კომპანიის შენთვის მინიჭებული წილი' : lang === 'ru' ? 'Назначенная вам доля компании' : 'Your assigned company share';
+  const adminShareMissing = lang === 'ka' ? 'წილი მინიჭებული არ არის' : lang === 'ru' ? 'Доля не назначена' : 'No share assigned';
 
   const [activeTab, setActiveTab] = useState<'craftsmen' | 'prices' | 'analytics' | 'reports' | 'top15'>('analytics');
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -269,6 +272,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p className="mt-1.5 text-sm text-slate-300">{currentUser.phone}</p>
             </div>
           </div>
+          {isStaffAdmin && (
+            <div className="min-w-[180px] rounded-xl border border-emerald-300/20 bg-emerald-300/5 px-4 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-200/80">{adminShareLabel}</p>
+              <p className="mt-0.5 text-lg font-extrabold text-emerald-100">
+                {typeof currentUser.adminSharePercent === 'number'
+                  ? String(currentUser.adminSharePercent) + '%'
+                  : adminShareMissing}
+              </p>
+            </div>
+          )}
           {isSuperAdmin && (
             <button
               onClick={onOpenSuperAdmin}
