@@ -173,6 +173,16 @@ function requireSuperAdmin(req: AuthRequest, res: Response, next: NextFunction) 
   });
 }
 
+function requireStaffAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  requireAuth(req, res, () => {
+    const roles = req.user?.roles || [];
+    if (!roles.includes('ADMIN') || roles.includes('SUPER_ADMIN')) {
+      return res.status(403).json({ code: 'FORBIDDEN', message: 'Administrator account required' });
+    }
+    next();
+  });
+}
+
 type AgentSecretBundle = { text: string; values: string[] };
 
 const agentChatsInProgress = new Set<string>();
@@ -3092,6 +3102,106 @@ apiRouter.get('/admin/payment/recipient-account', requireSuperAdmin, (req, res) 
 });
 
 // GET /admin/admins (§6.6)
+// PUT /admin/me/phone — staff administrators can update their own login phone
+apiRouter.put('/admin/me/phone', requireStaffAdmin, async (req: AuthRequest, res) => {
+  const user = req.user!;
+  if (!rateLimit('admin-phone-change:' + req.ip + ':' + user.id, 10, 15 * 60 * 1000)) {
+    return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many attempts. Try again later.' });
+  }
+  const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
+  const inputPhone = typeof req.body?.phone === 'string' ? req.body.phone : '';
+  const phone = inputPhone.trim().replace(/[()\s.-]/g, '');
+
+  if (!currentPassword) {
+    return res.status(400).json({ code: 'CURRENT_PASSWORD_REQUIRED', message: 'Current password is required.' });
+  }
+  if (!verifyPassword(currentPassword, user.password)) {
+    return res.status(401).json({ code: 'INVALID_CURRENT_PASSWORD', message: 'The current password is incorrect.' });
+  }
+  if (inputPhone.length > 64 || !/^\+?\d{8,15}$/.test(phone)) {
+    return res.status(400).json({ code: 'INVALID_PHONE', message: 'Enter a valid phone number.' });
+  }
+  if (phone === user.phone) {
+    return res.status(400).json({ code: 'PHONE_UNCHANGED', message: 'Enter a different phone number.' });
+  }
+
+  const phoneKey = phone.replace(/^\+/, '');
+  const existingUser = Array.from(db.users.values()).find(other =>
+    other.id !== user.id && other.phone.trim().replace(/[()\s.-]/g, '').replace(/^\+/, '') === phoneKey,
+  );
+  if (existingUser) {
+    return res.status(409).json({ code: 'PHONE_ALREADY_REGISTERED', message: 'An account with this phone number already exists.' });
+  }
+
+  const previousPhone = user.phone;
+  const auditEntry = {
+    id: 'audit-' + crypto.randomUUID(),
+    actorType: 'USER' as const,
+    actorId: user.id,
+    action: 'ADMIN_PHONE_CHANGED',
+    targetType: 'USER' as const,
+    targetId: user.id,
+    reason: 'Administrator changed own phone number',
+    createdAt: new Date().toISOString(),
+  };
+  user.phone = phone;
+  db.auditLog.unshift(auditEntry);
+  if (!await persistAdminMutation(res, () => {
+    user.phone = previousPhone;
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
+
+  res.json({ success: true, user: safeUser(user) });
+});
+
+// PUT /admin/me/password — staff administrators can update their own password
+apiRouter.put('/admin/me/password', requireStaffAdmin, async (req: AuthRequest, res) => {
+  const user = req.user!;
+  if (!rateLimit('admin-password-change:' + req.ip + ':' + user.id, 10, 15 * 60 * 1000)) {
+    return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many attempts. Try again later.' });
+  }
+  const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
+  const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+
+  if (!currentPassword) {
+    return res.status(400).json({ code: 'CURRENT_PASSWORD_REQUIRED', message: 'Current password is required.' });
+  }
+  if (!verifyPassword(currentPassword, user.password)) {
+    return res.status(401).json({ code: 'INVALID_CURRENT_PASSWORD', message: 'The current password is incorrect.' });
+  }
+  if (newPassword.length < 12 || newPassword.length > 128) {
+    return res.status(400).json({ code: 'INVALID_PASSWORD', message: 'Password must be between 12 and 128 characters.' });
+  }
+  if (verifyPassword(newPassword, user.password)) {
+    return res.status(400).json({ code: 'PASSWORD_UNCHANGED', message: 'Choose a password different from the current one.' });
+  }
+
+  const previousPasswordHash = user.password;
+  const auditEntry = {
+    id: 'audit-' + crypto.randomUUID(),
+    actorType: 'USER' as const,
+    actorId: user.id,
+    action: 'ADMIN_PASSWORD_CHANGED',
+    targetType: 'USER' as const,
+    targetId: user.id,
+    reason: 'Administrator changed own password',
+    createdAt: new Date().toISOString(),
+  };
+  user.password = hashPassword(newPassword);
+  db.auditLog.unshift(auditEntry);
+  if (!await persistAdminMutation(res, () => {
+    user.password = previousPasswordHash;
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
+
+  for (const [token, session] of db.sessions) {
+    if (session.userId === user.id && token !== req.sessionToken) db.sessions.delete(token);
+  }
+  res.json({ success: true });
+});
+
 apiRouter.get('/admin/admins', requireSuperAdmin, (req, res) => {
   const admins = Array.from(db.users.values()).filter(u => u.roles.includes('ADMIN'));
   res.json(admins.map(safeUser));

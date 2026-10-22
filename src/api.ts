@@ -170,6 +170,20 @@ class ApiClient {
     return this.request<User>('/auth/me');
   }
 
+  updateAdminPhone(currentPassword: string, phone: string) {
+    return this.request<{ success: boolean; user: User }>('/admin/me/phone', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, phone }),
+    });
+  }
+
+  updateAdminPassword(currentPassword: string, newPassword: string) {
+    return this.request<{ success: boolean }>('/admin/me/password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
   // Craftsman
   saveDraft(step: number, data: any) {
     return this.request('/craftsmen/me/draft', {
