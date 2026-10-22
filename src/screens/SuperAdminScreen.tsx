@@ -272,6 +272,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
   // AI provider state. API keys are write-only and never restored to the browser.
   const [aiKeyInput, setAiKeyInput] = useState('');
+  const [aiModelInput, setAiModelInput] = useState('');
   const [selectedAIProvider, setSelectedAIProvider] = useState<'gemini' | 'openai' | ''>('');
   const [geminiStatus, setGeminiStatus] = useState<any>(null);
 
@@ -369,6 +370,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         setAgentError(superAdminAgentCopy[lang].loadFailed);
       }
       setSelectedAIProvider(aiStat.selectedProvider === 'openai' || aiStat.selectedProvider === 'gemini' ? aiStat.selectedProvider : '');
+      setAiModelInput(aiStat.selectedProvider === 'gemini' ? (aiStat.geminiModel || '') : (aiStat.openaiModel || ''));
       setRecipient(recStat);
       setConfigLock(lockStat);
       setBootstrapStatus(bootStat);
@@ -417,6 +419,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     const previousProvider = geminiStatus?.selectedProvider || '';
     setSelectedAIProvider(provider);
     setAiKeyInput('');
+    setAiModelInput(provider === 'gemini' ? (geminiStatus?.geminiModel || '') : provider === 'openai' ? (geminiStatus?.openaiModel || '') : '');
     setErrorMsg('');
     setSuccessMsg('');
     if (!provider || provider === previousProvider) return;
@@ -454,11 +457,15 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       setErrorMsg(aiCopy.required);
       return;
     }
+    if (!aiModelInput.trim()) {
+      setErrorMsg(lang === 'ka' ? 'აირჩიეთ ან ჩაწერეთ AI მოდელის იდენტიფიკატორი.' : lang === 'ru' ? 'Укажите модель ИИ.' : 'Enter an AI model identifier.');
+      return;
+    }
     setErrorMsg('');
     setSuccessMsg('');
     try {
       setLoading(true);
-      const res = await api.updateAiProvider(selectedAIProvider, aiKeyInput.trim() || undefined);
+      const res = await api.updateAiProvider(selectedAIProvider, aiKeyInput.trim() || undefined, aiModelInput.trim());
       setGeminiStatus(res);
       setAiKeyInput('');
       if (res.providerVerified) {
@@ -1105,6 +1112,20 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               placeholder={aiCopy.placeholder}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
               required={selectedAIProvider === 'gemini' ? !geminiStatus?.geminiConfigured : selectedAIProvider === 'openai' ? !geminiStatus?.openaiConfigured : false}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400">{lang === 'ka' ? 'AI მოდელი' : lang === 'ru' ? 'Модель ИИ' : 'AI model'}</label>
+            <input
+              type="text"
+              autoComplete="off"
+              value={aiModelInput}
+              onChange={(e) => setAiModelInput(e.target.value)}
+              placeholder={lang === 'ka' ? 'მოდელის იდენტიფიკატორი' : lang === 'ru' ? 'Идентификатор модели' : 'Model identifier'}
+              maxLength={128}
+              required
+              disabled={loading || configLock.locked || !selectedAIProvider}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
             />
           </div>
           <button
