@@ -403,6 +403,9 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       {/* Tabs */}
       <div className="flex rounded-2xl bg-slate-900/80 p-1 border border-slate-800 text-xs font-semibold">
         <button
+          type="button"
+          data-cabinet-tab="true"
+          aria-pressed={activeTab === 'profile'}
           onClick={() => setActiveTab('profile')}
           className={`flex-1 py-2 rounded-xl transition-all ${
             activeTab === 'profile'
@@ -413,6 +416,9 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
           {t.myProfile}
         </button>
         <button
+          type="button"
+          data-cabinet-tab="true"
+          aria-pressed={activeTab === 'top15'}
           onClick={() => setActiveTab('top15')}
           className={`flex-1 py-2 rounded-xl transition-all flex items-center justify-center gap-1 ${
             activeTab === 'top15'
