@@ -91,6 +91,7 @@ interface AdminDashboardProps {
   lang: Language;
   currentUser: User;
   onOpenSuperAdmin: () => void;
+  onUserUpdated?: (user: User) => void;
   onBack?: () => void;
 }
 
@@ -98,6 +99,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   lang,
   currentUser,
   onOpenSuperAdmin,
+  onUserUpdated,
   onBack,
 }) => {
   const t = translations[lang] || translations.ka;
@@ -118,6 +120,108 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [craftsmanActionsInProgress, setCraftsmanActionsInProgress] = useState<Set<string>>(() => new Set());
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [credentialAction, setCredentialAction] = useState<'phone' | 'password' | null>(null);
+  const [credentialCurrentPassword, setCredentialCurrentPassword] = useState('');
+  const [credentialNewPhone, setCredentialNewPhone] = useState(currentUser.phone);
+  const [credentialNewPassword, setCredentialNewPassword] = useState('');
+  const [credentialConfirmPassword, setCredentialConfirmPassword] = useState('');
+  const [credentialSaving, setCredentialSaving] = useState(false);
+  const [credentialError, setCredentialError] = useState('');
+  const [credentialSuccess, setCredentialSuccess] = useState('');
+
+  const securityText = {
+    title: lang === 'ka' ? 'ანგარიშის უსაფრთხოება' : lang === 'ru' ? 'Безопасность аккаунта' : 'Account security',
+    subtitle: lang === 'ka' ? 'შეცვალე ადმინისტრატორის ანგარიშის ტელეფონის ნომერი ან პაროლი.' : lang === 'ru' ? 'Измените номер телефона или пароль учётной записи администратора.' : 'Update the phone number or password for your administrator account.',
+    phoneButton: lang === 'ka' ? 'ტელეფონის ნომრის შეცვლა' : lang === 'ru' ? 'Изменить номер телефона' : 'Change phone number',
+    passwordButton: lang === 'ka' ? 'პაროლის შეცვლა' : lang === 'ru' ? 'Изменить пароль' : 'Change password',
+    currentPhone: lang === 'ka' ? 'მიმდინარე ნომერი' : lang === 'ru' ? 'Текущий номер' : 'Current number',
+    currentPassword: lang === 'ka' ? 'მიმდინარე პაროლი' : lang === 'ru' ? 'Текущий пароль' : 'Current password',
+    newPhone: lang === 'ka' ? 'ახალი ტელეფონის ნომერი' : lang === 'ru' ? 'Новый номер телефона' : 'New phone number',
+    newPassword: lang === 'ka' ? 'ახალი პაროლი (მინიმუმ 12 სიმბოლო)' : lang === 'ru' ? 'Новый пароль (не менее 12 символов)' : 'New password (at least 12 characters)',
+    confirmPassword: lang === 'ka' ? 'გაიმეორე ახალი პაროლი' : lang === 'ru' ? 'Повторите новый пароль' : 'Confirm new password',
+    save: lang === 'ka' ? 'შენახვა' : lang === 'ru' ? 'Сохранить' : 'Save',
+    cancel: lang === 'ka' ? 'გაუქმება' : lang === 'ru' ? 'Отмена' : 'Cancel',
+    phoneSuccess: lang === 'ka' ? 'ტელეფონის ნომერი განახლდა.' : lang === 'ru' ? 'Номер телефона обновлён.' : 'Phone number updated.',
+    passwordSuccess: lang === 'ka' ? 'პაროლი განახლდა. სხვა აქტიური სესიები დაიხურა.' : lang === 'ru' ? 'Пароль обновлён. Остальные активные сеансы завершены.' : 'Password updated. Other active sessions were signed out.',
+    wrongCurrentPassword: lang === 'ka' ? 'მიმდინარე პაროლი არასწორია.' : lang === 'ru' ? 'Неверный текущий пароль.' : 'The current password is incorrect.',
+    invalidPhone: lang === 'ka' ? 'შეიყვანე სწორი ტელეფონის ნომერი.' : lang === 'ru' ? 'Введите корректный номер телефона.' : 'Enter a valid phone number.',
+    phoneTaken: lang === 'ka' ? 'ეს ტელეფონის ნომერი უკვე გამოყენებულია.' : lang === 'ru' ? 'Этот номер телефона уже используется.' : 'This phone number is already in use.',
+    phoneUnchanged: lang === 'ka' ? 'შეიყვანე მიმდინარე ნომრისგან განსხვავებული ნომერი.' : lang === 'ru' ? 'Введите номер, отличный от текущего.' : 'Enter a phone number different from the current one.',
+    passwordMismatch: lang === 'ka' ? 'ახალი პაროლები ერთმანეთს არ ემთხვევა.' : lang === 'ru' ? 'Новые пароли не совпадают.' : 'The new passwords do not match.',
+    passwordTooShort: lang === 'ka' ? 'პაროლი უნდა შეიცავდეს მინიმუმ 12 სიმბოლოს.' : lang === 'ru' ? 'Пароль должен содержать не менее 12 символов.' : 'The password must contain at least 12 characters.',
+    passwordUnchanged: lang === 'ka' ? 'აირჩიე მიმდინარე პაროლისგან განსხვავებული პაროლი.' : lang === 'ru' ? 'Выберите пароль, отличный от текущего.' : 'Choose a password different from the current one.',
+    genericError: lang === 'ka' ? 'ცვლილება ვერ შეინახა. სცადე ხელახლა.' : lang === 'ru' ? 'Не удалось сохранить изменения. Попробуйте ещё раз.' : 'Could not save the change. Please try again.',
+  };
+
+  const openCredentialForm = (action: 'phone' | 'password') => {
+    setCredentialAction(action);
+    setCredentialCurrentPassword('');
+    setCredentialNewPhone(currentUser.phone);
+    setCredentialNewPassword('');
+    setCredentialConfirmPassword('');
+    setCredentialError('');
+    setCredentialSuccess('');
+  };
+
+  const closeCredentialForm = () => {
+    setCredentialAction(null);
+    setCredentialCurrentPassword('');
+    setCredentialNewPassword('');
+    setCredentialConfirmPassword('');
+    setCredentialError('');
+  };
+
+  const handleCredentialSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!credentialAction || credentialSaving) return;
+    setCredentialError('');
+    setCredentialSuccess('');
+
+    if (credentialAction === 'phone') {
+      const normalizedPhone = credentialNewPhone.trim().replace(/[()\\s.-]/g, '');
+      if (!/^\\+?\\d{8,15}$/.test(normalizedPhone)) {
+        setCredentialError(securityText.invalidPhone);
+        return;
+      }
+    } else {
+      if (credentialNewPassword.length < 12 || credentialNewPassword.length > 128) {
+        setCredentialError(securityText.passwordTooShort);
+        return;
+      }
+      if (credentialNewPassword !== credentialConfirmPassword) {
+        setCredentialError(securityText.passwordMismatch);
+        return;
+      }
+    }
+
+    setCredentialSaving(true);
+    try {
+      if (credentialAction === 'phone') {
+        const result = await api.updateAdminPhone(credentialCurrentPassword, credentialNewPhone);
+        onUserUpdated?.(result.user);
+        setCredentialSuccess(securityText.phoneSuccess);
+      } else {
+        await api.updateAdminPassword(credentialCurrentPassword, credentialNewPassword);
+        setCredentialSuccess(securityText.passwordSuccess);
+      }
+      setCredentialAction(null);
+      setCredentialCurrentPassword('');
+      setCredentialNewPassword('');
+      setCredentialConfirmPassword('');
+    } catch (err: any) {
+      const code = err?.code;
+      setCredentialError(
+        code === 'INVALID_CURRENT_PASSWORD' ? securityText.wrongCurrentPassword :
+        code === 'INVALID_PHONE' ? securityText.invalidPhone :
+        code === 'PHONE_ALREADY_REGISTERED' ? securityText.phoneTaken :
+        code === 'PHONE_UNCHANGED' ? securityText.phoneUnchanged :
+        code === 'PASSWORD_UNCHANGED' ? securityText.passwordUnchanged :
+        securityText.genericError
+      );
+    } finally {
+      setCredentialSaving(false);
+    }
+  };
 
   // CRM Filters
   const [crmSearch, setCrmSearch] = useState('');
@@ -292,6 +396,126 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
         </div>
       </header>
+
+      {isStaffAdmin && (
+        <section className="admin-console-panel rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4 sm:p-5 space-y-4" aria-labelledby="admin-account-security-title">
+          <div>
+            <h2 id="admin-account-security-title" className="text-sm font-bold text-white">{securityText.title}</h2>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">{securityText.subtitle}</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => openCredentialForm('phone')}
+              aria-expanded={credentialAction === 'phone'}
+              className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-left transition-colors hover:border-amber-400/50 hover:bg-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
+            >
+              <span>
+                <span className="block text-xs font-bold text-slate-100">{securityText.phoneButton}</span>
+                <span className="mt-1 block text-[11px] text-slate-400">{securityText.currentPhone}: {currentUser.phone}</span>
+              </span>
+              <PhoneCall className="h-4 w-4 shrink-0 text-amber-300" />
+            </button>
+            <button
+              type="button"
+              onClick={() => openCredentialForm('password')}
+              aria-expanded={credentialAction === 'password'}
+              className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-left transition-colors hover:border-amber-400/50 hover:bg-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
+            >
+              <span className="block text-xs font-bold text-slate-100">{securityText.passwordButton}</span>
+              <Lock className="h-4 w-4 shrink-0 text-amber-300" />
+            </button>
+          </div>
+
+          {credentialSuccess && (
+            <div role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">{credentialSuccess}</div>
+          )}
+          {credentialError && (
+            <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{credentialError}</div>
+          )}
+
+          {credentialAction && (
+            <form onSubmit={handleCredentialSubmit} className="space-y-3 rounded-xl border border-slate-700/70 bg-slate-900/60 p-3 sm:p-4">
+              <label className="block space-y-1.5 text-xs font-medium text-slate-300">
+                <span>{securityText.currentPassword}</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  maxLength={128}
+                  value={credentialCurrentPassword}
+                  onChange={event => setCredentialCurrentPassword(event.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400"
+                />
+              </label>
+
+              {credentialAction === 'phone' ? (
+                <label className="block space-y-1.5 text-xs font-medium text-slate-300">
+                  <span>{securityText.newPhone}</span>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    required
+                    maxLength={64}
+                    value={credentialNewPhone}
+                    onChange={event => setCredentialNewPhone(event.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400"
+                  />
+                </label>
+              ) : (
+                <>
+                  <label className="block space-y-1.5 text-xs font-medium text-slate-300">
+                    <span>{securityText.newPassword}</span>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      required
+                      minLength={12}
+                      maxLength={128}
+                      value={credentialNewPassword}
+                      onChange={event => setCredentialNewPassword(event.target.value)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400"
+                    />
+                  </label>
+                  <label className="block space-y-1.5 text-xs font-medium text-slate-300">
+                    <span>{securityText.confirmPassword}</span>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      required
+                      minLength={12}
+                      maxLength={128}
+                      value={credentialConfirmPassword}
+                      onChange={event => setCredentialConfirmPassword(event.target.value)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400"
+                    />
+                  </label>
+                </>
+              )}
+
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={closeCredentialForm}
+                  disabled={credentialSaving}
+                  className="min-h-10 rounded-lg border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {securityText.cancel}
+                </button>
+                <button
+                  type="submit"
+                  disabled={credentialSaving}
+                  className="min-h-10 rounded-lg bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-amber-300 disabled:cursor-wait disabled:opacity-50"
+                >
+                  {credentialSaving ? (lang === 'ka' ? 'ინახება…' : lang === 'ru' ? 'Сохранение…' : 'Saving…') : securityText.save}
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      )}
 
       {/* Lock Status Alert */}
       {analytics?.configLocked && (
