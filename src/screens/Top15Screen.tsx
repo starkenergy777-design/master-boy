@@ -4,6 +4,7 @@ import { Star, Clock, ShieldCheck, CheckCircle2, AlertCircle, CreditCard, Chevro
 import { translations } from '../i18n.js';
 import { Language, City, Profession, PaymentProvider } from '../types.js';
 import { api } from '../api.js';
+import { ProfessionIcon } from '../components/ProfessionPicker.js';
 
 interface Top15ScreenProps {
   lang: Language;
@@ -221,9 +222,12 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
               <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">
                 თქვენი რეგისტრაციის განყოფილება:
               </span>
-              <p className="text-xs font-bold text-white">
-                {cities.find(c => c.id === cityId)?.name || '...'} • {professions.find(p => p.id === professionId)?.name || '...'}
-              </p>
+              <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-white">
+                <span className="min-w-0 break-words">{cities.find(c => c.id === cityId)?.name || '...'}</span>
+                <span aria-hidden="true" className="shrink-0 text-slate-500">•</span>
+                <ProfessionIcon professionId={professionId} size="sm" />
+                <span className="min-w-0 break-words">{professions.find(p => p.id === professionId)?.name || '...'}</span>
+              </div>
               <p className="text-[10px] text-slate-400 leading-relaxed">
                 წესების მიხედვით, ხელოსანს Top 15-ში ადგილის ყიდვის უფლება აქვს მხოლოდ თავისი რეგისტრაციის ქალაქისა და პროფესიის განყოფილებაში.
               </p>
@@ -344,4 +348,5 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
     </div>
   ));
 };
+
 
