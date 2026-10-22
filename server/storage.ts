@@ -76,6 +76,7 @@ export class StorageService {
   private pool: Pool | null = null;
   private connected = false;
   private connectionError: string | null = null;
+  private healthProbeSequence = 0;
   private saveQueue: Promise<void> = Promise.resolve();
   private superAdminAgentSettings: SuperAdminAgentSettings = { enabled: false, rules: '', messages: [] };
 
@@ -157,11 +158,16 @@ export class StorageService {
     const env = process.env;
     const aiProvider: AiProvider | null = env.AI_PROVIDER === 'openai' ? 'openai' : env.AI_PROVIDER === 'gemini' ? 'gemini' : null;
     const envPayment = [
-      { id:'prov-bog', name:'საქართველოს ბანკი (Bank of Georgia iPay)', apiKeyMasked:'not configured', clientId:env.BOG_MERCHANT_ID || '', secretKey:env.BOG_SECRET || '', isActive:Boolean(r.bog_active && env.BOG_SECRET) },
+      { id:'prov-bog', name:'საქართველოს ბანკი (Bank of Georgia Payment Manager)', apiKeyMasked:'not configured', clientId:env.BOG_MERCHANT_ID || '', secretKey:env.BOG_SECRET || '', isActive:Boolean(r.bog_active && env.BOG_SECRET) },
       { id:'prov-tbc', name:'თიბისი ბანკი (TBC Bank Checkout / Pay)', apiKeyMasked:'not configured', clientId:env.TBC_CLIENT_ID || '', secretKey:env.TBC_CLIENT_SECRET || '', isActive:Boolean(r.tbc_active && env.TBC_CLIENT_SECRET) },
       { id:'prov-stripe', name:'Stripe (საგადახდო სისტემა / Card Payments)', apiKeyMasked:'not configured', apiKey:env.STRIPE_PUBLISHABLE_KEY || '', secretKey:env.STRIPE_SECRET_KEY || '', webhookSecret:env.STRIPE_WEBHOOK_SECRET || '', isActive:Boolean(r.stripe_active && env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) },
     ];
-    const payment = Array.isArray(savedProviders.payment) ? savedProviders.payment : envPayment;
+    const savedPayment = Array.isArray(savedProviders.payment) ? savedProviders.payment : envPayment;
+    const payment = savedPayment.map((provider: any) => ({
+      ...provider,
+      ...(provider.id === 'prov-bog' ? { name: 'საქართველოს ბანკი (Bank of Georgia Payment Manager)' } : {}),
+      ...(process.env.NODE_ENV === 'production' ? { isActive: false } : {}),
+    }));
     const sms = Array.isArray(savedProviders.sms) ? savedProviders.sms : [
       { id:'sms-magti', provider:'Magti SMS Gateway', senderId:'MASTER_BOY', isActive:Boolean(env.SMS_WEBHOOK_URL) },
       { id:'sms-geocell', provider:'Silknet/Geocell Direct', senderId:'MASTERBOY', isActive:false },
@@ -462,6 +468,49 @@ export class StorageService {
   }
 
   getStatus() { return { databaseConfigured:Boolean(this.pool), databaseConnected:this.connected }; }
+  async checkDatabaseHealth(): Promise<boolean> {
+    if (!this.pool) {
+      this.connected = false;
+      return false;
+    }
+    const probeSequence = ++this.healthProbeSequence;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const probe = this.db().connect().then(async (client) => {
+      try {
+        await client.query('BEGIN');
+        await client.query("SET LOCAL statement_timeout = '3000ms'");
+        await client.query('SELECT 1');
+        await client.query('COMMIT');
+        return true;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    });
+    try {
+      await Promise.race([
+        probe,
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Database health check timed out')), 4000);
+        }),
+      ]);
+      if (probeSequence === this.healthProbeSequence) {
+        this.connected = true;
+        this.connectionError = null;
+      }
+      return true;
+    } catch (error: any) {
+      if (probeSequence === this.healthProbeSequence) {
+        this.connected = false;
+        this.connectionError = error?.message || 'Database health check failed';
+      }
+      return false;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  }
   async close() { await this.pool?.end(); }
 }
 
@@ -477,4 +526,5 @@ superAdminAgentRetentionInterval.unref?.();
 void storage.pruneSuperAdminAgentMessages().catch(() => {
   console.warn('[MASTER_BOY] Could not apply superadmin agent chat retention cleanup.');
 });
+
 
