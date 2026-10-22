@@ -25,6 +25,7 @@ import {
   AdvertisementPublic,
 } from './types.js';
 import { storage, SuperAdminPersistedConfig } from './storage.js';
+import { sortProfessionsByDemand } from './professionOrder.js';
 
 class Database {
   craftsmanListings: Map<string, CraftsmanListing> = new Map();
@@ -177,6 +178,7 @@ class Database {
   };
 
   constructor() {
+    this.professions = sortProfessionsByDemand(this.professions);
     this.seedInitialData();
     if (process.env.NODE_ENV === 'production') {
       // Never ship demo identities, listings, advertisements, reports or audit data.
