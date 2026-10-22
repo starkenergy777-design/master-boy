@@ -3085,7 +3085,7 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
   }
 
   let verification: Awaited<ReturnType<typeof testGeminiKey>> | null = null;
-  if (cleanKey || selectedModel !== currentModel) {
+  if (cleanKey || selectedModel !== currentModel || db.providerConfig.ai.selectedProvider !== provider) {
     verification = provider === 'gemini'
       ? await testGeminiKey(selectedKey, selectedModel)
       : await testOpenAIKey(selectedKey, selectedModel);
