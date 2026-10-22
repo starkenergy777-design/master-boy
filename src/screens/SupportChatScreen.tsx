@@ -81,8 +81,10 @@ export const SupportChatScreen: React.FC<SupportChatScreenProps> = ({
         setRemainingToday(0);
       } else if (err.status === 503) {
         setErrorMsg(lang === 'ka'
-          ? '⚠️ მხარდაჭერის ჩათი დროებით მიუწვდომელია. სუპერ ადმინისტრატორმა უნდა შეიყვანოს Gemini API Key.'
-          : '⚠️ Support is temporarily unavailable until Super Admin configures the Gemini API Key.');
+          ? '⚠️ მხარდაჭერის ჩათი დროებით მიუწვდომელია. სუპერ ადმინისტრატორმა უნდა აირჩიოს და გამართოს AI პროვაიდერი.'
+          : lang === 'ru'
+            ? '⚠️ Чат поддержки временно недоступен. Суперадминистратору нужно выбрать и настроить провайдера ИИ.'
+            : '⚠️ Support chat is temporarily unavailable. The super administrator must select and configure an AI provider.');
       } else {
         setErrorMsg(err.message || 'Failed to send message');
       }
@@ -250,10 +252,11 @@ export const SupportChatScreen: React.FC<SupportChatScreenProps> = ({
             ? 'მაქს. 1000 სიმბოლო • 7 შეტყობინება დღეში • მხარდაჭერის სისტემა'
             : lang === 'ru'
             ? 'Макс. 1000 символов • 7 сообщений в день • Система поддержки'
-            : 'Max 1000 characters • 7 messages/day • Autonomous Support'}
+            : 'Max 1000 characters • 7 messages/day • support system'}
         </p>
       </div>
     </div>
   ));
 };
+
 
