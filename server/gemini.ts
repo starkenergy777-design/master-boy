@@ -10,11 +10,6 @@ export function getAiClient(): GoogleGenAI | null {
   if (!aiClient) {
     aiClient = new GoogleGenAI({
       apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
     });
   }
   return aiClient;
@@ -27,40 +22,145 @@ export function resetAiClient(newKey?: string) {
   aiClient = null;
 }
 
-export async function testGeminiKey(apiKey: string): Promise<boolean> {
-  if (process.env.GEMINI_API_KEY && apiKey === process.env.GEMINI_API_KEY) {
-    return true;
-  }
-  try {
-    const testAi = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-    const testPromise = testAi.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: 'Ping',
-    });
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Gemini key check timeout')), 8000);
-      });
-      const response = await Promise.race([testPromise, timeoutPromise]);
-      return !!response.text;
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-    }
-  } catch {
-    console.warn('Gemini API key verification failed.');
-    return false;
+export type AIProviderName = 'gemini' | 'openai';
+export type AIProviderFailureKind =
+  | 'invalid_key'
+  | 'access_denied'
+  | 'model_unavailable'
+  | 'rate_limited'
+  | 'quota_exceeded'
+  | 'request_rejected'
+  | 'unavailable';
+
+export interface AIProviderFailure {
+  provider: AIProviderName;
+  kind: AIProviderFailureKind;
+  status?: number;
+}
+
+export type AIProviderCheckResult =
+  | { valid: true }
+  | { valid: false; failure: AIProviderFailure };
+
+export class AIProviderError extends Error {
+  readonly failure: AIProviderFailure;
+
+  constructor(failure: AIProviderFailure) {
+    super('The AI provider request could not be completed.');
+    this.name = 'AIProviderError';
+    this.failure = failure;
   }
 }
 
-export async function testOpenAIKey(apiKey: string): Promise<boolean> {
+function getProviderFailure(provider: AIProviderName, error: unknown, statusOverride?: number): AIProviderFailure {
+  const value = error as any;
+  const nestedError = value?.error || value?.response?.data?.error || {};
+  const rawStatus = statusOverride ?? Number(value?.status || value?.response?.status || 0);
+  const status = Number.isFinite(rawStatus) && rawStatus > 0 ? rawStatus : undefined;
+  const code = String(nestedError?.code || nestedError?.status || value?.code || value?.status || '').toLowerCase();
+  const message = String(nestedError?.message || value?.message || '').toLowerCase();
+  const detail = code + ' ' + message;
+
+  let kind: AIProviderFailureKind;
+  if (
+    status === 401 ||
+    /invalid_api_key|api[_ ]key.{0,20}(invalid|not valid|revoked)|invalid.{0,20}api[_ ]key|unauthenticated/.test(detail)
+  ) {
+    kind = 'invalid_key';
+  } else if (
+    status === 403 ||
+    /permission_denied|permission denied|forbidden|api.{0,20}not enabled|not authorized|access denied/.test(detail)
+  ) {
+    kind = 'access_denied';
+  } else if (
+    status === 404 ||
+    /model.{0,30}(not found|unavailable|does not exist)|model_not_found|unsupported_model/.test(detail)
+  ) {
+    kind = 'model_unavailable';
+  } else if (
+    /insufficient_quota|quota.{0,30}(exceeded|exhausted|limit)|billing.{0,20}(limit|hard)/.test(detail)
+  ) {
+    kind = 'quota_exceeded';
+  } else if (
+    status === 429 ||
+    /rate_limit_exceeded|resource_exhausted|too many requests|rate limit/.test(detail)
+  ) {
+    kind = 'rate_limited';
+  } else if (
+    (status !== undefined && status >= 500) ||
+    value?.name === 'AbortError' ||
+    /timeout|timed out|fetch failed|network|temporarily unavailable/.test(detail)
+  ) {
+    kind = 'unavailable';
+  } else {
+    kind = 'request_rejected';
+  }
+
+  return { provider, kind, ...(status ? { status } : {}) };
+}
+
+export function aiProviderFailureCode(failure: AIProviderFailure): string {
+  switch (failure.kind) {
+    case 'invalid_key': return 'AI_KEY_INVALID';
+    case 'access_denied': return 'AI_PROVIDER_ACCESS_DENIED';
+    case 'model_unavailable': return 'AI_PROVIDER_MODEL_UNAVAILABLE';
+    case 'rate_limited': return 'AI_PROVIDER_RATE_LIMITED';
+    case 'quota_exceeded': return 'AI_PROVIDER_QUOTA_EXCEEDED';
+    case 'unavailable': return 'AI_PROVIDER_UNAVAILABLE';
+    default: return 'AI_PROVIDER_REQUEST_REJECTED';
+  }
+}
+
+export function aiProviderFailureStatus(failure: AIProviderFailure): number {
+  switch (failure.kind) {
+    case 'invalid_key': return 422;
+    case 'access_denied': return 403;
+    case 'rate_limited':
+    case 'quota_exceeded': return 429;
+    case 'unavailable': return 503;
+    case 'model_unavailable':
+    case 'request_rejected':
+    default: return 422;
+  }
+}
+
+function logProviderFailure(provider: AIProviderName, failure: AIProviderFailure, context: string): void {
+  console.warn(
+    '[MASTER_BOY] ' + provider + ' ' + context + ' failed (category=' + failure.kind +
+    (failure.status ? ', HTTP ' + failure.status : '') + ').',
+  );
+}
+
+export async function testGeminiKey(apiKey: string): Promise<AIProviderCheckResult> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const testAi = new GoogleGenAI({ apiKey });
+    const testPromise = testAi.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: 'Reply only OK.',
+      config: {
+        maxOutputTokens: 16,
+        thinkingConfig: { thinkingLevel: 'LOW' },
+      },
+    });
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Gemini key verification timeout')), 30000);
+    });
+    const response = await Promise.race([testPromise, timeoutPromise]);
+    if (response.text?.trim()) return { valid: true };
+    const failure: AIProviderFailure = { provider: 'gemini', kind: 'request_rejected' };
+    logProviderFailure('gemini', failure, 'API key verification');
+    return { valid: false, failure };
+  } catch (error) {
+    const failure = getProviderFailure('gemini', error);
+    logProviderFailure('gemini', failure, 'API key verification');
+    return { valid: false, failure };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+export async function testOpenAIKey(apiKey: string): Promise<AIProviderCheckResult> {
   const model = process.env.OPENAI_MODEL || 'gpt-6-luna';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
@@ -76,16 +176,30 @@ export async function testOpenAIKey(apiKey: string): Promise<boolean> {
         instructions: 'Reply with the single word OK.',
         input: 'OK',
         store: false,
-        max_output_tokens: 32,
+        max_output_tokens: 16,
       }),
       signal: controller.signal,
     });
-    return response.ok;
-  } catch {
-    return false;
+    if (response.ok) return { valid: true };
+    const errorBody = await response.json().catch(() => null);
+    const failure = getProviderFailure('openai', errorBody, response.status);
+    logProviderFailure('openai', failure, 'API key verification');
+    return { valid: false, failure };
+  } catch (error) {
+    const failure = getProviderFailure('openai', error);
+    logProviderFailure('openai', failure, 'API key verification');
+    return { valid: false, failure };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function retryDelayMs(retryAfter: string | null): number {
+  if (!retryAfter) return 1000;
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
+  const retryAt = Date.parse(retryAfter);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : 1000;
 }
 
 export async function generateAIText(
@@ -105,7 +219,6 @@ export async function generateAIText(
         input,
         store: false,
         max_output_tokens: 800,
-        ...(jsonOutput ? { text: { format: { type: 'json_object' } } } : {}),
       };
       const sendRequest = () => fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
@@ -117,24 +230,20 @@ export async function generateAIText(
         signal: controller.signal,
       });
       let response = await sendRequest();
-      if (!response.ok && response.status === 400 && jsonOutput) {
-        const errorBody: any = await response.clone().json().catch(() => null);
-        const providerError = errorBody?.error || {};
-        const errorParam = typeof providerError.param === 'string' ? providerError.param : '';
-        const errorMessage = typeof providerError.message === 'string' ? providerError.message : '';
-        if (errorParam === 'text.format' || errorParam.startsWith('text.format.') || /json.?object|response format|text\.format/i.test(errorMessage)) {
-          console.warn('[MASTER_BOY] OpenAI rejected JSON mode; retrying with the JSON instruction only.');
-          delete requestBody.text;
+      if (!response.ok && response.status === 429) {
+        const firstError = await response.clone().json().catch(() => null);
+        const firstFailure = getProviderFailure('openai', firstError, response.status);
+        const delayMs = retryDelayMs(response.headers.get('retry-after'));
+        if (firstFailure.kind === 'rate_limited' && delayMs <= 2000) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
           response = await sendRequest();
         }
       }
       if (!response.ok) {
-        const errorBody: any = await response.json().catch(() => null);
-        const providerError = errorBody?.error || {};
-        const safeCode = typeof providerError.code === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(providerError.code) ? providerError.code : 'unknown';
-        const safeParam = typeof providerError.param === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(providerError.param) ? providerError.param : 'unknown';
-        console.warn(`[MASTER_BOY] OpenAI generation failed (HTTP ${response.status}, code=${safeCode}, param=${safeParam}).`);
-        throw new Error('OpenAI API returned HTTP ' + response.status);
+        const errorBody = await response.json().catch(() => null);
+        const failure = getProviderFailure('openai', errorBody, response.status);
+        logProviderFailure('openai', failure, 'generation');
+        throw new AIProviderError(failure);
       }
       const data: any = await response.json();
       const outputText = (data.output || [])
@@ -143,14 +252,14 @@ export async function generateAIText(
         .map((part: any) => part.text)
         .join('\n') || data.output_text || '';
       if (typeof outputText !== 'string' || !outputText.trim()) {
-        throw new Error('OpenAI returned an empty response.');
+        throw new AIProviderError({ provider: 'openai', kind: 'request_rejected' });
       }
       return outputText.trim();
     } catch (error) {
-      if ((error as any)?.name === 'AbortError') {
-        console.warn('[MASTER_BOY] OpenAI generation timed out after 30 seconds.');
-      }
-      throw error;
+      if (error instanceof AIProviderError) throw error;
+      const failure = getProviderFailure('openai', error);
+      logProviderFailure('openai', failure, 'generation');
+      throw new AIProviderError(failure);
     } finally {
       clearTimeout(timeout);
     }
@@ -161,28 +270,29 @@ export async function generateAIText(
   }
   const client = getAiClient();
   if (!client) throw new Error('The selected Gemini API key is not configured.');
-  const generatePromise = client.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: input,
-    config: {
-      ...(instructions ? { systemInstruction: instructions } : {}),
-      ...(jsonOutput ? { responseMimeType: 'application/json' } : {}),
-    },
-  });
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
+    const generatePromise = client.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: input,
+      config: {
+        ...(instructions ? { systemInstruction: instructions } : {}),
+        ...(jsonOutput ? { responseMimeType: 'application/json' } : {}),
+      },
+    });
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error('Gemini response timeout')), 30000);
     });
     const response = await Promise.race([generatePromise, timeoutPromise]);
-    if (!response.text?.trim()) throw new Error('Gemini returned an empty response.');
+    if (!response.text?.trim()) {
+      throw new AIProviderError({ provider: 'gemini', kind: 'request_rejected' });
+    }
     return response.text.trim();
   } catch (error) {
-    const status = Number((error as any)?.status || (error as any)?.response?.status);
-    if (status) console.warn('[MASTER_BOY] Gemini generation failed (HTTP ' + status + ').');
-    else if ((error as any)?.message === 'Gemini response timeout') console.warn('[MASTER_BOY] Gemini generation timed out after 30 seconds.');
-    else console.warn('[MASTER_BOY] Gemini generation failed.');
-    throw error;
+    if (error instanceof AIProviderError) throw error;
+    const failure = getProviderFailure('gemini', error);
+    logProviderFailure('gemini', failure, 'generation');
+    throw new AIProviderError(failure);
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
