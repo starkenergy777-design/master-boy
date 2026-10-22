@@ -182,7 +182,7 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
   };
 
   return localizeTree(lang, (
-    <div className="flex-1 flex flex-col p-4 pb-24 space-y-5 animate-fade-in text-slate-100 max-w-lg mx-auto w-full">
+    <div className="adpartner-dashboard flex-1 flex flex-col p-4 pb-24 space-y-5 animate-fade-in text-slate-100 max-w-lg mx-auto w-full">
       {/* Top Header */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
         <div>
