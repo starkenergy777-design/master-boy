@@ -547,6 +547,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Tabs */}
       <div className="admin-console-tabs grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-700/70 bg-slate-950/50 p-1.5 text-xs font-semibold sm:grid-cols-5">
         <button
+          type="button"
+          data-cabinet-tab="true"
+          aria-pressed={activeTab === 'analytics'}
           onClick={() => setActiveTab('analytics')}
           className={`flex-1 py-1.5 rounded-xl transition-all ${
             activeTab === 'analytics' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
@@ -555,6 +558,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {lang === 'ka' ? 'ანალიტიკა' : lang === 'ru' ? 'Аналитика' : 'Analytics'}
         </button>
         <button
+          type="button"
+          data-cabinet-tab="true"
+          aria-pressed={activeTab === 'craftsmen'}
           onClick={() => setActiveTab('craftsmen')}
           className={`flex-1 py-1.5 rounded-xl transition-all ${
             activeTab === 'craftsmen' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
@@ -563,6 +569,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {lang === 'ka' ? 'ხელოსნები (CRM)' : lang === 'ru' ? 'Мастера (CRM)' : 'Craftsmen'}
         </button>
         <button
+          type="button"
+          data-cabinet-tab="true"
+          aria-pressed={activeTab === 'prices'}
           onClick={() => setActiveTab('prices')}
           className={`flex-1 py-1.5 rounded-xl transition-all ${
             activeTab === 'prices' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
@@ -571,6 +580,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {lang === 'ka' ? 'Top 15 ფასები' : lang === 'ru' ? 'Цены Top 15' : 'Top 15 Prices'}
         </button>
         <button
+          type="button"
+          data-cabinet-tab="true"
+          aria-pressed={activeTab === 'top15'}
           onClick={() => setActiveTab('top15')}
           className={`flex-1 py-1.5 rounded-xl transition-all ${
             activeTab === 'top15' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
@@ -579,6 +591,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {lang === 'ka' ? 'Top 15 წევრები' : lang === 'ru' ? 'Участники Top 15' : 'Top 15 Members'}
         </button>
         <button
+          type="button"
+          data-cabinet-tab="true"
+          aria-pressed={activeTab === 'reports'}
           onClick={() => setActiveTab('reports')}
           className={`flex-1 py-1.5 rounded-xl transition-all ${
             activeTab === 'reports' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
