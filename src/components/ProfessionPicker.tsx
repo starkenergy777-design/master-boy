@@ -1,15 +1,13 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AirVent,
-  Anvil,
   Armchair,
   BrickWall,
   BriefcaseBusiness,
-  Camera,
+  Cctv,
   Check,
   ChevronDown,
   DoorClosed,
-  Droplets,
   Drill,
   Flame,
   Frame,
@@ -17,40 +15,84 @@ import {
   Heater,
   KeyRound,
   LampCeiling,
-  Paintbrush,
   PaintRoller,
   PanelsTopLeft,
+  PlugZap,
   Search,
-  Snowflake,
   Trash2,
-  Waves,
-  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import { Profession } from '../types.js';
 
 const professionIcons: Record<string, LucideIcon> = {
-  'prof-electrician': Zap,
-  'prof-plumber': Droplets,
-  'prof-ac': Snowflake,
+  'prof-electrician': PlugZap,
+  'prof-ac': AirVent,
   'prof-carpenter': Armchair,
-  'prof-painter': Paintbrush,
+  'prof-painter': PaintRoller,
   'prof-tiler': Grid2X2,
   'prof-locksmith': KeyRound,
   'prof-heating': Heater,
   'prof-demolition-drill': Drill,
   'prof-waste-removal': Trash2,
   'prof-gas-water-heater': Flame,
-  'prof-sewer-cleaning': Waves,
   'prof-drywall': PanelsTopLeft,
   'prof-stretch-ceiling': LampCeiling,
-  'prof-plasterer': PaintRoller,
   'prof-masonry': BrickWall,
   'prof-window-door': Frame,
   'prof-door-lock': DoorClosed,
-  'prof-cctv-alarm': Camera,
-  'prof-welder': Anvil,
+  'prof-cctv-alarm': Cctv,
 };
+
+interface CustomProfessionGlyphProps {
+  className?: string;
+  strokeWidth?: number;
+}
+
+const FaucetGlyph: React.FC<CustomProfessionGlyphProps> = ({ className, strokeWidth = 2 }) => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M3 9h5a2 2 0 0 0 2-2V5h6v4h4a2 2 0 0 1 2 2v1" />
+    <path d="M12 5V3m-2 0h4" />
+    <path d="M19 12v2" />
+    <path d="M19 17c-.8 1-1.5 1.7-1.5 2.5a1.5 1.5 0 0 0 3 0c0-.8-.7-1.5-1.5-2.5Z" />
+  </svg>
+);
+
+const SewerSnakeGlyph: React.FC<CustomProfessionGlyphProps> = ({ className, strokeWidth = 2 }) => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M5 4v5a5 5 0 0 0 5 5h3a4 4 0 0 1 4 4v2" />
+    <path d="M3 4h4m-2-2v4" />
+    <path d="M15 10h4v3" />
+    <path d="M15 20h4m-2-2v4" />
+  </svg>
+);
+
+const TrowelGlyph: React.FC<CustomProfessionGlyphProps> = ({ className, strokeWidth = 2 }) => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="m4 4 8 2.7-5.7 5.7L4 4Z" />
+    <path d="m7 12 7.5 7.5" />
+    <path d="m13.1 17.9 1.4 1.4a2 2 0 0 0 2.8-2.8l-1.4-1.4" />
+  </svg>
+);
+
+const WeldingHelmetGlyph: React.FC<CustomProfessionGlyphProps> = ({ className, strokeWidth = 2 }) => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M5 11a7 7 0 0 1 14 0v5H5v-5Z" />
+    <path d="M8 12h8v4H8zM9 20h6m-8-4-2 2m12-2 2 2" />
+    <path d="m3 8-1-1m19 1 1-1m-10-5V1" />
+  </svg>
+);
+
+const customProfessionGlyphs: Record<string, React.FC<CustomProfessionGlyphProps>> = {
+  'prof-plumber': FaucetGlyph,
+  'prof-sewer-cleaning': SewerSnakeGlyph,
+  'prof-plasterer': TrowelGlyph,
+  'prof-welder': WeldingHelmetGlyph,
+};
+
+export function getProfessionDisplayNumber(professions: Profession[], professionId: string): string | null {
+  const index = professions.findIndex((profession) => profession.id === professionId);
+  return index < 0 ? null : String(index + 1).padStart(2, '0');
+}
 
 interface ProfessionIconProps {
   professionId: string;
@@ -58,7 +100,8 @@ interface ProfessionIconProps {
 }
 
 export const ProfessionIcon: React.FC<ProfessionIconProps> = ({ professionId, size = 'md' }) => {
-  const Icon = professionIcons[professionId] || AirVent;
+  const Icon = professionIcons[professionId];
+  const CustomGlyph = customProfessionGlyphs[professionId];
   const sizeClassName = size === 'sm' ? 'h-8 w-8 rounded-lg' : 'h-9 w-9 rounded-xl';
 
   return (
@@ -66,7 +109,13 @@ export const ProfessionIcon: React.FC<ProfessionIconProps> = ({ professionId, si
       aria-hidden="true"
       className={`flex shrink-0 items-center justify-center overflow-hidden border border-amber-500/25 bg-amber-500/10 ${sizeClassName}`}
     >
-      <Icon className="h-[18px] w-[18px] max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
+      {CustomGlyph ? (
+        <CustomGlyph className="h-[18px] w-[18px] max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
+      ) : Icon ? (
+        <Icon className="h-[18px] w-[18px] max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
+      ) : (
+        <BriefcaseBusiness className="h-[18px] w-[18px] max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
+      )}
     </span>
   );
 };
@@ -110,6 +159,10 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const selectedProfession = professions.find((profession) => profession.id === value);
+  const professionNumberById = useMemo(
+    () => new Map<string, string>(professions.map((profession, index) => [profession.id, String(index + 1).padStart(2, '0')])),
+    [professions],
+  );
   const filteredProfessions = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return professions;
@@ -173,6 +226,11 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
             <BriefcaseBusiness className="h-4 w-4" />
           </span>
         )}
+        {selectedProfession && (
+          <span aria-hidden="true" className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-1 text-[10px] font-extrabold tabular-nums text-amber-300">
+            {professionNumberById.get(selectedProfession.id)}
+          </span>
+        )}
         <span className="min-w-0 flex-1 break-words text-left leading-snug">
           {selectedProfession?.name || (allowClear ? allLabel : placeholder)}
         </span>
@@ -212,6 +270,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
             )}
             {filteredProfessions.map((profession) => {
               const selected = profession.id === value;
+              const displayNumber = professionNumberById.get(profession.id);
               return (
                 <button
                   key={profession.id}
@@ -222,6 +281,9 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
                   className={`flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-amber-400 ${selected ? 'bg-emerald-500/10 text-emerald-100' : 'text-slate-200 hover:bg-slate-800'}`}
                 >
                   <ProfessionIcon professionId={profession.id} size="sm" />
+                  <span aria-hidden="true" className="w-7 shrink-0 rounded-md border border-slate-700 bg-slate-900 px-1 py-1 text-center text-[10px] font-extrabold tabular-nums text-slate-300">
+                    {displayNumber}
+                  </span>
                   <span className="min-w-0 flex-1 break-words leading-snug">{profession.name}</span>
                   {selected && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-300" />}
                 </button>

@@ -4,7 +4,7 @@ import { Star, Clock, ShieldCheck, CheckCircle2, AlertCircle, CreditCard, Chevro
 import { translations } from '../i18n.js';
 import { Language, City, Profession, PaymentProvider } from '../types.js';
 import { api } from '../api.js';
-import { ProfessionIcon } from '../components/ProfessionPicker.js';
+import { getProfessionDisplayNumber, ProfessionIcon } from '../components/ProfessionPicker.js';
 
 interface Top15ScreenProps {
   lang: Language;
@@ -22,6 +22,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [cityId, setCityId] = useState('');
   const [professionId, setProfessionId] = useState('');
+  const professionDisplayNumber = getProfessionDisplayNumber(professions, professionId);
 
   // Flow State
   const [availability, setAvailability] = useState<{ freeSlots: number; amountMinor: number; currency: string } | null>(null);
@@ -226,6 +227,11 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
                 <span className="min-w-0 break-words">{cities.find(c => c.id === cityId)?.name || '...'}</span>
                 <span aria-hidden="true" className="shrink-0 text-slate-500">•</span>
                 <ProfessionIcon professionId={professionId} size="sm" />
+                {professionDisplayNumber && (
+                  <span aria-hidden="true" className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-1 text-[10px] font-extrabold tabular-nums text-amber-300">
+                    {professionDisplayNumber}
+                  </span>
+                )}
                 <span className="min-w-0 break-words">{professions.find(p => p.id === professionId)?.name || '...'}</span>
               </div>
               <p className="text-[10px] text-slate-400 leading-relaxed">
