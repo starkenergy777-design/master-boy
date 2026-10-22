@@ -194,14 +194,6 @@ export async function testOpenAIKey(apiKey: string): Promise<AIProviderCheckResu
   }
 }
 
-function retryDelayMs(retryAfter: string | null): number {
-  if (!retryAfter) return 1000;
-  const seconds = Number(retryAfter);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
-  const retryAt = Date.parse(retryAfter);
-  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : 1000;
-}
-
 export async function generateAIText(
   input: string,
   instructions = '',
@@ -229,16 +221,7 @@ export async function generateAIText(
         body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
-      let response = await sendRequest();
-      if (!response.ok && response.status === 429) {
-        const firstError = await response.clone().json().catch(() => null);
-        const firstFailure = getProviderFailure('openai', firstError, response.status);
-        const delayMs = retryDelayMs(response.headers.get('retry-after'));
-        if (firstFailure.kind === 'rate_limited' && delayMs <= 2000) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-          response = await sendRequest();
-        }
-      }
+      const response = await sendRequest();
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
         const failure = getProviderFailure('openai', errorBody, response.status);
