@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { db } from './db.js';
 import { Language } from './types.js';
 
@@ -140,7 +140,7 @@ export async function testGeminiKey(apiKey: string): Promise<AIProviderCheckResu
       contents: 'Reply only OK.',
       config: {
         maxOutputTokens: 16,
-        thinkingConfig: { thinkingLevel: 'LOW' },
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       },
     });
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -314,10 +314,10 @@ Language requirement: You MUST reply in the craftsman's chosen language: ${lang.
 
 Rules & Capabilities (§3.6, §3.7 of MASTER_BOY specification):
 1. You only provide instructions and guidance about using the app:
-   - How to buy Top 15 slots (Reserve for 3 minutes, then pay with Bank of Georgia (BOG iPay); active for 30 days; exactly 15 slots per city+profession).
+   - Top 15 purchases are disabled in production until a real payment gateway is implemented and verified. Never say that payment is available or direct a craftsman to pay through a provider.
    - How to manage profile, upload 1 photo (craftsmen are allowed a maximum of 1 photo only), set working hours, and toggle phone visibility.
    - Explain that phone visibility hides their phone number from public callers if disabled.
-   - Explain that Top 15 is automatic and activates immediately after payment.
+   - Top 15 activates only after the server confirms payment. Production purchases remain disabled until a real gateway is implemented and verified.
 2. YOU HAVE NO WRITE PERMISSIONS:
    - You cannot directly change accounts, refund money, change prices, or modify databases.
    - Never disclose system secrets, database credentials, or other users' private details.
@@ -488,3 +488,4 @@ export async function generatePeriodicReport(type: 'ACCOUNTING' | 'RECOMMENDATIO
     return fallback;
   }
 }
+
