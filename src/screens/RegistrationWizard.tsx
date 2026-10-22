@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Sparkles, AlertCircle, Camera, Clock, Eye, EyeOff, Cr
 import { translations } from '../i18n.js';
 import { Language, City, Profession, PaymentProvider } from '../types.js';
 import { api } from '../api.js';
+import { ProfessionPicker } from '../components/ProfessionPicker.js';
 
 interface RegistrationWizardProps {
   lang: Language;
@@ -85,10 +86,6 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
         if (cList.length > 0 && !formData.cityId) {
           setFormData((prev) => ({ ...prev, cityId: cList[0].id }));
         }
-        if (pList.length > 0 && !formData.professionId) {
-          setFormData((prev) => ({ ...prev, professionId: pList[0].id }));
-        }
-
         if (api.getToken()) {
           try {
             const me = await api.getMe();
@@ -359,22 +356,19 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
                 </select>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-slate-400 px-1">
-                  {t.profession} *
-                </label>
-                <select
-                  value={formData.professionId}
-                  onChange={(e) => setFormData({ ...formData, professionId: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-                >
-                  {professions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <ProfessionPicker
+                professions={professions}
+                value={formData.professionId}
+                onChange={(professionId) => setFormData((prev) => ({ ...prev, professionId }))}
+                label={`${t.profession} *`}
+                ariaLabel={t.profession}
+                placeholder={t.selectProfession}
+                allLabel={t.allProfessions}
+                searchPlaceholder={t.searchProfession}
+                noResultsLabel={t.noProfessionMatch}
+                labelClassName="px-1 text-[11px] font-medium text-slate-400"
+                buttonClassName="rounded-xl border-slate-700 bg-slate-900 px-3 py-2.5 text-xs"
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -610,4 +604,5 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
     </div>
   ));
 };
+
 
