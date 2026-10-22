@@ -290,6 +290,17 @@ class ApiClient {
   }
 
   // Admin
+  getAdmins() {
+    return this.request<User[]>('/admin/admins');
+  }
+
+  createAdmin(payload: { phone: string; password: string; adminSharePercent: number }) {
+    return this.request<User>('/admin/admins', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   getAdminCraftsmen(query = '', status = '', page = 1, size = 50) {
     return this.request(`/admin/craftsmen?query=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}&page=${page}&size=${size}`);
   }
