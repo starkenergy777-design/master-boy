@@ -1,6 +1,6 @@
 import { localizeTree } from '../i18n.js';
 import React, { useState } from 'react';
-import { Phone, Lock, KeyRound, Eye, EyeOff, UserPlus, AlertCircle, Sparkles } from 'lucide-react';
+import { Phone, Lock, Eye, EyeOff, UserPlus, AlertCircle } from 'lucide-react';
 import { translations } from '../i18n.js';
 import { Language, User } from '../types.js';
 import { api } from '../api.js';
@@ -20,17 +20,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 }) => {
   const t = translations[lang] || translations.ka;
   
-  // Default to PASSWORD login for craftsmen: Phone + Password (§User requirement)
-  const [authMethod, setAuthMethod] = useState<'PASSWORD' | 'OTP'>('PASSWORD');
+  // Craftsman and administrator sign-in uses phone number and password.
   const [phone, setPhone] = useState('+9955');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
-  // OTP flow state
-  const [otpStep, setOtpStep] = useState<'REQUEST' | 'VERIFY'>('REQUEST');
-  const [challengeId, setChallengeId] = useState<string | null>(null);
-  const [otpCode, setOtpCode] = useState('');
-  const [testHint, setTestHint] = useState<string | null>(null);
 
   const [errorMsg, setErrorMsg] = useState('');
   const [userNotRegistered, setUserNotRegistered] = useState(false);
@@ -74,76 +67,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   };
 
-  // 2. Request SMS OTP
-  const handleRequestOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setUserNotRegistered(false);
-
-    if (!phone || phone.trim().length < 8) {
-      setErrorMsg(lang === 'ka' ? 'შეიყვანეთ ვალიდური ტელეფონის ნომერი' : 'Enter valid phone number');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const res = await api.requestOtp(phone.trim());
-      setChallengeId(res.challengeId);
-      setOtpStep('VERIFY');
-      if (res.testCodeHint) {
-        setTestHint(res.testCodeHint);
-        setOtpCode(res.testCodeHint);
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send SMS');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 3. Verify SMS OTP
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!challengeId || !otpCode) return;
-    setErrorMsg('');
-
-    try {
-      setLoading(true);
-      const res = await api.verifyOtp(challengeId, otpCode);
-      api.setToken(res.sessionToken);
-      onLoginSuccess(res.user, res.isNewUser);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Invalid SMS code');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return localizeTree(lang, (
     <div className="flex-1 flex flex-col p-4 pb-20 justify-between animate-fade-in text-slate-100">
         <div className="max-w-sm mx-auto space-y-6 pt-2">
           {/* Header */}
           <div className="text-center space-y-1.5">
             <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto mb-3 text-amber-400 shadow-inner">
-              {authMethod === 'PASSWORD' ? (
-                <Lock className="w-8 h-8" />
-              ) : (
-                <KeyRound className="w-8 h-8" />
-              )}
+              <Lock className="w-8 h-8" />
             </div>
 
-            <h2 className="text-xl font-black text-white">
-              {authMethod === 'PASSWORD' ? t.craftsmanLogin : t.verifyOtp}
-            </h2>
+            <h2 className="text-xl font-black text-white">{t.craftsmanLogin}</h2>
 
             <p className="text-xs text-slate-400">
-              {authMethod === 'PASSWORD'
-                ? (lang === 'ka'
-                    ? 'შესვლა ტელეფონის ნომრითა და პაროლით'
-                    : 'Log in with phone number and password')
-                : (lang === 'ka'
-                    ? 'შესვლა ერთჯერადი SMS კოდით'
-                    : 'Log in with one-time SMS verification code')}
+              {lang === 'ka'
+                ? 'შესვლა ტელეფონის ნომრითა და პაროლით'
+                : lang === 'ru'
+                  ? 'Вход по номеру телефона и паролю'
+                  : 'Log in with phone number and password'}
             </p>
           </div>
 
@@ -167,8 +107,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           )}
 
           {/* MAIN FORM: PHONE NUMBER + PASSWORD */}
-          {authMethod === 'PASSWORD' && (
-            <form onSubmit={handlePasswordLogin} className="space-y-4">
+          <form onSubmit={handlePasswordLogin} className="space-y-4">
               {/* Phone input */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-medium text-slate-400 px-1">
@@ -208,6 +147,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   />
                   <button
                     type="button"
+                    aria-label={showPassword
+                      ? (lang === 'ka' ? 'პაროლის დამალვა' : lang === 'ru' ? 'Скрыть пароль' : 'Hide password')
+                      : (lang === 'ka' ? 'პაროლის ჩვენება' : lang === 'ru' ? 'Показать пароль' : 'Show password')}
+                    aria-pressed={showPassword}
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-white"
                   >
@@ -246,107 +189,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </div>
               )}
 
-              {/* Option to switch to SMS OTP */}
-              <div className="text-center pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMethod('OTP');
-                    setOtpStep('REQUEST');
-                    setErrorMsg('');
-                  }}
-                  className="text-xs text-slate-400 hover:text-amber-300 underline"
-                >
-                  {t.orLoginWithOtp}
-                </button>
-              </div>
-
             </form>
-          )}
-
-          {/* ALTERNATIVE FORM: SMS OTP */}
-          {authMethod === 'OTP' && (
-            <div className="space-y-4">
-              {otpStep === 'REQUEST' ? (
-                <form onSubmit={handleRequestOtp} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-slate-400 px-1">
-                      {t.phoneInput}
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                        <Phone className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+995599000000"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all text-sm disabled:opacity-50"
-                  >
-                    {loading ? '...' : (lang === 'ka' ? 'SMS კოდის მიღება' : 'Send SMS Code')}
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleVerifyOtp} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-slate-400 px-1">
-                      {t.verifyOtp}
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value)}
-                      placeholder="6-digit code"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-center text-xl tracking-[0.5em] text-white font-mono focus:outline-none focus:border-amber-500"
-                      autoFocus
-                      required
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all text-sm disabled:opacity-50"
-                  >
-                    {loading ? '...' : t.submit}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setOtpStep('REQUEST')}
-                    className="w-full text-xs text-slate-400 hover:text-white py-1"
-                  >
-                    {lang === 'ka' ? 'ნომრის შეცვლა' : 'Change Phone'}
-                  </button>
-                </form>
-              )}
-
-              {/* Back to Password Login */}
-              <div className="text-center pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMethod('PASSWORD');
-                    setErrorMsg('');
-                  }}
-                  className="text-xs text-amber-400 hover:underline font-semibold"
-                >
-                  {t.orLoginWithPassword}
-                </button>
-              </div>
-            </div>
-          )}
+          <p role="note" className="text-center text-[11px] text-slate-500">
+            {lang === 'ka'
+              ? 'SMS-ით შესვლა დროებით მიუწვდომელია. გამოიყენეთ ტელეფონის ნომერი და პაროლი.'
+              : lang === 'ru'
+                ? 'Вход по SMS временно недоступен. Используйте номер телефона и пароль.'
+                : 'SMS sign-in is temporarily unavailable. Use your phone number and password.'}
+          </p>
         </div>
     </div>
   ));

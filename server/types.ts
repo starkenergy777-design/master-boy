@@ -129,7 +129,6 @@ export interface CraftsmanPublic {
   cityName: string;
   professionId: string;
   professionName: string;
-  bankAccount?: string | null;
   status: CraftsmanStatus;
   photos: CraftsmanPhoto[];
   primaryPhotoUrl?: string;

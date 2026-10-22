@@ -3591,7 +3591,7 @@ apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) =
   const baseTime = currentExp > Date.now() ? currentExp : Date.now();
   const newExpiresAt = new Date(baseTime + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
-  const priceGel = Number(ad.price_gel || 50);
+  const priceGel = Number(ad.price_gel ?? 50);
   const amountMinor = Math.round(priceGel * 100);
   const paymentIntentId = `pi-ad-${crypto.randomUUID()}`;
   db.paymentIntents.set(paymentIntentId, {

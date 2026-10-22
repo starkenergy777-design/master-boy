@@ -532,23 +532,25 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
                     {lang === 'ka' ? 'გადახდის მეთოდი ჯერ არ არის ხელმისაწვდომი.' : lang === 'ru' ? 'Способ оплаты пока недоступен.' : 'No payment method is available yet.'}
                   </p>
                 ) : paymentProviders.map((prov) => (
-                    <div
+                    <button
+                      type="button"
                       key={prov.id}
+                      aria-pressed={selectedProviderId === prov.id}
                       onClick={() => setSelectedProviderId(prov.id)}
-                      className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                      className={`w-full text-left p-3 rounded-2xl border flex items-center justify-between transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
                         selectedProviderId === prov.id
                           ? 'bg-amber-500/10 border-amber-500 text-white shadow-sm'
                           : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-3">
                         <CreditCard className={`w-4 h-4 ${selectedProviderId === prov.id ? 'text-amber-400' : 'text-slate-400'}`} />
                         <span className="text-xs font-semibold">{prov.name}</span>
-                      </div>
+                      </span>
                       {selectedProviderId === prov.id && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow" />
+                        <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow" />
                       )}
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>

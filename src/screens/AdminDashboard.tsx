@@ -573,7 +573,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             Top 15 slot price per city + profession. Click to change price.
           </p>
           {prices.map((p) => (
-            <div
+            <button
+              type="button"
               key={`${p.cityId}:${p.professionId}`}
               onClick={() => {
                 setEditingPrice({
@@ -583,20 +584,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 });
                 setNewPriceInput((p.amountMinor / 100).toString());
               }}
-              className="admin-console-panel admin-console-row rounded-2xl p-4 flex items-center justify-between cursor-pointer text-sm transition-colors"
+              className="admin-console-panel admin-console-row w-full text-left rounded-2xl p-4 flex items-center justify-between text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
             >
-              <div>
+              <span>
                 <span className="font-bold text-white block">
                   {p.cityId.replace('city-', '').toUpperCase()} • {p.professionId.replace('prof-', '').toUpperCase()}
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono">
+                <span className="text-[10px] text-slate-500 font-mono block">
                   Updated: {formatLocalizedDate(lang, p.updatedAt)}
                 </span>
-              </div>
+              </span>
               <span className="font-mono font-bold text-amber-400 text-sm bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
                 {(p.amountMinor / 100).toFixed(2)} GEL
               </span>
-            </div>
+            </button>
           ))}
         </div>
       )}
