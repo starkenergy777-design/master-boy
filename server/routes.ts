@@ -2,7 +2,17 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { db, verifyPassword, hashPassword } from './db.js';
 import { storage } from './storage.js';
-import { generateSupportReply, generatePeriodicReport, generateAIText, testGeminiKey, testOpenAIKey, resetAiClient } from './gemini.js';
+import {
+  AIProviderError,
+  aiProviderFailureCode,
+  aiProviderFailureStatus,
+  generateSupportReply,
+  generatePeriodicReport,
+  generateAIText,
+  testGeminiKey,
+  testOpenAIKey,
+  resetAiClient,
+} from './gemini.js';
 import {
   Language,
   Role,
@@ -332,6 +342,55 @@ function getPlainAgentReply(raw: string, plan: any, language: string, reportRequ
   }
   if (reportRequested && /[A-Za-z]{3}/.test(text) && !/[\u10A0-\u10FF]/.test(text)) return fallback;
   return text || fallback;
+}
+
+function agentProviderFailureReply(language: string, code: string, actionsCompleted = false): string {
+  const messages: Record<string, { ka: string; ru: string; en: string }> = {
+    AI_KEY_INVALID: {
+      ka: 'არჩეულმა AI პროვაიდერმა API გასაღები არ დაადასტურა. გადაამოწმე გასაღები და სწორი პროექტი, შემდეგ შეინახე თავიდან.',
+      ru: 'Выбранный ИИ-провайдер не подтвердил API-ключ. Проверьте ключ и проект, затем сохраните его снова.',
+      en: 'The selected AI provider did not accept the API key. Check the key and project, then save it again.',
+    },
+    AI_PROVIDER_ACCESS_DENIED: {
+      ka: 'AI პროვაიდერმა წვდომა უარყო. გადაამოწმე, ჩართულია თუ არა API და ხომ არ ზღუდავს გასაღებს პროექტის პარამეტრები.',
+      ru: 'ИИ-провайдер отказал в доступе. Проверьте, включён ли API и не ограничен ли ключ настройками проекта.',
+      en: 'The AI provider denied access. Check that its API is enabled and that project restrictions allow this key.',
+    },
+    AI_PROVIDER_MODEL_UNAVAILABLE: {
+      ka: 'არჩეული AI მოდელი ამ გასაღებისთვის მიუწვდომელია. გადაამოწმე პროვაიდერის მოდელის წვდომა.',
+      ru: 'Выбранная модель ИИ недоступна для этого ключа. Проверьте доступ к модели у провайдера.',
+      en: 'The selected AI model is unavailable to this key. Check model access with the provider.',
+    },
+    AI_PROVIDER_RATE_LIMITED: {
+      ka: 'AI პროვაიდერის მოთხოვნების სიჩქარის ზღვარი ამოიწურა. ცოტა მოიცადე და სცადე ხელახლა.',
+      ru: 'Превышен предел частоты запросов к ИИ-провайдеру. Подождите и попробуйте снова.',
+      en: 'The AI provider rate limit was reached. Wait briefly, then try again.',
+    },
+    AI_PROVIDER_QUOTA_EXCEEDED: {
+      ka: 'AI პროვაიდერის პროექტის კვოტა ამოიწურა. გადაამოწმე გამოყენების ლიმიტი და ბილინგი პროვაიდერთან.',
+      ru: 'Квота проекта ИИ-провайдера исчерпана. Проверьте лимиты использования и оплату у провайдера.',
+      en: 'The AI provider project quota is exhausted. Check its usage limits and billing.',
+    },
+    AI_PROVIDER_UNAVAILABLE: {
+      ka: 'AI პროვაიდერი დროებით ვერ პასუხობს ან მოთხოვნის ვადა ამოიწურა. სცადე მოგვიანებით.',
+      ru: 'ИИ-провайдер временно не отвечает или истекло время ожидания. Попробуйте позже.',
+      en: 'The AI provider is temporarily unavailable or the request timed out. Try again later.',
+    },
+    AI_PROVIDER_REQUEST_REJECTED: {
+      ka: 'AI პროვაიდერმა მოთხოვნა უარყო. გადაამოწმე მოდელისა და პროვაიდერის პარამეტრები.',
+      ru: 'ИИ-провайдер отклонил запрос. Проверьте настройки модели и провайдера.',
+      en: 'The AI provider rejected the request. Check the model and provider settings.',
+    },
+  };
+  const copy = messages[code] || messages.AI_PROVIDER_UNAVAILABLE;
+  const reason = language === 'ru' ? copy.ru : language === 'en' ? copy.en : copy.ka;
+  if (!actionsCompleted) return reason;
+  const partial = language === 'ru'
+    ? 'Перед повторной отправкой проверьте список действий: некоторые из них уже могли выполниться.'
+    : language === 'en'
+      ? 'Review the action list before retrying; some actions may already have completed.'
+      : 'ხელახლა გაგზავნამდე მოქმედებების სია გადაამოწმე — ზოგი მოქმედება შესაძლოა უკვე შესრულდა.';
+  return reason + ' ' + partial;
 }
 
 function agentFailureReply(language: string, actionsCompleted: boolean): string {
@@ -2686,7 +2745,7 @@ apiRouter.post('/admin/agent/chat', requireSuperAdmin, async (req: AuthRequest, 
     const requestLanguage = (req.header('Accept-Language') || 'ka').split(',')[0].trim().slice(0, 2);
     responseLanguage = ['ka', 'ru', 'en'].includes(requestLanguage) ? requestLanguage : 'ka';
     const userMessage = { role: 'user' as const, content: redacted.text, createdAt: new Date().toISOString() };
-    const conversation = [...settings.messages.slice(-30), userMessage];
+    const conversation = [...settings.messages.slice(-10), userMessage];
     failedTranscript = conversation;
     const instructions = `You are the private operations assistant for the MASTER_BOY superadministrator.
 Reply in the administrator's application language: ${responseLanguage} (ka=Georgian, ru=Russian, en=English).
@@ -2726,16 +2785,19 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
       let raw = '';
       try {
         raw = await generateAIText(input, instructions, true);
-      } catch {
+      } catch (error) {
         if (actions.length > 0) {
-          finalMessage = responseLanguage === 'ru'
-            ? 'Административные действия уже выполнены или получили ответ API, но ИИ не смог сформировать итог. Проверьте список действий перед повторной отправкой.'
-            : responseLanguage === 'en'
-              ? 'The admin actions already ran or returned API results, but the AI could not summarize them. Review the action list before retrying.'
-              : 'ადმინისტრაციული მოქმედება უკვე შესრულდა ან API-დან პასუხი დაბრუნდა, თუმცა AI-მ შეჯამება ვერ მოამზადა. ხელახლა გაგზავნამდე გადაამოწმე მოქმედებების სია.';
+          const code = error instanceof AIProviderError
+            ? aiProviderFailureCode(error.failure)
+            : 'AI_PROVIDER_UNAVAILABLE';
+          finalMessage = agentProviderFailureReply(responseLanguage, code, true);
           break;
         }
-        throw new Error('AI provider request failed.');
+        if (error instanceof AIProviderError) throw error;
+        throw new AIProviderError({
+          provider: db.providerConfig.ai.selectedProvider === 'gemini' ? 'gemini' : 'openai',
+          kind: 'unavailable',
+        });
       }
       const plan = parseAgentPlan(raw);
       if (plan?.type !== 'admin_api') {
@@ -2803,11 +2865,18 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
       messages: [...conversation, assistantMessage].slice(-50),
     });
     res.json({ ...updated, actions: actions.map(({ success, status, method, path, purpose }) => ({ success, status, method, path, purpose })) });
-  } catch {
-    console.warn('[MASTER_BOY] Superadmin agent request failed before a complete reply was saved.');
+  } catch (error) {
+    const providerFailure = error instanceof AIProviderError ? error.failure : null;
+    const providerCode = providerFailure ? aiProviderFailureCode(providerFailure) : '';
+    console.warn(
+      '[MASTER_BOY] Superadmin agent request failed before a complete reply was saved' +
+      (providerCode ? ' (category=' + providerFailure?.kind + ').' : '.'),
+    );
     const assistantMessage = {
       role: 'assistant' as const,
-      content: agentFailureReply(responseLanguage, actions.length > 0),
+      content: providerCode
+        ? agentProviderFailureReply(responseLanguage, providerCode, actions.length > 0)
+        : agentFailureReply(responseLanguage, actions.length > 0),
       createdAt: new Date().toISOString(),
     };
     let messages = [...failedTranscript, assistantMessage].slice(-50);
@@ -2817,7 +2886,7 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
     } catch {
       // Include the transcript in the response so the UI can still show the failed attempt.
     }
-    if (actions.length > 0) {
+    if (actions.length > 0 && !providerFailure) {
       return res.status(503).json({
         code: 'AGENT_HISTORY_NOT_SAVED',
         message: 'An admin action may already have completed. Review the action list before retrying.',
@@ -2825,11 +2894,19 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
         actions: actions.map(({ success, status, method, path, purpose }) => ({ success, status, method, path, purpose })),
       });
     }
-    res.status(502).json({
-      code: 'AGENT_REQUEST_FAILED',
-      message: 'The AI agent could not complete this request. Check the provider connection and try again.',
+    const failureCode = providerFailure ? providerCode : 'AGENT_REQUEST_FAILED';
+    const status = providerFailure ? aiProviderFailureStatus(providerFailure) : 502;
+    res.status(status).json({
+      code: failureCode,
+      message: assistantMessage.content,
       messages,
-      actions: [],
+      actions: actions.map(({ success, status: actionStatus, method, path, purpose }) => ({
+        success,
+        status: actionStatus,
+        method,
+        path,
+        purpose,
+      })),
     });
   } finally {
     agentChatsInProgress.delete(userId);
@@ -2977,11 +3054,15 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
     return res.status(400).json({ code: 'AI_KEY_REQUIRED', message: 'Enter an API key for the selected provider first.' });
   }
 
-  const isValid = provider === 'gemini'
+  const verification = provider === 'gemini'
     ? await testGeminiKey(selectedKey)
     : await testOpenAIKey(selectedKey);
-  if (!isValid) {
-    return res.status(422).json({ code: 'AI_KEY_INVALID', message: `${provider === 'gemini' ? 'Gemini' : 'OpenAI'} API key verification failed.` });
+  if (!verification.valid) {
+    const code = aiProviderFailureCode(verification.failure);
+    return res.status(aiProviderFailureStatus(verification.failure)).json({
+      code,
+      message: 'The selected AI provider could not verify this connection.',
+    });
   }
 
   const verifiedAt = new Date().toISOString();

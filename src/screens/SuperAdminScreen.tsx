@@ -430,14 +430,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       setAiKeyInput('');
       setSuccessMsg(aiCopy.saved);
     } catch (err: any) {
+      const errorCode = err.code || err.data?.code;
       if (err.status === 423) {
         setErrorMsg('423 CONFIG_LOCKED: Cannot modify AI settings during the configuration lock.');
-      } else if (err.status === 422) {
-        setErrorMsg(aiCopy.invalid);
-      } else if (err.status === 503) {
+      } else if (errorCode === 'AI_SETTINGS_PERSIST_FAILED') {
         setErrorMsg(aiCopy.saveFailed);
       } else {
-        setErrorMsg(err.message || 'AI key verification failed');
+        setErrorMsg(err.message || aiCopy.invalid);
       }
     } finally {
       setLoading(false);
