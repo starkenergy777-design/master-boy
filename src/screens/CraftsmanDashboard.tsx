@@ -34,7 +34,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   // Renewal / Pay Modal
   const [showRenewalModal, setShowRenewalModal] = useState(false);
-  const [selectedProviderId, setSelectedProviderId] = useState('prov-bog');
+  const [selectedProviderId, setSelectedProviderId] = useState('');
   const [paying, setPaying] = useState(false);
   const [renewalError, setRenewalError] = useState('');
 
@@ -45,12 +45,24 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const [photoError, setPhotoError] = useState('');
   const [showDeletePhotoConfirm, setShowDeletePhotoConfirm] = useState(false);
 
-  const [paymentProviders, setPaymentProviders] = useState<{ id: string; name: string }[]>([
-    { id: 'prov-bog', name: 'საქართველოს ბანკი (Bank of Georgia iPay)' },
-  ]);
+  const [paymentProviders, setPaymentProviders] = useState<{ id: string; name: string }[]>([]);
+  const [profileLoadError, setProfileLoadError] = useState('');
+  const [profileActionError, setProfileActionError] = useState('');
+
+  const listingPriceLabel = listing?.price && Number.isFinite(listing.price.amountMinor)
+    ? `${(listing.price.amountMinor / 100).toFixed(2)} ${listing.price.currency || 'GEL'}`
+    : (lang === 'ka' ? 'ფასი მიუწვდომელია' : lang === 'ru' ? 'Цена недоступна' : 'Price unavailable');
+
+  const selectedPaymentProviderAvailable = paymentProviders.some((provider) => provider.id === selectedProviderId);
+  const paymentUnavailableMessage = lang === 'ka'
+    ? 'ონლაინ გადახდა ამჟამად არ არის ჩართული. ეს მოქმედება ახლა მიუწვდომელია.'
+    : lang === 'ru'
+      ? 'Онлайн-оплата сейчас не настроена. Это действие пока недоступно.'
+      : 'Online payment is not configured yet. This action is unavailable.';
 
   const loadProfile = async () => {
     try {
+      setProfileLoadError('');
       setLoading(true);
       const [resProfile, resMemberships, resListing, provList, resAd] = await Promise.all([
         api.getMyCraftsman(),
@@ -62,18 +74,21 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       setCraftsman(resProfile.craftsman);
       setActiveAd(resAd?.ad || null);
       setMemberships(resMemberships);
-      if (provList && provList.length > 0) {
-        setPaymentProviders(provList);
-        setSelectedProviderId(provList[0].id);
-      }
+      setPaymentProviders(Array.isArray(provList) ? provList : []);
+      setSelectedProviderId('');
       if (resListing) {
         setListing(resListing);
         if (resListing.secondsRemaining !== undefined) {
           setRemainingSeconds(resListing.secondsRemaining);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load craftsman data:', err);
+      setProfileLoadError(err.message || (lang === 'ka'
+        ? 'პროფილის მონაცემები ვერ ჩაიტვირთა.'
+        : lang === 'ru'
+          ? 'Не удалось загрузить данные профиля.'
+          : 'Could not load profile data.'));
     } finally {
       setLoading(false);
     }
@@ -94,14 +109,20 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   const togglePhoneVisibility = async () => {
     if (!craftsman) return;
+    setProfileActionError('');
     try {
       setUpdating(true);
       const updated = await api.updateMyCraftsman({
         phoneVisible: !craftsman.phoneVisible,
       });
       setCraftsman(updated);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setProfileActionError(err.message || (lang === 'ka'
+        ? 'ტელეფონის ხილვადობის შეცვლა ვერ მოხერხდა.'
+        : lang === 'ru'
+          ? 'Не удалось изменить видимость телефона.'
+          : 'Could not update phone visibility.'));
     } finally {
       setUpdating(false);
     }
@@ -109,6 +130,10 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   const handlePayOrRenew = async () => {
     setRenewalError('');
+    if (!selectedPaymentProviderAvailable) {
+      setRenewalError(paymentUnavailableMessage);
+      return;
+    }
     try {
       setPaying(true);
       if (listing?.status === 'UNPAID_DRAFT') {
@@ -179,6 +204,21 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
     return localizeTree(lang, (
       <div className="flex-1 flex items-center justify-center text-slate-400">
         <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    ));
+  }
+
+  if (profileLoadError) {
+    return localizeTree(lang, (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center text-slate-100">
+        <p role="alert" className="max-w-sm text-sm text-rose-300">{profileLoadError}</p>
+        <button
+          type="button"
+          onClick={loadProfile}
+          className="rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+        >
+          {lang === 'ka' ? 'სცადეთ ხელახლა' : lang === 'ru' ? 'Повторить' : 'Try again'}
+        </button>
       </div>
     ));
   }
@@ -290,7 +330,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
                 onClick={() => setShowRenewalModal(true)}
                 className="bg-rose-500 hover:bg-rose-400 text-slate-950 text-[10px] font-bold px-2.5 py-1 rounded-lg"
               >
-                10 GEL
+                {listingPriceLabel}
               </button>
             </div>
           ) : days < 30 ? (
@@ -303,7 +343,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
                 onClick={() => setShowRenewalModal(true)}
                 className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-bold px-2.5 py-1 rounded-lg"
               >
-                10 GEL
+                {listingPriceLabel}
               </button>
             </div>
           ) : null}
@@ -325,7 +365,11 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
             onClick={() => setShowRenewalModal(true)}
             className="w-full bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-400 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow"
           >
-            {lang === 'ka' ? 'გამოწერის განახლება (10 GEL)' : 'Renew Listing (10 GEL)'}
+            {lang === 'ka'
+              ? `გამოწერის განახლება (${listingPriceLabel})`
+              : lang === 'ru'
+                ? `Продлить размещение (${listingPriceLabel})`
+                : `Renew Listing (${listingPriceLabel})`}
           </button>
         </div>
       ) : listing?.status === 'UNPAID_DRAFT' ? (
@@ -338,14 +382,20 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
           </div>
           <p className="text-xs text-slate-300 leading-relaxed">
             {lang === 'ka'
-              ? 'ძიებაში გამოჩენისთვის გადაიხადეთ 10 ლარი 6-თვიანი (180 დღე) ხილვადობის მისაღებად.'
-              : 'Pay 10 GEL to activate 6 months (180 days) of visibility in search results.'}
+              ? `ძიებაში გამოჩენისთვის გადაიხადეთ ${listingPriceLabel} და მიიღეთ 6-თვიანი (180 დღე) ხილვადობა.`
+              : lang === 'ru'
+                ? `Оплатите ${listingPriceLabel}, чтобы профиль был виден в поиске 6 месяцев (180 дней).`
+                : `Pay ${listingPriceLabel} for 6 months (180 days) of visibility in search results.`}
           </p>
           <button
             onClick={() => setShowRenewalModal(true)}
             className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl text-xs shadow"
           >
-            {lang === 'ka' ? 'გადახდა (10 GEL) და გააქტიურება' : 'Pay 10 GEL & Activate'}
+            {lang === 'ka'
+              ? `გადახდა (${listingPriceLabel}) და გააქტიურება`
+              : lang === 'ru'
+                ? `Оплатить (${listingPriceLabel}) и активировать`
+                : `Pay (${listingPriceLabel}) & Activate`}
           </button>
         </div>
       ) : null}
@@ -398,39 +448,51 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               </span>
             </div>
             <button
+              type="button"
+              aria-label={craftsman?.phoneVisible
+                ? (lang === 'ka' ? 'ტელეფონის დამალვა' : lang === 'ru' ? 'Скрыть телефон' : 'Hide phone')
+                : (lang === 'ka' ? 'ტელეფონის გამოჩენა' : lang === 'ru' ? 'Показать телефон' : 'Show phone')}
+              aria-pressed={Boolean(craftsman?.phoneVisible)}
               onClick={togglePhoneVisibility}
               disabled={updating}
               className={`w-12 h-6 rounded-full transition-colors relative p-0.5 ${
                 craftsman?.phoneVisible ? 'bg-emerald-500' : 'bg-slate-700'
               }`}
             >
-              <div
+              <span
+                aria-hidden="true"
                 className={`w-5 h-5 rounded-full bg-white transition-transform ${
                   craftsman?.phoneVisible ? 'translate-x-6' : 'translate-x-0'
                 }`}
               />
             </button>
           </div>
+          {profileActionError && (
+            <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+              {profileActionError}
+            </p>
+          )}
 
-          {/* Quick Action: Support Chat with Gemini */}
-          <div
+          {/* Quick Action: AI Support Chat */}
+          <button
+            type="button"
             onClick={onOpenSupportChat}
-            className="bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-indigo-500/40 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:border-indigo-400 transition-all shadow-sm"
+            className="w-full text-left bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-indigo-500/40 rounded-2xl p-4 flex items-center justify-between hover:border-indigo-400 transition-all shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300"
           >
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+            <span className="flex items-center gap-3">
+              <span className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
                 <MessageSquare className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-white">{t.supportChat}</h3>
-                <p className="text-[11px] text-indigo-300">{t.supportSubtitle}</p>
-                <p className="text-[10px] text-slate-400">7 messages / day limit</p>
-              </div>
-            </div>
-            <span className="text-xs text-indigo-400 font-bold bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-800">
-              Open Chat
+              </span>
+              <span>
+                <span className="text-xs font-bold text-white block">{t.supportChat}</span>
+                <span className="text-[11px] text-indigo-300 block">{t.supportSubtitle}</span>
+                <span className="text-[10px] text-slate-400 block">{lang === 'ka' ? 'დღეში 7 შეტყობინების ლიმიტი' : lang === 'ru' ? 'Лимит: 7 сообщений в день' : '7 messages per day'}</span>
+              </span>
             </span>
-          </div>
+            <span className="text-xs text-indigo-400 font-bold bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-800">
+              {lang === 'ka' ? 'ჩატის გახსნა' : lang === 'ru' ? 'Открыть чат' : 'Open chat'}
+            </span>
+          </button>
 
           {/* Photo Management (Max 1 Photo Rule) */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
@@ -597,7 +659,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">{lang === 'ka' ? 'ღირებულება:' : 'Amount:'}</span>
-                <span className="font-bold text-amber-400 font-mono text-sm">10.00 GEL</span>
+                <span className="font-bold text-amber-400 font-mono text-sm">{listingPriceLabel}</span>
               </div>
             </div>
 
@@ -607,27 +669,35 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               </div>
             )}
 
-            <div className="space-y-2">
-              <label className="text-[11px] font-medium text-slate-400">
-                {lang === 'ka' ? 'აირჩიეთ ბანკი / პროვაიდერი' : 'Select Bank / Provider'}
-              </label>
-              <div className="space-y-1.5">
-                {paymentProviders.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => setSelectedProviderId(p.id)}
-                    className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer text-xs ${
-                      selectedProviderId === p.id
-                        ? 'bg-amber-500/10 border-amber-500 text-white'
-                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
-                  >
-                    <span>{p.name}</span>
-                    {selectedProviderId === p.id && <div className="w-2 h-2 rounded-full bg-amber-400" />}
-                  </div>
-                ))}
+            {paymentProviders.length > 0 ? (
+              <div className="space-y-2">
+                <label className="text-[11px] font-medium text-slate-400">
+                  {lang === 'ka' ? 'აირჩიეთ გადახდის პროვაიდერი' : lang === 'ru' ? 'Выберите платёжного провайдера' : 'Select a payment provider'}
+                </label>
+                <div className="space-y-1.5">
+                  {paymentProviders.map((p) => (
+                    <button
+                      type="button"
+                      key={p.id}
+                      aria-pressed={selectedProviderId === p.id}
+                      onClick={() => setSelectedProviderId(p.id)}
+                      className={`w-full text-left p-2.5 rounded-xl border flex items-center justify-between text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
+                        selectedProviderId === p.id
+                          ? 'bg-amber-500/10 border-amber-500 text-white'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <span>{p.name}</span>
+                      {selectedProviderId === p.id && <span aria-hidden="true" className="w-2 h-2 rounded-full bg-amber-400" />}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div role="status" className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-200">
+                {paymentUnavailableMessage}
+              </div>
+            )}
 
             <div className="pt-2 flex gap-2">
               <button
@@ -640,10 +710,20 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               <button
                 type="button"
                 onClick={handlePayOrRenew}
-                disabled={paying}
-                className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50"
+                disabled={paying || !selectedPaymentProviderAvailable}
+                className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {paying ? '...' : (lang === 'ka' ? 'გადახდა (10 GEL)' : 'Pay 10 GEL')}
+                {paying
+                  ? '...'
+                  : !paymentProviders.length
+                    ? (lang === 'ka' ? 'გადახდა მიუწვდომელია' : lang === 'ru' ? 'Оплата недоступна' : 'Payment unavailable')
+                    : !selectedPaymentProviderAvailable
+                      ? (lang === 'ka' ? 'აირჩიეთ პროვაიდერი' : lang === 'ru' ? 'Выберите провайдера' : 'Select provider')
+                      : (lang === 'ka'
+                        ? `გადახდა (${listingPriceLabel})`
+                        : lang === 'ru'
+                          ? `Оплатить (${listingPriceLabel})`
+                          : `Pay (${listingPriceLabel})`)}
               </button>
             </div>
           </div>
