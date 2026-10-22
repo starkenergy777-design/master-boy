@@ -97,6 +97,7 @@ export interface User {
   password?: string;
   roles: Role[];
   status?: 'ACTIVE' | 'BLOCKED' | 'DELETED';
+  adminSharePercent?: number | null;
 }
 
 export interface Top15Price {
