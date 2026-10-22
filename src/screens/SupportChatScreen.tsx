@@ -236,6 +236,8 @@ export const SupportChatScreen: React.FC<SupportChatScreenProps> = ({
           />
           <button
             type="submit"
+            aria-label={lang === 'ka' ? 'შეტყობინების გაგზავნა' : lang === 'ru' ? 'Отправить сообщение' : 'Send message'}
+            aria-busy={loading}
             disabled={!inputText.trim() || remainingToday <= 0 || loading}
             className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 px-3.5 py-2.5 rounded-xl font-bold transition-all shrink-0 active:scale-95"
           >
