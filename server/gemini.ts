@@ -346,11 +346,11 @@ Keep answers concise, polite, helpful, and directly relevant to MASTER_BOY craft
       }
     } else {
       if (lang === 'ka') {
-        replyText = `მოგესალმებით ${craftsmanName}. MASTER_BOY-ის ადმინისტრაცია: Top 15-ის შესაძენად გადადით თქვენს კაბინეტში Top 15 განყოფილებაში, აირჩიეთ ქალაქი და პროფესია, დააჭირეთ დაჯავშნას (3 წუთიანი ლიმიტით) და გადაიხადეთ. პროფილის პარამეტრებში შეგიძლიათ შეცვალოთ სამუშაო საათები და ტელეფონის ხილვადობა.`;
+        replyText = `მოგესალმებით ${craftsmanName}. MASTER_BOY-ის ადმინისტრაცია: Top 15-ის გადახდა დროებით მიუწვდომელია, სანამ საგადახდო პროვაიდერის ინტეგრაცია არ დასრულდება. პროფილის პარამეტრებში შეგიძლიათ შეცვალოთ სამუშაო საათები და ტელეფონის ხილვადობა.`;
       } else if (lang === 'ru') {
-        replyText = `Здравствуйте, ${craftsmanName}. Администрация MASTER_BOY: Чтобы приобрести Топ-15, перейдите в раздел «Топ 15», выберите город и специальность, забронируйте слот (на 3 минуты) и завершите оплату. В профиле вы можете настроить часы работы и видимость номера телефона.`;
+        replyText = `Здравствуйте, ${craftsmanName}. Администрация MASTER_BOY: Оплата Топ-15 временно недоступна до завершения интеграции платежного провайдера. В профиле вы можете настроить часы работы и видимость номера телефона.`;
       } else {
-        replyText = `Hello ${craftsmanName}. MASTER_BOY Administration: To purchase Top 15, go to the Top 15 section, select your city and profession, reserve a slot (held for 3 minutes), and complete payment. You can also edit your profile, working hours, and phone visibility.`;
+        replyText = `Hello ${craftsmanName}. MASTER_BOY Administration: Top 15 payments are temporarily unavailable until the payment provider integration is completed. You can also edit your profile, working hours, and phone visibility.`;
       }
     }
   }
