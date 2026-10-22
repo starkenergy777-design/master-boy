@@ -44,10 +44,20 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
     try {
       setLoading(true);
       setSearchError('');
-      const res = await api.search(cId, pId, 1, 50);
+      // The API deliberately limits each page to 50. Collect every page so
+      // button #16 always contains the complete remaining craftsmen list.
+      const firstPage = await api.search(cId, pId, 1, 50);
       if (requestId !== searchRequestId.current) return;
-      setTop15(res.top15 || []);
-      setAllCraftsmen(res.items?.content || []);
+      const craftsmen: CraftsmanPublic[] = [...(firstPage.items?.content || [])];
+      const totalPages = firstPage.items?.totalPages || 1;
+      for (let page = 2; page <= totalPages; page++) {
+        const nextPage = await api.search(cId, pId, page, 50);
+        if (requestId !== searchRequestId.current) return;
+        craftsmen.push(...(nextPage.items?.content || []));
+      }
+      if (requestId !== searchRequestId.current) return;
+      setTop15(firstPage.top15 || []);
+      setAllCraftsmen(craftsmen);
     } catch (err) {
       if (requestId !== searchRequestId.current) return;
       console.error('Failed to load search results:', err);

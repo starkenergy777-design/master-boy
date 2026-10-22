@@ -131,12 +131,12 @@ function logProviderFailure(provider: AIProviderName, failure: AIProviderFailure
   );
 }
 
-export async function testGeminiKey(apiKey: string): Promise<AIProviderCheckResult> {
+export async function testGeminiKey(apiKey: string, model: string): Promise<AIProviderCheckResult> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const testAi = new GoogleGenAI({ apiKey });
     const testPromise = testAi.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model,
       contents: 'Reply only OK.',
       config: {
         maxOutputTokens: 16,
@@ -160,8 +160,7 @@ export async function testGeminiKey(apiKey: string): Promise<AIProviderCheckResu
   }
 }
 
-export async function testOpenAIKey(apiKey: string): Promise<AIProviderCheckResult> {
-  const model = process.env.OPENAI_MODEL || 'gpt-6-luna';
+export async function testOpenAIKey(apiKey: string, model: string): Promise<AIProviderCheckResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
   try {
@@ -206,7 +205,7 @@ export async function generateAIText(
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
       const requestBody: Record<string, unknown> = {
-        model: process.env.OPENAI_MODEL || 'gpt-6-luna',
+        model: db.providerConfig.ai.openaiModel || process.env.OPENAI_MODEL || (() => { throw new Error('OpenAI model is not configured.'); })(),
         instructions,
         input,
         store: false,
@@ -256,7 +255,7 @@ export async function generateAIText(
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const generatePromise = client.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: db.providerConfig.ai.geminiModel || process.env.GEMINI_MODEL || (() => { throw new Error('Gemini model is not configured.'); })(),
       contents: input,
       config: {
         ...(instructions ? { systemInstruction: instructions } : {}),
@@ -347,11 +346,11 @@ Keep answers concise, polite, helpful, and directly relevant to MASTER_BOY craft
       }
     } else {
       if (lang === 'ka') {
-        replyText = `მოგესალმებით ${craftsmanName}. MASTER_BOY-ის ადმინისტრაცია: Top 15-ის შესაძენად გადადით თქვენს კაბინეტში Top 15 განყოფილებაში, აირჩიეთ ქალაქი და პროფესია, დააჭირეთ დაჯავშნას (3 წუთიანი ლიმიტით) და გადაიხადეთ. პროფილის პარამეტრებში შეგიძლიათ შეცვალოთ სამუშაო საათები და ტელეფონის ხილვადობა.`;
+        replyText = `მოგესალმებით ${craftsmanName}. MASTER_BOY-ის ადმინისტრაცია: Top 15-ის გადახდა დროებით მიუწვდომელია, სანამ საგადახდო პროვაიდერის ინტეგრაცია არ დასრულდება. პროფილის პარამეტრებში შეგიძლიათ შეცვალოთ სამუშაო საათები და ტელეფონის ხილვადობა.`;
       } else if (lang === 'ru') {
-        replyText = `Здравствуйте, ${craftsmanName}. Администрация MASTER_BOY: Чтобы приобрести Топ-15, перейдите в раздел «Топ 15», выберите город и специальность, забронируйте слот (на 3 минуты) и завершите оплату. В профиле вы можете настроить часы работы и видимость номера телефона.`;
+        replyText = `Здравствуйте, ${craftsmanName}. Администрация MASTER_BOY: Оплата Топ-15 временно недоступна до завершения интеграции платежного провайдера. В профиле вы можете настроить часы работы и видимость номера телефона.`;
       } else {
-        replyText = `Hello ${craftsmanName}. MASTER_BOY Administration: To purchase Top 15, go to the Top 15 section, select your city and profession, reserve a slot (held for 3 minutes), and complete payment. You can also edit your profile, working hours, and phone visibility.`;
+        replyText = `Hello ${craftsmanName}. MASTER_BOY Administration: Top 15 payments are temporarily unavailable until the payment provider integration is completed. You can also edit your profile, working hours, and phone visibility.`;
       }
     }
   }

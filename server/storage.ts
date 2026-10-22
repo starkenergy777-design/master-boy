@@ -9,6 +9,8 @@ export interface AiProviderSettings {
   geminiApiKey: string | null;
   openAiApiKey: string | null;
   verifiedAt: string | null;
+  geminiModel: string;
+  openaiModel: string;
 }
 
 export interface SuperAdminAgentMessage {
@@ -204,6 +206,8 @@ export class StorageService {
         geminiApiKey: process.env.GEMINI_API_KEY || null,
         openAiApiKey: process.env.OPENAI_API_KEY || null,
         verifiedAt: null,
+        geminiModel: process.env.GEMINI_MODEL || '',
+        openaiModel: process.env.OPENAI_MODEL || '',
       };
     }
     const result = await this.db().query(
@@ -215,6 +219,8 @@ export class StorageService {
       geminiApiKey: (typeof value.geminiApiKey === 'string' && value.geminiApiKey) || process.env.GEMINI_API_KEY || null,
       openAiApiKey: (typeof value.openAiApiKey === 'string' && value.openAiApiKey) || process.env.OPENAI_API_KEY || null,
       verifiedAt: typeof value.verifiedAt === 'string' ? value.verifiedAt : null,
+      geminiModel: typeof value.geminiModel === 'string' ? value.geminiModel : (process.env.GEMINI_MODEL || ''),
+      openaiModel: typeof value.openaiModel === 'string' ? value.openaiModel : (process.env.OPENAI_MODEL || ''),
     };
   }
 
@@ -244,7 +250,7 @@ export class StorageService {
     this.connected = true;
   }
 
-  async saveAiProviderSelection(provider: AiProvider, verifiedAt: string | null): Promise<void> {
+  async saveAiProviderSelection(provider: AiProvider, verifiedAt: string | null, model: string): Promise<void> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return;
     await this.db().query(
       `INSERT INTO public.server_secrets AS existing (secret_name, secret_value, updated_at)
@@ -252,7 +258,7 @@ export class StorageService {
        ON CONFLICT (secret_name) DO UPDATE
        SET secret_value=COALESCE(existing.secret_value, '{}'::jsonb) || EXCLUDED.secret_value,
            updated_at=NOW()`,
-      [JSON.stringify({ selectedProvider: provider, verifiedAt })]
+      [JSON.stringify({ selectedProvider: provider, verifiedAt, [provider === 'gemini' ? 'geminiModel' : 'openaiModel']: model })]
     );
     this.connected = true;
   }

@@ -1032,6 +1032,8 @@ class Database {
       this.geminiApiKey = aiSettings.geminiApiKey;
       this.openAiApiKey = aiSettings.openAiApiKey;
       this.providerConfig.ai.selectedProvider = aiSettings.selectedProvider;
+      this.providerConfig.ai.geminiModel = aiSettings.geminiModel;
+      this.providerConfig.ai.openaiModel = aiSettings.openaiModel;
       this.providerConfig.ai.geminiConfigured = Boolean(this.geminiApiKey);
       this.providerConfig.ai.openaiConfigured = Boolean(this.openAiApiKey);
       this.providerConfig.ai.configured = aiSettings.selectedProvider === 'openai'

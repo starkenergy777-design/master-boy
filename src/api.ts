@@ -388,10 +388,10 @@ class ApiClient {
     });
   }
 
-  updateAiProvider(provider: 'gemini' | 'openai', apiKey?: string) {
+  updateAiProvider(provider: 'gemini' | 'openai', apiKey?: string, model?: string) {
     return this.request('/admin/providers/ai', {
       method: 'PUT',
-      body: JSON.stringify({ provider, apiKey }),
+      body: JSON.stringify({ provider, apiKey, model }),
     });
   }
 
