@@ -41,7 +41,16 @@ function rateLimit(key: string, limit: number, windowMs: number): boolean {
 }
 
 function safeUser(user: User) {
-  return { id: user.id, phone: user.phone, roles: user.roles, status: user.status, createdAt: user.createdAt };
+  return {
+    id: user.id,
+    phone: user.phone,
+    roles: user.roles,
+    status: user.status,
+    createdAt: user.createdAt,
+    ...(user.roles.includes('ADMIN')
+      ? { adminSharePercent: typeof user.adminSharePercent === 'number' ? user.adminSharePercent : null }
+      : {}),
+  };
 }
 
 function safeAdminCraftsman(craftsman: Craftsman | undefined) {
@@ -1105,6 +1114,9 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
           id: foundUser.id,
           phone: foundUser.phone,
           roles: foundUser.roles,
+          ...(foundUser.roles.includes('ADMIN')
+            ? { adminSharePercent: typeof foundUser.adminSharePercent === 'number' ? foundUser.adminSharePercent : null }
+            : {}),
         },
         hasCraftsmanProfile: !!craftsman,
         craftsmanId: craftsman?.id || null,
@@ -1322,6 +1334,9 @@ apiRouter.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
     phone: req.user!.phone,
     roles: req.user!.roles,
     status: req.user!.status,
+    ...(req.user!.roles.includes('ADMIN')
+      ? { adminSharePercent: typeof req.user!.adminSharePercent === 'number' ? req.user!.adminSharePercent : null }
+      : {}),
   });
 });
 
@@ -3083,49 +3098,62 @@ apiRouter.get('/admin/admins', requireSuperAdmin, (req, res) => {
 });
 
 // POST /admin/admins (Protected by config lock!)
-apiRouter.post('/admin/admins', requireSuperAdmin, checkConfigLock, (req: AuthRequest, res) => {
-  const { phone, password } = req.body;
-  if (!phone || !password || typeof password !== 'string' || password.length < 12) {
-    return res.status(400).json({ code: 'INVALID_CREDENTIALS', message: 'Phone and a password of at least 12 characters are required' });
+apiRouter.post('/admin/admins', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const { phone, password, adminSharePercent: rawSharePercent } = req.body || {};
+  const normalizedPhone = typeof phone === 'string' ? phone.trim().replace(/[()\s.-]/g, '') : '';
+  const sharePercent = rawSharePercent;
+
+  if (!/^\+?\d{8,15}$/.test(normalizedPhone)) {
+    return res.status(400).json({ code: 'INVALID_PHONE', message: 'Enter a valid phone number.' });
+  }
+  if (typeof password !== 'string' || password.length < 12 || password.length > 128) {
+    return res.status(400).json({ code: 'INVALID_PASSWORD', message: 'Password must be between 12 and 128 characters.' });
+  }
+  const shareCents = Math.round(sharePercent * 100);
+  if (typeof rawSharePercent !== 'number' || !Number.isFinite(sharePercent) ||
+      sharePercent < 0 || sharePercent > 100 ||
+      Math.abs(sharePercent * 100 - shareCents) > 1e-7) {
+    return res.status(400).json({ code: 'INVALID_ADMIN_SHARE', message: 'Company share must be between 0 and 100 with up to two decimal places.' });
   }
 
-  let user: User | undefined;
-  for (const u of db.users.values()) {
-    if (u.phone === phone) {
-      user = u;
-      break;
-    }
+  const phoneKey = normalizedPhone.replace(/^\+/, '');
+  const existingUser = Array.from(db.users.values()).find(u =>
+    u.phone.trim().replace(/[()\s.-]/g, '').replace(/^\+/, '') === phoneKey,
+  );
+  if (existingUser) {
+    return res.status(409).json({ code: 'PHONE_ALREADY_REGISTERED', message: 'An account with this phone number already exists.' });
   }
 
-  if (!user) {
-    user = {
-      id: `usr-admin-${Date.now()}`,
-      phone,
-      roles: ['ADMIN'],
-      status: 'ACTIVE',
-      createdAt: new Date().toISOString(),
-      password: hashPassword(password),
-    };
-    db.users.set(user.id, user);
-  } else {
-    if (!user.roles.includes('ADMIN')) {
-      user.roles.push('ADMIN');
-    }
-    user.password = hashPassword(password);
-  }
+  const user: User = {
+    id: 'usr-admin-' + crypto.randomUUID(),
+    phone: normalizedPhone,
+    roles: ['ADMIN'],
+    status: 'ACTIVE',
+    createdAt: new Date().toISOString(),
+    password: hashPassword(password),
+    adminSharePercent: sharePercent,
+  };
+  db.users.set(user.id, user);
 
-  db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
-    actorType: 'USER',
+  const auditEntry = {
+    id: 'audit-' + crypto.randomUUID(),
+    actorType: 'USER' as const,
     actorId: req.user!.id,
     action: 'CREATE_ADMIN',
     targetType: 'USER',
     targetId: user.id,
-    reason: `Granted ADMIN role to ${phone}`,
+    reason: 'Created administrator account for ' + normalizedPhone + ' with ' + sharePercent + '% company share',
     createdAt: new Date().toISOString(),
-  });
+  };
+  db.auditLog.unshift(auditEntry);
 
-  res.json(safeUser(user));
+  if (!await persistAdminMutation(res, () => {
+    db.users.delete(user.id);
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
+
+  return res.status(201).json(safeUser(user));
 });
 
 // DELETE /admin/admins/:id (Protected by config lock!)

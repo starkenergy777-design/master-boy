@@ -345,7 +345,7 @@ export class StorageService {
     }
     const queries:Record<string,string> = {
       // Convert the custom enum array to JSON so node-postgres decodes it as a JS array.
-      users:'SELECT id,phone,password_hash,array_to_json(roles) AS roles,status,created_at FROM public.users',
+      users:'SELECT id,phone,password_hash,array_to_json(roles) AS roles,status,created_at,admin_share_percent FROM public.users',
       craftsmen:"SELECT c.*,COALESCE(jsonb_agg(jsonb_build_object('id',p.id,'craftsmanId',p.craftsman_id,'url',p.url,'displayOrder',p.display_order,'isPrimary',p.is_primary,'createdAt',p.created_at,'updatedAt',p.updated_at) ORDER BY p.display_order) FILTER(WHERE p.id IS NOT NULL),'[]'::jsonb) photos FROM public.craftsmen c LEFT JOIN public.craftsman_photos p ON p.craftsman_id=c.id GROUP BY c.id",
       craftsmanDrafts:'SELECT * FROM public.craftsman_drafts',
       top15Prices:'SELECT * FROM public.top15_prices',
@@ -359,7 +359,7 @@ export class StorageService {
     const rs=await this.db().query(q);
     for(const r of rs.rows) {
       let k=r.id,v:any;
-      if(name==='users') v={id:r.id,phone:r.phone,password:r.password_hash,roles:r.roles,status:r.status,createdAt:date(r.created_at)};
+      if(name==='users') v={id:r.id,phone:r.phone,password:r.password_hash,roles:r.roles,status:r.status,createdAt:date(r.created_at),adminSharePercent:r.admin_share_percent==null?null:Number(r.admin_share_percent)};
       else if(name==='craftsmen') v={id:r.id,userId:r.user_id,name:r.name,description:r.description||'',phone:r.phone,phoneVisible:r.phone_visible,latitude:r.latitude==null?null:Number(r.latitude),longitude:r.longitude==null?null:Number(r.longitude),workingHours:r.working_hours,status:r.status,cityId:r.city_id,professionId:r.profession_id,bankAccount:r.bank_account,createdAt:date(r.created_at),updatedAt:date(r.updated_at),photos:r.photos||[]};
       else if(name==='craftsmanDrafts'){k=r.user_id;v={step:r.step,data:r.data||{},updatedAt:date(r.updated_at)};}
       else if(name==='top15Prices') v={cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,updatedAt:date(r.updated_at),updatedBy:r.updated_by||'system'};
@@ -397,7 +397,7 @@ export class StorageService {
       await client.query('BEGIN');
       for(const x of s.users.values()) {
         if (!Array.isArray(x.roles)) throw new Error('User roles must be an array before persistence.');
-        await up("INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,NOW()) ON CONFLICT(id) DO UPDATE SET phone=EXCLUDED.phone,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,status=EXCLUDED.status,updated_at=NOW()",[x.id,x.phone,x.password||'',x.roles.filter((r)=>r!=='AI_ADMIN'),x.status,x.createdAt]);
+        await up("INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at,admin_share_percent) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,NOW(),$7) ON CONFLICT(id) DO UPDATE SET phone=EXCLUDED.phone,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,status=EXCLUDED.status,updated_at=NOW(),admin_share_percent=EXCLUDED.admin_share_percent",[x.id,x.phone,x.password||'',x.roles.filter((r)=>r!=='AI_ADMIN'),x.status,x.createdAt,x.adminSharePercent ?? null]);
       }
       await sync('users','id',[...s.users.keys()]);
       const photoIds:string[]=[];

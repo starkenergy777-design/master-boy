@@ -148,6 +148,51 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   onOpenAdminTools,
 }) => {
   const t = translations[lang] || translations.ka;
+  const adminCopy = ({
+    ka: {
+      title: 'ადმინისტრატორების მართვა',
+      description: 'შექმენი ადმინისტრატორის ანგარიში, მიუთითე უნიკალური ტელეფონის ნომერი და კომპანიის წილში მისი პროცენტი.',
+      create: 'ადმინისტრატორის შექმნა', hide: 'ფორმის დახურვა', phone: 'ტელეფონის ნომერი',
+      password: 'პაროლი (მინიმუმ 12 სიმბოლო)', share: 'კომპანიის წილი (%)', save: 'შენახვა', cancel: 'გაუქმება',
+      empty: 'ადმინისტრატორები ჯერ არ არის დამატებული.',
+      locked: 'კონფიგურაციის ჩაკეტვის დროს ადმინისტრატორის შექმნა მიუწვდომელია.',
+      created: 'ადმინისტრატორის ანგარიში წარმატებით შეიქმნა.',
+      duplicate: 'ამ ტელეფონის ნომრით ანგარიში უკვე არსებობს. გამოიყენე სხვა ნომერი.',
+      loadFailed: 'ადმინისტრატორების სია ვერ ჩაიტვირთა.',
+      createFailed: 'ადმინისტრატორის შექმნა ვერ მოხერხდა.',
+      invalidShare: 'წილი მიუთითე 0-დან 100-მდე, მაქსიმუმ ორი ათწილადი ნიშნით.',
+      assignedShare: 'კომპანიის შენთვის მინიჭებული წილი', notAssigned: 'წილი მინიჭებული არ არის', admins: 'ადმინისტრატორები',
+    },
+    ru: {
+      title: 'Управление администраторами',
+      description: 'Создайте учетную запись администратора, укажите уникальный номер телефона и его долю в компании.',
+      create: 'Создать администратора', hide: 'Закрыть форму', phone: 'Номер телефона',
+      password: 'Пароль (не менее 12 символов)', share: 'Доля компании (%)', save: 'Сохранить', cancel: 'Отмена',
+      empty: 'Администраторы пока не добавлены.',
+      locked: 'Создание администратора недоступно, пока настройки заблокированы.',
+      created: 'Учетная запись администратора создана.',
+      duplicate: 'Учетная запись с таким номером телефона уже существует. Укажите другой номер.',
+      loadFailed: 'Не удалось загрузить список администраторов.',
+      createFailed: 'Не удалось создать администратора.',
+      invalidShare: 'Укажите долю от 0 до 100, максимум с двумя знаками после запятой.',
+      assignedShare: 'Назначенная вам доля компании', notAssigned: 'Доля не назначена', admins: 'Администраторы',
+    },
+    en: {
+      title: 'Administrator management',
+      description: 'Create an administrator account with a unique phone number and its percentage share of the company.',
+      create: 'Create administrator', hide: 'Close form', phone: 'Phone number',
+      password: 'Password (at least 12 characters)', share: 'Company share (%)', save: 'Save', cancel: 'Cancel',
+      empty: 'No administrators have been added yet.',
+      locked: 'Administrator creation is unavailable while configuration is locked.',
+      created: 'Administrator account created successfully.',
+      duplicate: 'An account with this phone number already exists. Use another number.',
+      loadFailed: 'Could not load the administrator list.',
+      createFailed: 'Could not create the administrator account.',
+      invalidShare: 'Enter a share from 0 to 100 with up to two decimal places.',
+      assignedShare: 'Your assigned company share', notAssigned: 'No share assigned', admins: 'Administrators',
+    },
+  } as const)[lang];
+
   const aiCopy = {
     ka: {
       title: 'AI პროვაიდერი',
@@ -284,11 +329,19 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [showLockConfirmModal, setShowLockConfirmModal] = useState(false);
+  const [managedAdmins, setManagedAdmins] = useState<User[]>([]);
+  const [showCreateAdmin, setShowCreateAdmin] = useState(false);
+  const [newAdminPhone, setNewAdminPhone] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAdminSharePercent, setNewAdminSharePercent] = useState('');
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [adminNotice, setAdminNotice] = useState('');
 
   const loadAll = async () => {
     try {
       setLoading(true);
-      const [aiStat, recStat, lockStat, bootStat, backStat, listPriceStat, provStat, adsStat, persistStat, agentStat] = await Promise.all([
+      const [aiStat, recStat, lockStat, bootStat, backStat, listPriceStat, provStat, adsStat, persistStat, agentStat, adminsStat] = await Promise.all([
         api.getAiProviderStatus(),
         api.getRecipientAccount(),
         api.getConfigLock(),
@@ -299,6 +352,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         api.getAdminAds().catch(() => []),
         api.getPersistenceStatus().catch(() => null),
         api.getSuperAdminAgent().catch(() => null),
+        api.getAdmins().catch(() => null),
       ]);
       setGeminiStatus(aiStat);
       if (agentStat) {
@@ -320,6 +374,12 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       }
       setPaymentProviders(provStat || []);
       setAds(adsStat || []);
+      if (adminsStat) {
+        setManagedAdmins(adminsStat);
+        setAdminError('');
+      } else {
+        setAdminError(adminCopy.loadFailed);
+      }
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message);
@@ -695,6 +755,37 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     }
   };
 
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminError('');
+    setAdminNotice('');
+    const sharePercent = Number(newAdminSharePercent);
+    const shareCents = Math.round(sharePercent * 100);
+    if (!Number.isFinite(sharePercent) || sharePercent < 0 || sharePercent > 100 || Math.abs(sharePercent * 100 - shareCents) > 1e-7) {
+      setAdminError(adminCopy.invalidShare);
+      return;
+    }
+
+    try {
+      setAdminSaving(true);
+      const createdAdmin = await api.createAdmin({
+        phone: newAdminPhone.trim(),
+        password: newAdminPassword,
+        adminSharePercent: sharePercent,
+      });
+      setManagedAdmins(current => [...current.filter(admin => admin.id !== createdAdmin.id), createdAdmin]);
+      setNewAdminPhone('');
+      setNewAdminPassword('');
+      setNewAdminSharePercent('');
+      setShowCreateAdmin(false);
+      setAdminNotice(adminCopy.created);
+    } catch (err: any) {
+      setAdminError(err.status === 409 ? adminCopy.duplicate : err.status === 423 ? adminCopy.locked : adminCopy.createFailed);
+    } finally {
+      setAdminSaving(false);
+    }
+  };
+
   return localizeTree(lang, (
     <div className="superadmin-dashboard relative isolate mx-auto flex w-full max-w-[1480px] flex-1 flex-col gap-5 px-4 pb-24 pt-5 text-slate-100 animate-fade-in sm:gap-6 lg:px-6">
       {/* Cabinet identity and service overview */}
@@ -760,6 +851,110 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           <span>{successMsg}</span>
         </div>
       )}
+
+      <section className="superadmin-panel rounded-3xl p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-base font-bold text-white">{adminCopy.title}</h3>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-400">{adminCopy.description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowCreateAdmin(current => !current);
+              setAdminError('');
+              setAdminNotice('');
+            }}
+            disabled={configLock.locked || adminSaving}
+            className="min-h-10 shrink-0 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-bold text-cyan-100 transition-colors hover:border-cyan-200/40 hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {showCreateAdmin ? adminCopy.hide : adminCopy.create}
+          </button>
+        </div>
+
+        {configLock.locked && <p className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">{adminCopy.locked}</p>}
+        {adminError && <p role="alert" className="rounded-xl border border-rose-400/20 bg-rose-400/5 px-3 py-2 text-xs text-rose-200">{adminError}</p>}
+        {adminNotice && <p role="status" className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs text-emerald-200">{adminNotice}</p>}
+
+        {showCreateAdmin && (
+          <form onSubmit={handleCreateAdmin} className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/50 p-4 md:grid-cols-2">
+            <label className="space-y-1 text-xs font-semibold text-slate-300">
+              <span>{adminCopy.phone}</span>
+              <input
+                type="tel"
+                autoComplete="tel"
+                inputMode="tel"
+                value={newAdminPhone}
+                onChange={event => setNewAdminPhone(event.target.value)}
+                required
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-semibold text-slate-300">
+              <span>{adminCopy.password}</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                maxLength={128}
+                value={newAdminPassword}
+                onChange={event => setNewAdminPassword(event.target.value)}
+                required
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-semibold text-slate-300 md:col-span-2">
+              <span>{adminCopy.share}</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="100"
+                step="0.01"
+                value={newAdminSharePercent}
+                onChange={event => setNewAdminSharePercent(event.target.value)}
+                required
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300 md:max-w-xs"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              <button
+                type="submit"
+                disabled={adminSaving || configLock.locked}
+                className="min-h-10 rounded-xl bg-cyan-300 px-5 py-2 text-sm font-bold text-slate-950 transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {adminSaving ? '…' : adminCopy.save}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreateAdmin(false)}
+                disabled={adminSaving}
+                className="min-h-10 rounded-xl border border-slate-600 px-5 py-2 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-800 disabled:opacity-50"
+              >
+                {adminCopy.cancel}
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="space-y-2">
+          <h4 className="text-xs font-bold uppercase tracking-wide text-slate-400">{adminCopy.admins} ({managedAdmins.length})</h4>
+          {managedAdmins.length === 0 ? (
+            <p className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-3 text-xs text-slate-500">{adminCopy.empty}</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {managedAdmins.map(admin => (
+                <div key={admin.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-3">
+                  <span className="min-w-0 truncate text-sm font-semibold text-slate-200">{admin.phone}</span>
+                  <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/5 px-2.5 py-1 text-xs font-bold text-cyan-100">
+                    {typeof admin.adminSharePercent === 'number' ? String(admin.adminSharePercent) + '%' : adminCopy.notAssigned}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
       {/* 1. Configuration Lock (§3.5 & §3.6) */}
