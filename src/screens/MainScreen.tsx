@@ -150,7 +150,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             noResultsLabel={t.noProfessionMatch}
             allowClear
             labelClassName="px-0.5"
-            buttonClassName="rounded-lg border-slate-700/80 py-2 text-sm"
+            buttonClassName="min-h-14 rounded-lg border-slate-700/80 px-3 py-2.5 text-lg"
           />
 
           <div className="pt-1 grid grid-cols-1 gap-1.5">

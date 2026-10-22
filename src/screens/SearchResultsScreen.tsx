@@ -196,7 +196,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
             noResultsLabel={t.noProfessionMatch}
             allowClear
             className="flex-1"
-            buttonClassName="min-h-[38px] rounded-xl px-2.5 py-1.5 text-xs"
+            buttonClassName="min-h-14 rounded-xl px-3 py-2.5 text-lg"
           />
         </div>
       </div>
@@ -265,7 +265,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
                   {t.top15Badge} ({top15.length}/15)
                 </h3>
               </div>
-              <span className="text-[10px] text-slate-400 font-medium">
+              <span className="text-sm text-slate-300 font-medium">
                 {cities.find(c => c.id === cityId)?.name} • {professionDisplayNumber && `${professionDisplayNumber}. `}{professions.find(p => p.id === professionId)?.name}
               </span>
             </div>

@@ -220,15 +220,15 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
         {!reservation ? (
           <div className="space-y-3 bg-slate-900 border border-slate-800 rounded-3xl p-4">
             <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 space-y-1">
-              <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">
+              <span className="text-sm text-amber-300 font-bold uppercase tracking-wide block">
                 თქვენი რეგისტრაციის განყოფილება:
               </span>
-              <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-white">
+              <div className="flex min-w-0 flex-wrap items-center gap-3 text-base font-bold text-white">
                 <span className="min-w-0 break-words">{cities.find(c => c.id === cityId)?.name || '...'}</span>
                 <span aria-hidden="true" className="shrink-0 text-slate-500">•</span>
                 <ProfessionIcon professionId={professionId} size="sm" />
                 {professionDisplayNumber && (
-                  <span aria-hidden="true" className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-1 text-[10px] font-extrabold tabular-nums text-amber-300">
+                  <span aria-hidden="true" className="shrink-0 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-sm font-extrabold tabular-nums text-amber-300">
                     {professionDisplayNumber}
                   </span>
                 )}
