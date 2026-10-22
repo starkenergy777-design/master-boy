@@ -1,5 +1,6 @@
 import { Pool, PoolClient } from 'pg';
 import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, CraftsmanDraft, CraftsmanListing, ListingPrice, Profession, ProviderConfig, RecipientAccount, ConfigLock, Top15Membership, Top15Price, Top15Reservation, User } from './types.js';
+import { sortProfessionsByDemand } from './professionOrder.js';
 
 export type AiProvider = 'gemini' | 'openai';
 
@@ -138,7 +139,7 @@ export class StorageService {
     this.connected = true;
     return {
       cities: c.rows.map((r) => ({ id:r.id, name:local(r), isActive:r.is_active, lat:Number(r.lat), lng:Number(r.lng) })),
-      professions: p.rows.map((r) => ({ id:r.id, name:local(r) })),
+      professions: sortProfessionsByDemand(p.rows.map((r) => ({ id:r.id, name:local(r) }))),
     };
   }
 

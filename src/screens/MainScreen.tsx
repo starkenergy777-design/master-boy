@@ -7,6 +7,7 @@ import {
 import { translations } from '../i18n.js';
 import { City, Profession, Language, CraftsmanPublic, AdvertisementPublic } from '../types.js';
 import { api } from '../api.js';
+import { ProfessionPicker } from '../components/ProfessionPicker.js';
 
 interface MainScreenProps {
   lang: Language;
@@ -137,23 +138,20 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           </div>
 
           {/* Profession dropdown */}
-          <div className="space-y-1.5">
-            <label className="text-sm sm:text-[15px] font-semibold text-slate-300 px-0.5">
-              {t.selectProfession}
-            </label>
-            <select
-              value={selectedProfessionId}
-              onChange={(e) => setSelectedProfessionId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-            >
-              <option value="">{t.allProfessions}</option>
-              {professions.map((prof) => (
-                <option key={prof.id} value={prof.id}>
-                  {prof.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ProfessionPicker
+            professions={professions}
+            value={selectedProfessionId}
+            onChange={setSelectedProfessionId}
+            label={t.selectProfession}
+            ariaLabel={t.selectProfession}
+            placeholder={t.allProfessions}
+            allLabel={t.allProfessions}
+            searchPlaceholder={t.searchProfession}
+            noResultsLabel={t.noProfessionMatch}
+            allowClear
+            labelClassName="px-0.5"
+            buttonClassName="rounded-lg border-slate-700/80 py-2 text-sm"
+          />
 
           <div className="pt-1 grid grid-cols-1 gap-1.5">
             <button
@@ -253,4 +251,5 @@ export const MainScreen: React.FC<MainScreenProps> = ({
     </div>
   ));
 };
+
 
