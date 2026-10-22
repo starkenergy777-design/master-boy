@@ -427,11 +427,12 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     const hasProviderKey = provider === 'gemini'
       ? geminiStatus?.geminiConfigured
       : geminiStatus?.openaiConfigured;
-    if (!hasProviderKey) return;
+    const savedModel = provider === 'gemini' ? geminiStatus?.geminiModel : geminiStatus?.openaiModel;
+    if (!hasProviderKey || !savedModel) return;
 
     try {
       setLoading(true);
-      const updated = await api.updateAiProvider(provider);
+      const updated = await api.updateAiProvider(provider, undefined, savedModel);
       setGeminiStatus(updated);
       setSelectedAIProvider(updated.selectedProvider || provider);
       setSuccessMsg(aiCopy.selected);
