@@ -885,8 +885,11 @@ apiRouter.get('/search', (req, res) => {
   const lang = getLang(req);
   const cityId = req.query.cityId as string;
   const professionId = req.query.professionId as string;
-  const page = parseInt(req.query.page as string) || 1;
-  const size = Math.min(parseInt(req.query.size as string) || 20, 50);
+  // Keep pagination bounded: malformed or negative values must not alter offsets.
+  const requestedPage = Number(req.query.page);
+  const requestedSize = Number(req.query.size);
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const size = Number.isSafeInteger(requestedSize) && requestedSize > 0 ? Math.min(requestedSize, 50) : 20;
 
   db.runListingWorkers();
   let activeCraftsmen = Array.from(db.craftsmen.values()).filter(c => {
@@ -946,7 +949,7 @@ apiRouter.get('/search', (req, res) => {
     }
     return hash;
   }
-  regularList.sort((a, b) => get30MinHash(a.id, epoch30Min) - get30MinHash(b.id, epoch30Min));
+  regularList.sort((a, b) => get30MinHash(a.id, epoch30Min) - get30MinHash(b.id, epoch30Min) || a.id.localeCompare(b.id));
 
   const offset = (page - 1) * size;
   const paginatedItems = regularList.slice(offset, offset + size);
