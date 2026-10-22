@@ -131,12 +131,12 @@ function logProviderFailure(provider: AIProviderName, failure: AIProviderFailure
   );
 }
 
-export async function testGeminiKey(apiKey: string): Promise<AIProviderCheckResult> {
+export async function testGeminiKey(apiKey: string, model: string): Promise<AIProviderCheckResult> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const testAi = new GoogleGenAI({ apiKey });
     const testPromise = testAi.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model,
       contents: 'Reply only OK.',
       config: {
         maxOutputTokens: 16,
@@ -160,8 +160,7 @@ export async function testGeminiKey(apiKey: string): Promise<AIProviderCheckResu
   }
 }
 
-export async function testOpenAIKey(apiKey: string): Promise<AIProviderCheckResult> {
-  const model = process.env.OPENAI_MODEL || 'gpt-6-luna';
+export async function testOpenAIKey(apiKey: string, model: string): Promise<AIProviderCheckResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
   try {
@@ -206,7 +205,7 @@ export async function generateAIText(
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
       const requestBody: Record<string, unknown> = {
-        model: process.env.OPENAI_MODEL || 'gpt-6-luna',
+        model: db.providerConfig.ai.openaiModel || process.env.OPENAI_MODEL || (() => { throw new Error('OpenAI model is not configured.'); })(),
         instructions,
         input,
         store: false,
@@ -256,7 +255,7 @@ export async function generateAIText(
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const generatePromise = client.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: db.providerConfig.ai.geminiModel || process.env.GEMINI_MODEL || (() => { throw new Error('Gemini model is not configured.'); })(),
       contents: input,
       config: {
         ...(instructions ? { systemInstruction: instructions } : {}),
