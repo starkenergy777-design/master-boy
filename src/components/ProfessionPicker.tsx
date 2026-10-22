@@ -20,6 +20,7 @@ import {
   PlugZap,
   Search,
   Trash2,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { Profession } from '../types.js';
@@ -129,6 +130,7 @@ interface ProfessionPickerProps {
   allLabel: string;
   searchPlaceholder: string;
   noResultsLabel: string;
+  closeLabel: string;
   allowClear?: boolean;
   label?: string;
   labelClassName?: string;
@@ -145,6 +147,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
   allLabel,
   searchPlaceholder,
   noResultsLabel,
+  closeLabel,
   allowClear = false,
   label,
   labelClassName = '',
@@ -153,11 +156,13 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
   const pickerId = useId().replace(/:/g, '');
   const triggerId = `profession-trigger-${pickerId}`;
   const optionsId = `profession-options-${pickerId}`;
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const selectedProfession = professions.find((profession) => profession.id === value);
   const professionNumberById = useMemo(
     () => new Map<string, string>(professions.map((profession, index) => [profession.id, String(index + 1).padStart(2, '0')])),
@@ -168,6 +173,18 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
     if (!normalizedQuery) return professions;
     return professions.filter((profession) => profession.name.toLocaleLowerCase().includes(normalizedQuery));
   }, [professions, query]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 639px)');
+    const updateIsMobile = () => setIsMobile(mediaQuery.matches);
+    updateIsMobile();
+    mediaQuery.addEventListener('change', updateIsMobile);
+    return () => mediaQuery.removeEventListener('change', updateIsMobile);
+  }, []);
+
+  useEffect(() => {
+    if (open && isMobile) closeButtonRef.current?.focus();
+  }, [open, isMobile]);
 
   useEffect(() => {
     if (!open) return;
@@ -238,8 +255,28 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
       </button>
 
       {open && (
-        <div className="mt-2 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-xl shadow-black/40">
-          <div className="border-b border-slate-800 p-2">
+        <div
+          role="dialog"
+          aria-modal={isMobile ? true : undefined}
+          aria-label={label || ariaLabel}
+          className="fixed inset-0 z-[100] mx-auto flex min-h-0 w-full max-w-lg flex-col overflow-hidden bg-slate-950 p-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)] sm:static sm:z-auto sm:mt-2 sm:block sm:w-auto sm:max-w-none sm:rounded-xl sm:border sm:border-slate-700 sm:p-0 sm:shadow-xl sm:shadow-black/40"
+        >
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-1 pb-3 sm:hidden">
+            <h2 className="text-lg font-bold text-white">{label || ariaLabel}</h2>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              aria-label={closeLabel}
+              onClick={() => {
+                close();
+                triggerRef.current?.focus();
+              }}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-amber-400"
+            >
+              <X aria-hidden="true" className="h-6 w-6" />
+            </button>
+          </div>
+          <div className="shrink-0 border-b border-slate-800 p-2">
             <div className="relative">
               <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
               <input
@@ -252,7 +289,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
               />
             </div>
           </div>
-          <div id={optionsId} role="listbox" aria-label={ariaLabel} className="max-h-[60vh] overflow-y-auto overscroll-contain p-2">
+          <div id={optionsId} role="listbox" aria-label={ariaLabel} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 sm:max-h-[60vh] sm:flex-none">
             {allowClear && (
               <button
                 type="button"
