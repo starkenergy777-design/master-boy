@@ -3144,7 +3144,13 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
     else db.openAiApiKey = cleanKey;
   }
 
-  const verifiedAt = verification?.valid ? new Date().toISOString() : null;
+  // Preserve a previously verified connection when neither key nor model changed.
+  // Switching to a different provider requires a fresh verification.
+  const verifiedAt = verification?.valid
+    ? new Date().toISOString()
+    : (!cleanKey && selectedModel === currentModel && db.providerConfig.ai.selectedProvider === provider
+      ? db.providerConfig.ai.verifiedAt || null
+      : null);
   try {
     await storage.saveAiProviderSelection(provider, verifiedAt, selectedModel);
   } catch {
