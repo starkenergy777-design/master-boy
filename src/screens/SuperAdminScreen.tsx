@@ -415,33 +415,14 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     return () => window.clearInterval(timer);
   }, []);
 
-  const handleAiProviderChange = async (provider: 'gemini' | 'openai' | '') => {
-    const previousProvider = geminiStatus?.selectedProvider || '';
+  // Changing the form selection must not silently activate another provider.
+  // Activation happens only after the administrator explicitly saves the form.
+  const handleAiProviderChange = (provider: 'gemini' | 'openai' | '') => {
     setSelectedAIProvider(provider);
     setAiKeyInput('');
     setAiModelInput(provider === 'gemini' ? (geminiStatus?.geminiModel || '') : provider === 'openai' ? (geminiStatus?.openaiModel || '') : '');
     setErrorMsg('');
     setSuccessMsg('');
-    if (!provider || provider === previousProvider) return;
-
-    const hasProviderKey = provider === 'gemini'
-      ? geminiStatus?.geminiConfigured
-      : geminiStatus?.openaiConfigured;
-    const savedModel = provider === 'gemini' ? geminiStatus?.geminiModel : geminiStatus?.openaiModel;
-    if (!hasProviderKey || !savedModel) return;
-
-    try {
-      setLoading(true);
-      const updated = await api.updateAiProvider(provider, undefined, savedModel);
-      setGeminiStatus(updated);
-      setSelectedAIProvider(updated.selectedProvider || provider);
-      setSuccessMsg(aiCopy.selected);
-    } catch (err: any) {
-      setSelectedAIProvider(previousProvider);
-      setErrorMsg(err.message || aiCopy.invalid);
-    } finally {
-      setLoading(false);
-    }
   };
 
   // Save the selected provider's key, or activate its separately saved key.
