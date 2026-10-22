@@ -97,11 +97,12 @@ class Database {
     payment: [
       {
         id: 'prov-bog',
-        name: 'საქართველოს ბანკი (Bank of Georgia iPay)',
+        name: 'საქართველოს ბანკი (Bank of Georgia Payment Manager)',
         apiKeyMasked: 'not configured',
         clientId: process.env.BOG_MERCHANT_ID || '',
         secretKey: process.env.BOG_SECRET || '',
-        isActive: !!(process.env.BOG_MERCHANT_ID && process.env.BOG_SECRET),
+        // Credentials alone do not mean a live gateway adapter is integrated.
+        isActive: false,
       },
       {
         id: 'prov-tbc',
@@ -1188,4 +1189,5 @@ export function verifyPassword(password: string, stored: string | undefined): bo
 }
 
 export const db = new Database();
+
 

@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 const read = (f) => fs.readFileSync(f, 'utf8');
 const routes = read('server/routes.ts');
 const db = read('server/db.ts');
+const storage = read('server/storage.ts');
+const server = read('server.ts');
 const seed = read('migrations/002_seed_data.sql');
 const cityOrderMigration = read('migrations/006_georgian_alphabetical_city_order.sql');
 const main = read('src/screens/MainScreen.tsx');
@@ -13,6 +15,10 @@ const sim = read('role-simulation.mjs');
 const wizard = read('src/screens/RegistrationWizard.tsx');
 const top15 = read('src/screens/Top15Screen.tsx');
 const superAdmin = read('src/screens/SuperAdminScreen.tsx');
+const topBar = read('src/components/TopAppBar.tsx');
+const supportChat = read('src/screens/SupportChatScreen.tsx');
+const adminDashboard = read('src/screens/AdminDashboard.tsx');
+const packageJson = JSON.parse(read('package.json'));
 
 const checks = [];
 function check(name, fn) { try { fn(); checks.push(`PASS: ${name}`); } catch (e) { checks.push(`FAIL: ${name} — ${e.message}`); } }
@@ -23,7 +29,7 @@ check('customer is anonymous on public search', () => {
   assert.match(routes, /apiRouter\.get\('\/professions'/);
 });
 check('customer registration is not required', () => assert.match(main, /You do not need an account to find a craftsman/));
-check('all role matrix simulation is present', () => assert.match(sim, /ALL ROLE SIMULATIONS PASSED/));
+check('live HTTP role and payment simulations are present', () => assert.match(sim, /ALL HTTP ROLE AND PAYMENT SIMULATIONS PASSED/));
 check('ad partner role is protected', () => {
   assert.match(routes, /function requireAdPartner/);
   assert.match(routes, /apiRouter\.get\('\/partner\/ad', requireAdPartner/);
@@ -139,8 +145,40 @@ check('ad payment records do not misuse the craftsman foreign key', () => {
 check('super admin is told that saving payment credentials does not enable charges', () => {
   assert.match(superAdmin, /saving credentials does not enable charges/i);
 });
+check('production cannot mark a payment provider active from stored metadata', () => {
+  assert.match(storage, /process\.env\.NODE_ENV === 'production' \? \{ isActive: false \}/);
+  assert.match(db, /Credentials alone do not mean a live gateway adapter is integrated/);
+});
+check('production payment toggle is disabled in the superadmin UI', () => assert.match(superAdmin, /disabled=\{loading \|\| configLock\.locked \|\| import\.meta\.env\.PROD\}/));
+check('rate limiting uses Render forwarded client IP and validates it', () => {
+  assert.match(routes, /req\.header\('X-Forwarded-For'\)/);
+  assert.match(routes, /isIP\(value\)/);
+  assert.doesNotMatch(routes, /req\.ip/);
+});
+check('both health endpoints query durable storage instead of trusting stale state', () => {
+  assert.match(storage, /async checkDatabaseHealth\(\)/);
+  assert.match(storage, /client\.query\('SELECT 1'\)/);
+  assert.match(server, /await storage\.checkDatabaseHealth\(\)/);
+  assert.match(routes, /await storage\.checkDatabaseHealth\(\)/);
+});
+check('agent snapshot and superadmin persistence status perform a live database probe', () => {
+  assert.match(routes, /async function buildSuperAdminAgentAuditSnapshot\(\)/);
+  assert.match(routes, /currentAdminSnapshot: await buildSuperAdminAgentAuditSnapshot\(\)/);
+  assert.match(routes, /apiRouter\.get\('\/admin\/persistence\/status', requireSuperAdmin, async/);
+});
+check('craftsman deletion handles drafts by map key and nullable payment owner safely', () => {
+  assert.match(routes, /filter\(\(\[userId\]\) => userIds\.has\(userId\)\)/);
+  assert.match(routes, /payment\.craftsmanId !== null && craftsmanIds\.has\(payment\.craftsmanId\)/);
+});
+check('AI user interface identifies the selected provider and does not promise continuous audits', () => {
+  assert.match(topBar, /subtitle: t\.supportSubtitle/);
+  assert.match(supportChat, /select and configure an AI provider/i);
+  assert.match(adminDashboard, /does not continuously audit payments/);
+});
+check('production build runs TypeScript checks before bundling', () => assert.match(packageJson.scripts.build, /typecheck[\s\S]*vite build/));
 
 const failed = checks.filter(x => x.startsWith('FAIL:'));
 console.log(checks.join('\n'));
 console.log(`AUDIT_RESULT: ${failed.length ? 'FAILED' : 'PASSED'} (${checks.length - failed.length}/${checks.length})`);
 process.exitCode = failed.length ? 1 : 0;
+

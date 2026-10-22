@@ -212,7 +212,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       invalid: 'გასაღები უარყოფილია. გადაამოწმე მისი სისწორე და შერჩეულ მოდელზე წვდომა.',
       saveFailed: 'AI პარამეტრები ვერ შეინახა. გადაამოწმე მონაცემთა ბაზის განახლება.',
       adminTools: 'ადმინისტრირების ინსტრუმენტები',
-      note: 'ორივე მხარდაჭერილი AI პროვაიდერი ხელმისაწვდომია. აირჩიე სასურველი პროვაიდერი მხარდაჭერის ჩატისა და ავტომატური ანგარიშებისთვის.',
+      note: 'ორივე მხარდაჭერილი AI პროვაიდერი გამოდგება ხელოსნების მხარდაჭერის ჩატისა და მოთხოვნისამებრ ანგარიშების მოსამზადებლად.',
       processing: 'მხარდაჭერის შეტყობინებები დასამუშავებლად არჩეულ AI პროვაიდერს ეგზავნება.',
       billing: 'OpenAI API-ის გამოყენების საფასური ChatGPT-ის გამოწერისგან ცალკეა.'
     },
@@ -234,7 +234,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       invalid: 'Ключ отклонён. Проверьте его и доступ к выбранной модели.',
       saveFailed: 'Не удалось сохранить настройки ИИ. Проверьте обновление базы данных.',
       adminTools: 'Инструменты администрирования',
-      note: 'Оба поддерживаемых провайдера ИИ доступны для чата поддержки мастеров и автоматических отчётов. Выберите подходящий вариант.',
+      note: 'Оба поддерживаемых провайдера ИИ подходят для чата поддержки мастеров и подготовки отчётов по запросу.',
       processing: 'Сообщения поддержки отправляются выбранному провайдеру ИИ для обработки.',
       billing: 'Использование OpenAI API оплачивается отдельно от подписки ChatGPT.'
     },
@@ -256,7 +256,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       invalid: 'The API key was rejected. Check that it is valid and has access to the selected model.',
       saveFailed: 'AI settings could not be saved. Check the database migration and try again.',
       adminTools: 'Administration tools',
-      note: 'Both supported AI providers are available for craftsman support chat and automated reports. Choose the option you prefer.',
+      note: 'Both supported AI providers can power craftsman support chat and prepare reports when requested. Choose the option you prefer.',
       processing: 'Support messages are sent to the selected AI provider for processing.',
       billing: 'OpenAI API usage is billed separately from a ChatGPT subscription.'
     },
@@ -1492,14 +1492,14 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => handleToggleProviderActive(prov)}
-                    disabled={loading || configLock.locked}
+                    disabled={loading || configLock.locked || import.meta.env.PROD}
                     className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors ${
                       prov.isActive
                         ? 'bg-rose-950/40 text-rose-300 border-rose-800 hover:bg-rose-900'
                         : 'bg-emerald-950/40 text-emerald-300 border-emerald-800 hover:bg-emerald-900'
                     }`}
                   >
-                    {prov.isActive ? 'გათიშვა' : 'ჩართვა'}
+                    {import.meta.env.PROD ? 'ინტეგრაცია მზად არ არის' : prov.isActive ? 'გათიშვა' : 'ჩართვა'}
                   </button>
 
                   <button
@@ -1948,4 +1948,5 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     </div>
   ));
 };
+
 

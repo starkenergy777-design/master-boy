@@ -62,7 +62,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
       case 'chat':
         return {
           title: t.supportChat,
-          subtitle: 'Gemini AI Assistant',
+          subtitle: t.supportSubtitle,
         };
       case 'admin':
         return {
@@ -162,3 +162,4 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
     </div>
   ));
 };
+
