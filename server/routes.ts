@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import { isIP } from 'node:net';
 import { db, verifyPassword, hashPassword } from './db.js';
 import { storage } from './storage.js';
 import {
@@ -30,6 +31,20 @@ const OTP_TTL_MS = 5 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 const MAX_RATE_BUCKETS = 10_000;
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIp(req: Request): string {
+  // Render forwards the originating client address in X-Forwarded-For.
+  // Validate the address before using it in a limiter key; fall back to the
+  // socket address when the header is absent or malformed.
+  const forwardedFor = req.header('X-Forwarded-For');
+  if (forwardedFor) {
+    const forwardedAddresses = forwardedFor.split(',').map(value => value.trim());
+    const clientAddress = forwardedAddresses.find(value => isIP(value));
+    if (clientAddress) return clientAddress;
+  }
+  const socketAddress = req.socket.remoteAddress || '';
+  return isIP(socketAddress) ? socketAddress : 'unknown';
+}
 
 function rateLimit(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
@@ -516,7 +531,7 @@ async function runSuperAdminAgentAction(req: AuthRequest, plan: any, secretValue
 }
 
 
-function buildSuperAdminAgentAuditSnapshot() {
+async function buildSuperAdminAgentAuditSnapshot() {
   const now = Date.now();
   const capturedAt = new Date(now).toISOString();
   const countBy = (items: any[], keyFor: (item: any) => unknown) => items.reduce((counts: Record<string, number>, item) => {
@@ -582,6 +597,7 @@ function buildSuperAdminAgentAuditSnapshot() {
   const sortedPriceRows = [...priceRows].sort((a, b) => a.amountMinor - b.amountMinor);
   const recipient = db.recipientAccount || {};
   const activePaymentProviders = paymentProviders.filter((provider: any) => Boolean(provider.isActive));
+  await storage.checkDatabaseHealth();
   const storageStatus = storage.getStatus();
   const missingSetup: string[] = [];
   if (!db.providerConfig.ai.configured) missingSetup.push('AI პროვაიდერი არჩეული ან მისი გასაღები დადასტურებული არ არის');
@@ -832,9 +848,9 @@ function checkConfigLock(req: Request, res: Response, next: NextFunction) {
 // ==========================================
 
 // GET /health
-apiRouter.get('/health', (req, res) => {
+apiRouter.get('/health', async (req, res) => {
   const durableRequired = process.env.NODE_ENV === 'production' && process.env.REQUIRE_DURABLE_STORAGE !== 'false';
-  const durableReady = storage.getStatus().databaseConnected;
+  const durableReady = await storage.checkDatabaseHealth();
   if (durableRequired && !durableReady) {
     return res.status(503).json({ status: 'NOT_READY', service: 'MASTER_BOY API Server', version: 'v1.4.0', durableStorage: false });
   }
@@ -1008,7 +1024,9 @@ apiRouter.post('/auth/otp/request', (req, res) => {
   if (!phone || typeof phone !== 'string') {
     return res.status(400).json({ code: 'INVALID_PHONE', message: 'E.164 phone number required' });
   }
-  if (!rateLimit(`otp:${req.ip}:${phone.trim()}`, 5, 15 * 60 * 1000)) {
+  const normalizedPhone = phone.trim();
+  if (!rateLimit(`otp:${getClientIp(req)}:${normalizedPhone}`, 5, 15 * 60 * 1000) ||
+      !rateLimit(`otp-phone:${normalizedPhone}`, 20, 15 * 60 * 1000)) {
     return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many OTP requests. Try again later.' });
   }
 
@@ -1088,8 +1106,10 @@ apiRouter.post('/auth/otp/verify', (req, res) => {
 // POST /auth/password/login (§16.1 bootstrap & Craftsman/Admin Phone+Password, also /auth/login and /auth/phone/login)
 apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (req, res) => {
   const { phone, password } = req.body;
-  const loginKey = `login:${req.ip}:${String(phone || '').trim()}`;
-  if (!rateLimit(loginKey, 10, 15 * 60 * 1000)) {
+  const normalizedPhone = String(phone || '').trim();
+  const loginKey = `login:${getClientIp(req)}:${normalizedPhone}`;
+  if (!rateLimit(loginKey, 10, 15 * 60 * 1000) ||
+      (normalizedPhone && !rateLimit(`login-phone:${normalizedPhone}`, 20, 15 * 60 * 1000))) {
     return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many login attempts. Try again later.' });
   }
   if (!phone || !password) {
@@ -2292,7 +2312,7 @@ apiRouter.get('/admin/reports', requireAdmin, (req, res) => {
   });
 });
 
-// POST /admin/reports/generate (autonomous report generator)
+// POST /admin/reports/generate (report generation on administrator request)
 apiRouter.post('/admin/reports/generate', requireAdmin, async (req: AuthRequest, res) => {
   const requestedType = req.body?.type ?? 'RECOMMENDATIONS';
   if (typeof requestedType !== 'string' || !['ACCOUNTING', 'RECOMMENDATIONS', 'HEALTH'].includes(requestedType)) {
@@ -2500,12 +2520,14 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
     .filter(([id]) => userIds.has(id))
     .map(([id, item]) => [id, { ...item }] as const);
   const previousCraftsmen = targetCraftsmen.map(item => [item.id, item] as const);
-  const previousDrafts = Array.from(db.craftsmanDrafts.entries()).filter(([, draft]) => userIds.has(draft.userId));
+  // Drafts are keyed by user ID; CraftsmanDraft intentionally contains only
+  // wizard data, so use the map key when collecting rows for rollback.
+  const previousDrafts = Array.from(db.craftsmanDrafts.entries()).filter(([userId]) => userIds.has(userId));
   const previousListings = Array.from(db.craftsmanListings.entries()).filter(([, listing]) => craftsmanIds.has(listing.craftsmanId));
   const previousReservations = Array.from(db.top15Reservations.entries()).filter(([, reservation]) => craftsmanIds.has(reservation.craftsmanId));
   const previousMemberships = Array.from(db.top15Memberships.entries()).filter(([, membership]) => craftsmanIds.has(membership.craftsmanId));
   const previousPayments = Array.from(db.paymentIntents.entries())
-    .filter(([, payment]) => craftsmanIds.has(payment.craftsmanId))
+    .filter(([, payment]) => payment.craftsmanId !== null && craftsmanIds.has(payment.craftsmanId))
     .map(([id, payment]) => [id, { ...payment }] as const);
   const previousSessions = Array.from(db.sessions.entries()).filter(([, session]) => userIds.has(session.userId));
   const previousSupportMessages = db.supportMessages;
@@ -2765,7 +2787,7 @@ The input includes currentAdminSnapshot, a server-built snapshot of the same liv
 - Every amountMinor value is in tetri (100 tetri = 1 GEL). Convert it to GEL before writing amounts for the administrator, and separate recorded results from estimates.
 - The snapshot contains operational summaries, catalog labels, price tables, and configuration-presence flags only. It does not contain raw API keys, passwords, IBANs, tax numbers, personal phone numbers, or unlock credentials. Never ask for or expose those values in an audit; recommend that the superadministrator enter missing values in the protected settings form.
 - If no payment provider is active, recommend the first provider for which the superadministrator has a merchant agreement and working integration details. If more than one is available, compare them neutrally using confirmed fees, settlement terms, and integration readiness; do not present Bank of Georgia or TBC as the default. Do not invent fees or claim a gateway is working from credentials alone. In production, distinguish configuration from real gateway processing: the current server blocks payment routes until a real gateway integration is implemented.
-- A supported AI provider must be explicitly selected; never assume Gemini or another provider is the default. AI provider keys are required for AI chat and automated reports. SMS verification is not required for craftsman registration. A zero listing price makes craftsman registration free, but does not by itself enable paid Top 15 transactions.
+- A supported AI provider must be explicitly selected; never assume Gemini or another provider is the default. AI provider keys are required for AI chat and administrator-requested reports. SMS verification is not required for craftsman registration. A zero listing price makes craftsman registration free, but does not by itself enable paid Top 15 transactions.
 The routes /admin/masters and /admin/dashboard do not exist. This route catalog overrides route names in old chat history or API data.
 The saved administrator rules, which you must follow for every turn:
 ${safeRules || '(No additional administrator rules have been saved.)'}
@@ -2778,7 +2800,7 @@ Only use /admin/... routes, one action per response. Never return Markdown outsi
     for (let round = 0; round < 5; round += 1) {
       const input = JSON.stringify({
         recentConversation: conversation,
-        currentAdminSnapshot: buildSuperAdminAgentAuditSnapshot(),
+        currentAdminSnapshot: await buildSuperAdminAgentAuditSnapshot(),
         completedAdminActions: actions,
         remainingAdminActions: Math.max(0, 4 - actions.length),
       });
@@ -3233,7 +3255,8 @@ apiRouter.get('/admin/payment/recipient-account', requireSuperAdmin, (req, res) 
 // PUT /admin/me/phone — staff administrators can update their own login phone
 apiRouter.put('/admin/me/phone', requireStaffAdmin, async (req: AuthRequest, res) => {
   const user = req.user!;
-  if (!rateLimit('admin-phone-change:' + req.ip + ':' + user.id, 10, 15 * 60 * 1000)) {
+  if (!rateLimit('admin-phone-change:' + getClientIp(req) + ':' + user.id, 10, 15 * 60 * 1000) ||
+      !rateLimit('admin-phone-change-user:' + user.id, 10, 15 * 60 * 1000)) {
     return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many attempts. Try again later.' });
   }
   const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
@@ -3286,7 +3309,8 @@ apiRouter.put('/admin/me/phone', requireStaffAdmin, async (req: AuthRequest, res
 // PUT /admin/me/password — staff administrators can update their own password
 apiRouter.put('/admin/me/password', requireStaffAdmin, async (req: AuthRequest, res) => {
   const user = req.user!;
-  if (!rateLimit('admin-password-change:' + req.ip + ':' + user.id, 10, 15 * 60 * 1000)) {
+  if (!rateLimit('admin-password-change:' + getClientIp(req) + ':' + user.id, 10, 15 * 60 * 1000) ||
+      !rateLimit('admin-password-change-user:' + user.id, 10, 15 * 60 * 1000)) {
     return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many attempts. Try again later.' });
   }
   const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
@@ -3823,7 +3847,7 @@ apiRouter.post('/partner/accept-terms', requireAdPartner, async (req: AuthReques
   res.json({ success: true, ad: safeAdvertisement(ad) });
 });
 
-// POST /partner/pay (Bank of Georgia iPay payment for 30 days)
+// POST /partner/pay (disabled in production until a verified gateway is integrated)
 apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) => {
   if (!requireRealPaymentIntegration(res)) return;
   const ad = getAdByPartnerPhone(req.user!.phone);
@@ -3943,7 +3967,8 @@ apiRouter.put('/partner/ad', requireAdPartner, async (req: AuthRequest, res) => 
 });
 
 // GET /admin/persistence/status
-apiRouter.get('/admin/persistence/status', requireSuperAdmin, (req, res) => {
+apiRouter.get('/admin/persistence/status', requireSuperAdmin, async (req, res) => {
+  await storage.checkDatabaseHealth();
   res.json({
     ...storage.getStatus(),
     lastCheck: new Date().toISOString(),
@@ -3958,4 +3983,5 @@ apiRouter.get('/admin/persistence/status', requireSuperAdmin, (req, res) => {
     },
   });
 });
+
 
