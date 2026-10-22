@@ -148,6 +148,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             allLabel={t.allProfessions}
             searchPlaceholder={t.searchProfession}
             noResultsLabel={t.noProfessionMatch}
+            closeLabel={t.close}
             allowClear
             labelClassName="px-0.5"
             buttonClassName="min-h-14 rounded-lg border-slate-700/80 px-3 py-2.5 text-lg"
