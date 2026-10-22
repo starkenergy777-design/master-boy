@@ -362,9 +362,9 @@ function agentProviderFailureReply(language: string, code: string, actionsComple
       en: 'The selected AI model is unavailable to this key. Check model access with the provider.',
     },
     AI_PROVIDER_RATE_LIMITED: {
-      ka: 'AI პროვაიდერის მოთხოვნების სიჩქარის ზღვარი ამოიწურა. ცოტა მოიცადე და სცადე ხელახლა.',
-      ru: 'Превышен предел частоты запросов к ИИ-провайдеру. Подождите и попробуйте снова.',
-      en: 'The AI provider rate limit was reached. Wait briefly, then try again.',
+      ka: 'არჩეული AI პროვაიდერის მოთხოვნების ლიმიტი ამოიწურა (429). მოთხოვნა ავტომატურად აღარ მეორდება. გადაამოწმე პროვაიდერის API limits და გამოყენება; თუ მეორე გასაღებიც შენახულია, აირჩიე ის.',
+      ru: 'Достигнут лимит запросов выбранного ИИ-провайдера (429). Повторной отправки не будет. Проверьте лимиты API и использование; если ключ второго провайдера сохранён, выберите его.',
+      en: 'The selected AI provider reached its request limit (429). The request will not be retried automatically. Check the provider API limits and usage, or select the other provider if its key is saved.',
     },
     AI_PROVIDER_QUOTA_EXCEEDED: {
       ka: 'AI პროვაიდერის პროექტის კვოტა ამოიწურა. გადაამოწმე გამოყენების ლიმიტი და ბილინგი პროვაიდერთან.',
@@ -3047,41 +3047,81 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
   if (cleanKey.length > 512 || /[\r\n]/.test(cleanKey)) {
     return res.status(400).json({ code: 'INVALID_KEY', message: 'API key format is invalid.' });
   }
-  const nextGeminiKey = provider === 'gemini' && cleanKey ? cleanKey : db.geminiApiKey;
-  const nextOpenAiKey = provider === 'openai' && cleanKey ? cleanKey : db.openAiApiKey;
-  const selectedKey = provider === 'gemini' ? nextGeminiKey : nextOpenAiKey;
+
+  const currentKey = provider === 'gemini' ? db.geminiApiKey : db.openAiApiKey;
+  const selectedKey = cleanKey || currentKey;
   if (!selectedKey) {
     return res.status(400).json({ code: 'AI_KEY_REQUIRED', message: 'Enter an API key for the selected provider first.' });
   }
 
-  const verification = provider === 'gemini'
-    ? await testGeminiKey(selectedKey)
-    : await testOpenAIKey(selectedKey);
-  if (!verification.valid) {
-    const code = aiProviderFailureCode(verification.failure);
-    return res.status(aiProviderFailureStatus(verification.failure)).json({
-      code,
-      message: 'The selected AI provider could not verify this connection.',
+  let verification: Awaited<ReturnType<typeof testGeminiKey>> | null = null;
+  if (cleanKey) {
+    verification = provider === 'gemini'
+      ? await testGeminiKey(cleanKey)
+      : await testOpenAIKey(cleanKey);
+  }
+
+  if (verification && !verification.valid) {
+    const failure = verification.failure;
+    const code = aiProviderFailureCode(failure);
+    const canSaveUnverifiedKey = !currentKey && (failure.kind === 'unavailable' || failure.kind === 'rate_limited');
+
+    if (!canSaveUnverifiedKey) {
+      return res.status(aiProviderFailureStatus(failure)).json({
+        code,
+        message: 'The selected AI provider could not verify this connection. The existing saved key was kept unchanged.',
+      });
+    }
+
+    try {
+      await storage.saveAiProviderKey(provider, cleanKey);
+    } catch {
+      console.error('Could not persist an unverified AI provider key to the restricted Supabase secrets table.');
+      return res.status(503).json({ code: 'AI_SETTINGS_PERSIST_FAILED', message: 'AI settings could not be saved. Check that the latest database migration is installed.' });
+    }
+
+    if (provider === 'gemini') db.geminiApiKey = cleanKey;
+    else db.openAiApiKey = cleanKey;
+    db.providerConfig.ai.geminiConfigured = Boolean(db.geminiApiKey);
+    db.providerConfig.ai.openaiConfigured = Boolean(db.openAiApiKey);
+    db.auditLog.unshift({
+      id: `audit-${Date.now()}`,
+      actorType: 'USER',
+      actorId: req.user!.id,
+      action: 'SAVE_AI_PROVIDER_KEY',
+      targetType: 'SYSTEM',
+      reason: `Super Admin saved a ${provider === 'gemini' ? 'Gemini' : 'OpenAI'} API key while provider verification was temporarily unavailable.`,
+      createdAt: new Date().toISOString(),
+    });
+    await db.persistSuperAdminConfig();
+    return res.json({
+      ...db.providerConfig.ai,
+      keySaved: true,
+      providerVerified: false,
+      providerSelected: db.providerConfig.ai.selectedProvider === provider,
+      verificationFailureCode: code,
     });
   }
 
-  const verifiedAt = new Date().toISOString();
-  const settings = {
-    selectedProvider: provider,
-    geminiApiKey: nextGeminiKey,
-    openAiApiKey: nextOpenAiKey,
-    verifiedAt,
-  } as const;
-
-  try {
-    await storage.saveAiProviderSettings(settings);
-  } catch (error) {
-    console.error('Could not persist AI provider settings to the restricted Supabase secrets table.');
-    return res.status(503).json({ code: 'AI_SETTINGS_PERSIST_FAILED', message: 'AI settings could not be saved. Check that the latest database migration is installed.' });
+  if (cleanKey) {
+    try {
+      await storage.saveAiProviderKey(provider, cleanKey);
+    } catch {
+      console.error('Could not persist an AI provider key to the restricted Supabase secrets table.');
+      return res.status(503).json({ code: 'AI_SETTINGS_PERSIST_FAILED', message: 'AI settings could not be saved. Check that the latest database migration is installed.' });
+    }
+    if (provider === 'gemini') db.geminiApiKey = cleanKey;
+    else db.openAiApiKey = cleanKey;
   }
 
-  if (provider === 'gemini' && cleanKey) db.geminiApiKey = cleanKey;
-  if (provider === 'openai' && cleanKey) db.openAiApiKey = cleanKey;
+  const verifiedAt = verification?.valid ? new Date().toISOString() : null;
+  try {
+    await storage.saveAiProviderSelection(provider, verifiedAt);
+  } catch {
+    console.error('Could not persist the selected AI provider to Supabase.');
+    return res.status(503).json({ code: 'AI_SETTINGS_PERSIST_FAILED', message: 'The key was saved but the selected AI provider could not be updated.' });
+  }
+
   resetAiClient();
   db.providerConfig.ai.selectedProvider = provider;
   db.providerConfig.ai.geminiConfigured = Boolean(db.geminiApiKey);
@@ -3089,20 +3129,27 @@ apiRouter.put('/admin/providers/ai', requireSuperAdmin, checkConfigLock, async (
   db.providerConfig.ai.configured = Boolean(selectedKey);
   db.providerConfig.ai.provider = provider === 'gemini' ? 'Google Gemini' : 'OpenAI API';
   db.providerConfig.ai.verifiedAt = verifiedAt;
-  db.providerConfig.ai.lastCallOk = true;
+  db.providerConfig.ai.lastCallOk = Boolean(verifiedAt);
 
   db.auditLog.unshift({
     id: `audit-${Date.now()}`,
     actorType: 'USER',
     actorId: req.user!.id,
-    action: 'CONFIGURE_AI_PROVIDER',
+    action: cleanKey ? 'CONFIGURE_AI_PROVIDER' : 'SELECT_AI_PROVIDER',
     targetType: 'SYSTEM',
-    reason: `Super Admin verified and selected ${provider === 'gemini' ? 'Gemini' : 'OpenAI'} for AI features.`,
-    createdAt: verifiedAt,
+    reason: cleanKey
+      ? `Super Admin verified and selected ${provider === 'gemini' ? 'Gemini' : 'OpenAI'} for AI features.`
+      : `Super Admin selected the saved ${provider === 'gemini' ? 'Gemini' : 'OpenAI'} provider for AI features.`,
+    createdAt: new Date().toISOString(),
   });
 
   await db.persistSuperAdminConfig();
-  res.json(db.providerConfig.ai);
+  res.json({
+    ...db.providerConfig.ai,
+    keySaved: Boolean(cleanKey),
+    providerVerified: Boolean(verifiedAt),
+    providerSelected: true,
+  });
 });
 
 // GET /admin/providers/ai/status
