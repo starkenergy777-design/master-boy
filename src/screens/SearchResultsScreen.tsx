@@ -4,6 +4,7 @@ import { Star, Phone, EyeOff, Search, Clock, Users, ChevronDown, ChevronUp } fro
 import { translations } from '../i18n.js';
 import { Language, CraftsmanPublic, City, Profession } from '../types.js';
 import { api } from '../api.js';
+import { ProfessionPicker } from '../components/ProfessionPicker.js';
 
 interface SearchResultsScreenProps {
   lang: Language;
@@ -183,18 +184,19 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
             ))}
           </select>
 
-          <select
+          <ProfessionPicker
+            professions={professions}
             value={professionId}
-            onChange={(e) => handleFilterChange(cityId, e.target.value)}
-            className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-          >
-            <option value="">{t.selectProfession}...</option>
-            {professions.map((pr) => (
-              <option key={pr.id} value={pr.id}>
-                {pr.name}
-              </option>
-            ))}
-          </select>
+            onChange={(nextProfessionId) => handleFilterChange(cityId, nextProfessionId)}
+            ariaLabel={t.selectProfession}
+            placeholder={`${t.selectProfession}...`}
+            allLabel={t.allProfessions}
+            searchPlaceholder={t.searchProfession}
+            noResultsLabel={t.noProfessionMatch}
+            allowClear
+            className="flex-1"
+            buttonClassName="min-h-[38px] rounded-xl px-2.5 py-1.5 text-xs"
+          />
         </div>
       </div>
 
@@ -361,4 +363,5 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
     </div>
   ));
 };
+
 
