@@ -102,20 +102,30 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
       }
     }
 
+    const copyWithFallback = () => {
+      const textArea = document.createElement('textarea');
+      textArea.value = url;
+      textArea.setAttribute('readonly', '');
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      try {
+        textArea.select();
+        if (!document.execCommand('copy')) throw new Error('Clipboard copy failed');
+      } finally {
+        textArea.remove();
+      }
+    };
+
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch {
+          copyWithFallback();
+        }
       } else {
-        const textArea = document.createElement('textarea');
-        textArea.value = url;
-        textArea.setAttribute('readonly', '');
-        textArea.style.position = 'fixed';
-        textArea.style.opacity = '0';
-        document.body.appendChild(textArea);
-        textArea.select();
-        const copied = document.execCommand('copy');
-        textArea.remove();
-        if (!copied) throw new Error('Clipboard copy failed');
+        copyWithFallback();
       }
       setCopiedLink(true);
       window.setTimeout(() => setCopiedLink(false), 2500);
