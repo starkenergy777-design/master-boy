@@ -4,7 +4,7 @@ import { Star, Phone, EyeOff, Search, Clock, Users, ChevronDown, ChevronUp } fro
 import { translations } from '../i18n.js';
 import { Language, CraftsmanPublic, City, Profession } from '../types.js';
 import { api } from '../api.js';
-import { ProfessionPicker } from '../components/ProfessionPicker.js';
+import { getProfessionDisplayNumber, ProfessionPicker } from '../components/ProfessionPicker.js';
 
 interface SearchResultsScreenProps {
   lang: Language;
@@ -31,6 +31,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [cityId, setCityId] = useState(initialCityId || '');
   const [professionId, setProfessionId] = useState(initialProfessionId || '');
+  const professionDisplayNumber = getProfessionDisplayNumber(professions, professionId);
   const [showOtherCraftsmen, setShowOtherCraftsmen] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [filterError, setFilterError] = useState('');
@@ -265,7 +266,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
                 </h3>
               </div>
               <span className="text-[10px] text-slate-400 font-medium">
-                {cities.find(c => c.id === cityId)?.name} • {professions.find(p => p.id === professionId)?.name}
+                {cities.find(c => c.id === cityId)?.name} • {professionDisplayNumber && `${professionDisplayNumber}. `}{professions.find(p => p.id === professionId)?.name}
               </span>
             </div>
 
