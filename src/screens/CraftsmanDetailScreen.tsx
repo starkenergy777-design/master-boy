@@ -1,4 +1,4 @@
-import { localizeInlineText, localizeTree } from '../i18n.js';
+import { localizeTree } from '../i18n.js';
 import React, { useState } from 'react';
 import { ArrowLeft, Phone, MapPin, Clock, ShieldCheck, Star, EyeOff, Info, Share2, MessageSquare, Check, MessageCircle } from 'lucide-react';
 import { translations } from '../i18n.js';
@@ -20,6 +20,7 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
   const t = translations[lang] || translations.ka;
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [shareError, setShareError] = useState(false);
 
   const photos = craftsman.photos && craftsman.photos.length > 0
     ? craftsman.photos
@@ -81,6 +82,9 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
 
   const handleShare = async () => {
     const url = window.location.href;
+    setCopiedLink(false);
+    setShareError(false);
+
     if (navigator.share) {
       try {
         await navigator.share({
@@ -93,19 +97,32 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
           url,
         });
         return;
-      } catch (e) {
-        // Fallback to clipboard
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
       }
     }
+
     try {
-      await navigator.clipboard.writeText(url);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        const copied = document.execCommand('copy');
+        textArea.remove();
+        if (!copied) throw new Error('Clipboard copy failed');
+      }
       setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
-    } catch (e) {
-      // ignore
+      window.setTimeout(() => setCopiedLink(false), 2500);
+    } catch {
+      setShareError(true);
     }
   };
-
   return localizeTree(lang, (
     <div className="flex-1 flex flex-col p-4 pb-28 space-y-4 animate-fade-in text-slate-100">
       {/* Top Breadcrumb & Share */}
@@ -126,6 +143,8 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
         </div>
 
         <button
+          type="button"
+          aria-label={t.shareProfile}
           onClick={handleShare}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors text-xs font-semibold shadow-sm"
           title={t.shareProfile}
@@ -136,8 +155,13 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
       </div>
 
       {copiedLink && (
-        <div className="bg-emerald-950/80 border border-emerald-800/80 text-emerald-400 text-xs py-2 px-3 rounded-xl text-center font-medium animate-scale-up">
+        <div role="status" className="bg-emerald-950/80 border border-emerald-800/80 text-emerald-400 text-xs py-2 px-3 rounded-xl text-center font-medium animate-scale-up">
           ✓ {t.linkCopied}
+        </div>
+      )}
+      {shareError && (
+        <div role="alert" className="bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs py-2 px-3 rounded-xl text-center">
+          {lang === 'ka' ? 'ბმულის გაზიარება ვერ მოხერხდა. სცადეთ ხელახლა.' : lang === 'ru' ? 'Не удалось поделиться ссылкой. Попробуйте ещё раз.' : 'Could not share the link. Please try again.'}
         </div>
       )}
 
@@ -267,30 +291,6 @@ export const CraftsmanDetailScreen: React.FC<CraftsmanDetailScreenProps> = ({
           </p>
         </div>
 
-        {/* Bank Account (IBAN) */}
-        {craftsman.bankAccount && (
-          <div className="pt-2 border-t border-slate-800/80">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center justify-between">
-              <span>საბანკო ანგარიში (IBAN)</span>
-              <span className="text-amber-400 font-mono text-[10px]">საქართველოს ბანკი</span>
-            </h3>
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
-              <span className="font-mono text-xs text-amber-300 font-bold tracking-wider select-all">
-                {craftsman.bankAccount}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard?.writeText(craftsman.bankAccount || '');
-                  alert(localizeInlineText(lang, 'ანგარიშის ნომერი დაკოპირდა!'));
-                }}
-                className="text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-lg border border-amber-500/30 transition-colors shrink-0"
-              >
-                კოპირება
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Working Hours (§7.1) */}
