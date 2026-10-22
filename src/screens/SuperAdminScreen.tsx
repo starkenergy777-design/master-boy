@@ -204,8 +204,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       chooseProvider: 'ჯერ აირჩიე AI პროვაიდერი.',
       key: 'API გასაღები',
       placeholder: 'ჩასვი გასაღები — შენახვის შემდეგ ველი გასუფთავდება',
-      save: 'შემოწმება და შენახვა',
+      save: 'გასაღების შენახვა / პროვაიდერის არჩევა',
       saved: 'AI პროვაიდერი შემოწმდა და პარამეტრები Supabase-ში უსაფრთხოდ შეინახა.',
+      savedUnverified: 'API გასაღები დაცულად შეინახა, მაგრამ პროვაიდერთან კავშირის შემოწმება დროებით ვერ დასრულდა. გასაღები ცალკეა შენახული; მისი გამოყენებისთვის პროვაიდერი აირჩიე.',
+      selected: 'შენახული პროვაიდერი არჩეულია. ჩატი ამ პროვაიდერის ცალკე შენახულ გასაღებს გამოიყენებს.',
       required: 'არჩეული პროვაიდერის API გასაღები ჯერ უნდა დაამატო.',
       invalid: 'გასაღები უარყოფილია. გადაამოწმე მისი სისწორე და შერჩეულ მოდელზე წვდომა.',
       saveFailed: 'AI პარამეტრები ვერ შეინახა. გადაამოწმე მონაცემთა ბაზის განახლება.',
@@ -224,8 +226,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       chooseProvider: 'Сначала выберите провайдера ИИ.',
       key: 'API-ключ',
       placeholder: 'Вставьте ключ — поле очистится после сохранения',
-      save: 'Проверить и сохранить',
+      save: 'Сохранить ключ / выбрать провайдера',
       saved: 'Провайдер ИИ проверен, настройки безопасно сохранены в Supabase.',
+      savedUnverified: 'API-ключ сохранён безопасно, но временно не удалось проверить подключение к провайдеру. Ключ сохранён отдельно; выберите провайдера, чтобы использовать его.',
+      selected: 'Сохранённый провайдер выбран. Чат будет использовать его отдельный API-ключ.',
       required: 'Сначала добавьте API-ключ выбранного провайдера.',
       invalid: 'Ключ отклонён. Проверьте его и доступ к выбранной модели.',
       saveFailed: 'Не удалось сохранить настройки ИИ. Проверьте обновление базы данных.',
@@ -244,8 +248,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       chooseProvider: 'Choose an AI provider first.',
       key: 'API key',
       placeholder: 'Paste the key; this field clears after saving',
-      save: 'Verify and save',
+      save: 'Save key / select provider',
       saved: 'AI provider verified and settings saved securely in Supabase.',
+      savedUnverified: 'The API key was saved securely, but the provider could not be checked right now. The key is stored separately; select that provider to use it.',
+      selected: 'The saved provider is selected. The chat will use its separately stored API key.',
       required: 'Add an API key for the selected provider first.',
       invalid: 'The API key was rejected. Check that it is valid and has access to the selected model.',
       saveFailed: 'AI settings could not be saved. Check the database migration and try again.',
@@ -407,7 +413,34 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     return () => window.clearInterval(timer);
   }, []);
 
-  // Verify and save the selected AI provider. The key is cleared from the form afterwards.
+  const handleAiProviderChange = async (provider: 'gemini' | 'openai' | '') => {
+    const previousProvider = geminiStatus?.selectedProvider || '';
+    setSelectedAIProvider(provider);
+    setAiKeyInput('');
+    setErrorMsg('');
+    setSuccessMsg('');
+    if (!provider || provider === previousProvider) return;
+
+    const hasProviderKey = provider === 'gemini'
+      ? geminiStatus?.geminiConfigured
+      : geminiStatus?.openaiConfigured;
+    if (!hasProviderKey) return;
+
+    try {
+      setLoading(true);
+      const updated = await api.updateAiProvider(provider);
+      setGeminiStatus(updated);
+      setSelectedAIProvider(updated.selectedProvider || provider);
+      setSuccessMsg(aiCopy.selected);
+    } catch (err: any) {
+      setSelectedAIProvider(previousProvider);
+      setErrorMsg(err.message || aiCopy.invalid);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Save the selected provider's key, or activate its separately saved key.
   const handleSaveAiProvider = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAIProvider) {
@@ -428,7 +461,16 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       const res = await api.updateAiProvider(selectedAIProvider, aiKeyInput.trim() || undefined);
       setGeminiStatus(res);
       setAiKeyInput('');
-      setSuccessMsg(aiCopy.saved);
+      if (res.providerVerified) {
+        setSelectedAIProvider(res.selectedProvider || selectedAIProvider);
+        setSuccessMsg(aiCopy.saved);
+      } else if (res.keySaved && !res.providerSelected) {
+        setSelectedAIProvider(res.selectedProvider || '');
+        setSuccessMsg(aiCopy.savedUnverified);
+      } else {
+        setSelectedAIProvider(res.selectedProvider || selectedAIProvider);
+        setSuccessMsg(aiCopy.selected);
+      }
     } catch (err: any) {
       const errorCode = err.code || err.data?.code;
       if (err.status === 423) {
@@ -1043,8 +1085,9 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           <div className="space-y-1">
             <label className="text-[10px] text-slate-400">{aiCopy.provider}</label>
             <select
+              disabled={loading || configLock.locked}
               value={selectedAIProvider}
-              onChange={(e) => setSelectedAIProvider(e.target.value as 'gemini' | 'openai' | '')}
+              onChange={(e) => { void handleAiProviderChange(e.target.value as 'gemini' | 'openai' | ''); }}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
             >
               <option value="" disabled>{aiCopy.chooseProvider}</option>
