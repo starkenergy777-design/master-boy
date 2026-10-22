@@ -1,0 +1,20 @@
+name: Verify Master Boy
+on:
+  pull_request:
+    branches: [codex/master-boy-supabase-render]
+  push:
+    branches: [fix/verified-issues-ai-model-selection-20261022]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run audit
