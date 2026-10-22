@@ -24,28 +24,34 @@ export const MainScreen: React.FC<MainScreenProps> = ({
   const [selectedCityId, setSelectedCityId] = useState<string>('');
   const [selectedProfessionId, setSelectedProfessionId] = useState<string>('');
   const [activeAd, setActiveAd] = useState<AdvertisementPublic | null>(null);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setLoadError('');
+      const [citiesData, professionsData, adData] = await Promise.all([
+        api.getCities(),
+        api.getProfessions(),
+        api.getActiveAd().catch(() => ({ ad: null })),
+      ]);
+      setCities(citiesData);
+      setProfessions(professionsData);
+      setActiveAd(adData?.ad || null);
+    } catch (err) {
+      console.error('Failed to load initial directory data:', err);
+      setLoadError(lang === 'ka'
+        ? 'ქალაქებისა და პროფესიების სია ვერ ჩაიტვირთა.'
+        : lang === 'ru'
+          ? 'Не удалось загрузить список городов и профессий.'
+          : 'Could not load the city and profession lists.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        const [citiesData, professionsData, adData] = await Promise.all([
-          api.getCities(),
-          api.getProfessions(),
-          api.getActiveAd().catch(() => ({ ad: null })),
-        ]);
-        setCities(citiesData);
-        setProfessions(professionsData);
-        if (adData?.ad) {
-          setActiveAd(adData.ad);
-        }
-      } catch (err) {
-        console.error('Failed to load initial directory data:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
     loadData();
   }, [lang]);
 
@@ -116,6 +122,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                 <button
                   key={c.id}
                   type="button"
+                  aria-pressed={selectedCityId === c.id}
                   onClick={() => handleQuickCity(c.id)}
                   className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
                     selectedCityId === c.id
@@ -150,6 +157,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
 
           <div className="pt-1 grid grid-cols-1 gap-1.5">
             <button
+              type="button"
               onClick={handleSearchClick}
               className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold py-2.5 px-4 rounded-lg shadow-sm shadow-amber-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-sm"
             >
@@ -158,6 +166,20 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             </button>
           </div>
         </div>
+
+        {loadError && (
+          <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 flex items-center justify-between gap-3 text-xs text-rose-300">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={loadData}
+              disabled={loading}
+              className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
+            >
+              {loading ? '...' : lang === 'ka' ? 'სცადეთ ხელახლა' : lang === 'ru' ? 'Повторить' : 'Try again'}
+            </button>
+          </div>
+        )}
 
         <div className="mb-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2">
           <p className="text-xs leading-relaxed text-slate-400">
