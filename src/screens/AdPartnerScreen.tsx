@@ -292,7 +292,7 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
         </label>
       </div>
 
-      {/* 2. Bank of Georgia iPay Payment Block */}
+      {/* 2. Advertisement package payment block */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3.5 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -484,4 +484,5 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
     </div>
   ));
 };
+
 
