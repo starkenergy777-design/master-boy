@@ -351,6 +351,7 @@ export default function App() {
               currentUser={currentUser}
               onBack={goBack}
               onOpenSuperAdmin={() => pushScreen('superadmin', 'craftsman')}
+              onUserUpdated={setCurrentUser}
             />
           )}
 
