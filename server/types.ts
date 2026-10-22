@@ -148,6 +148,7 @@ export interface User {
   roles: Role[];
   status: 'ACTIVE' | 'BLOCKED' | 'DELETED';
   createdAt: string;
+  adminSharePercent?: number | null;
 }
 
 export interface Top15Price {
