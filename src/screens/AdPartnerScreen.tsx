@@ -76,6 +76,7 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
   const daysRemaining = ad?.expires_at
     ? Math.max(0, Math.ceil((new Date(ad.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
+  const adPriceLabel = Number(ad?.price_gel ?? 50).toFixed(2);
 
   // Handle Terms Agreement
   const handleToggleTerms = async () => {
@@ -86,7 +87,12 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
         await api.acceptPartnerTerms();
         setSuccessMsg('სარეკლამო პოლიტიკის წესებზე თანხმობა დაფიქსირებულია.');
       } catch (err: any) {
-        setErrorMsg(err.message || 'თანხმობის დაფიქსირება ვერ მოხერხდა');
+        setTermsAccepted(false);
+        setErrorMsg(err.message || (lang === 'ka'
+          ? 'თანხმობის დაფიქსირება ვერ მოხერხდა'
+          : lang === 'ru'
+            ? 'Не удалось сохранить согласие.'
+            : 'Could not save your agreement.'));
       }
     }
   };
@@ -126,8 +132,20 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
       if (res?.ad) {
         setAd(res.ad);
       }
-      setSuccessMsg(res.message || 'გადახდა წარმატებით შესრულდა (საქართველოს ბანკი). პაკეტი გააქტიურებულია!');
-      loadAd();
+      if (res?.success !== true) {
+        setErrorMsg(lang === 'ka'
+          ? 'გადახდა სერვერს არ დაუდასტურებია.'
+          : lang === 'ru'
+            ? 'Сервер не подтвердил оплату.'
+            : 'The server did not confirm the payment.');
+        return;
+      }
+      setSuccessMsg(res.message || (lang === 'ka'
+        ? 'გადახდა დადასტურდა და პაკეტი გააქტიურდა.'
+        : lang === 'ru'
+          ? 'Оплата подтверждена, пакет активирован.'
+          : 'Payment confirmed and package activated.'));
+      await loadAd();
     } catch (err: any) {
       setErrorMsg(err.message || 'გადახდის შესრულება ვერ მოხერხდა');
     } finally {
@@ -296,7 +314,7 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
             </p>
           )}
           <span className="text-sm font-black font-mono text-white bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
-            {Number(ad?.price_gel || 50).toFixed(2)} GEL
+            {adPriceLabel} GEL
           </span>
         </div>
 
@@ -316,8 +334,17 @@ export const AdPartnerScreen: React.FC<AdPartnerScreenProps> = ({
               : !termsAccepted
               ? 'ჯერ დაეთანხმეთ სარეკლამო წესებს'
               : isPaidAndActive
-              ? ('პაკეტის განახლება / +' + String((ad as any)?.days_duration || 30) + ' დღის დამატება (' + String(ad?.price_gel || 50) + ' GEL)')
-              : ('გადახდა ბარათით (' + String(ad?.price_gel || 50) + ' GEL / ' + String((ad as any)?.days_duration || 30) + ' დღე)')}
+                ? (lang === 'ka'
+                  ? `პაკეტის განახლება / +${String((ad as any)?.days_duration || 30)} დღის დამატება (${adPriceLabel} GEL)`
+                  : lang === 'ru'
+                    ? `Продлить пакет / +${String((ad as any)?.days_duration || 30)} дней (${adPriceLabel} GEL)`
+                    : `Renew package / +${String((ad as any)?.days_duration || 30)} days (${adPriceLabel} GEL)`)
+                : (lang === 'ka'
+                  ? `გადახდა ბარათით (${adPriceLabel} GEL / ${String((ad as any)?.days_duration || 30)} დღე)`
+                  : lang === 'ru'
+                    ? `Оплатить картой (${adPriceLabel} GEL / ${String((ad as any)?.days_duration || 30)} дн.)`
+                    : `Pay by card (${adPriceLabel} GEL / ${String((ad as any)?.days_duration || 30)} days)`)}
+
           </span>
         </button>
       </div>
