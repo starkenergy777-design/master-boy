@@ -3101,7 +3101,7 @@ apiRouter.get('/admin/admins', requireSuperAdmin, (req, res) => {
 apiRouter.post('/admin/admins', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
   const { phone, password, adminSharePercent: rawSharePercent } = req.body || {};
   const normalizedPhone = typeof phone === 'string' ? phone.trim().replace(/[()\s.-]/g, '') : '';
-  const sharePercent = typeof rawSharePercent === 'number' ? rawSharePercent : Number(rawSharePercent);
+  const sharePercent = rawSharePercent;
 
   if (!/^\+?\d{8,15}$/.test(normalizedPhone)) {
     return res.status(400).json({ code: 'INVALID_PHONE', message: 'Enter a valid phone number.' });
@@ -3110,8 +3110,8 @@ apiRouter.post('/admin/admins', requireSuperAdmin, checkConfigLock, async (req: 
     return res.status(400).json({ code: 'INVALID_PASSWORD', message: 'Password must be between 12 and 128 characters.' });
   }
   const shareCents = Math.round(sharePercent * 100);
-  if (rawSharePercent === '' || rawSharePercent === null || rawSharePercent === undefined ||
-      !Number.isFinite(sharePercent) || sharePercent < 0 || sharePercent > 100 ||
+  if (typeof rawSharePercent !== 'number' || !Number.isFinite(sharePercent) ||
+      sharePercent < 0 || sharePercent > 100 ||
       Math.abs(sharePercent * 100 - shareCents) > 1e-7) {
     return res.status(400).json({ code: 'INVALID_ADMIN_SHARE', message: 'Company share must be between 0 and 100 with up to two decimal places.' });
   }
