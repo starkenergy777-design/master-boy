@@ -284,3 +284,56 @@
     transform: none;
   }
 }
+
+
+/* Yellow tactile action buttons and green selected cabinet tabs. */
+.superadmin-dashboard button,
+.admin-console button,
+.craftsman-dashboard button,
+.adpartner-dashboard button {
+  color: #1f2937;
+  background-color: #facc15;
+  background-image: linear-gradient(180deg, #fde68a 0%, #facc15 58%, #eab308 100%);
+  border-color: rgba(161, 98, 7, 0.48);
+  box-shadow:
+    0 2px 0 rgba(161, 98, 7, 0.44),
+    0 4px 9px rgba(2, 6, 23, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.superadmin-dashboard button[data-cabinet-tab="true"][aria-pressed="true"],
+.admin-console button[data-cabinet-tab="true"][aria-pressed="true"],
+.craftsman-dashboard button[data-cabinet-tab="true"][aria-pressed="true"],
+.adpartner-dashboard button[data-cabinet-tab="true"][aria-pressed="true"] {
+  color: #052e16;
+  background-color: #22c55e;
+  background-image: linear-gradient(180deg, #86efac 0%, #4ade80 58%, #22c55e 100%);
+  border-color: rgba(21, 128, 61, 0.6);
+  box-shadow:
+    0 2px 0 rgba(21, 128, 61, 0.42),
+    0 4px 9px rgba(2, 6, 23, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.superadmin-dashboard button:not(:disabled):hover,
+.admin-console button:not(:disabled):hover,
+.craftsman-dashboard button:not(:disabled):hover,
+.adpartner-dashboard button:not(:disabled):hover {
+  filter: brightness(1.035);
+  transform: translateY(-1px);
+  box-shadow:
+    0 3px 0 rgba(161, 98, 7, 0.46),
+    0 6px 12px rgba(2, 6, 23, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.superadmin-dashboard button:not(:disabled):active,
+.admin-console button:not(:disabled):active,
+.craftsman-dashboard button:not(:disabled):active,
+.adpartner-dashboard button:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow:
+    0 1px 0 rgba(161, 98, 7, 0.42),
+    0 2px 4px rgba(2, 6, 23, 0.14),
+    inset 0 1px 2px rgba(2, 6, 23, 0.12);
+}
