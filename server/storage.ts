@@ -223,6 +223,33 @@ export class StorageService {
     this.connected = true;
   }
 
+  async saveAiProviderKey(provider: AiProvider, apiKey: string): Promise<void> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') return;
+    const keyField = provider === 'gemini' ? 'geminiApiKey' : 'openAiApiKey';
+    await this.db().query(
+      `INSERT INTO public.server_secrets AS existing (secret_name, secret_value, updated_at)
+       VALUES ('ai_provider', $1::jsonb, NOW())
+       ON CONFLICT (secret_name) DO UPDATE
+       SET secret_value=COALESCE(existing.secret_value, '{}'::jsonb) || EXCLUDED.secret_value,
+           updated_at=NOW()`,
+      [JSON.stringify({ [keyField]: apiKey })]
+    );
+    this.connected = true;
+  }
+
+  async saveAiProviderSelection(provider: AiProvider, verifiedAt: string | null): Promise<void> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') return;
+    await this.db().query(
+      `INSERT INTO public.server_secrets AS existing (secret_name, secret_value, updated_at)
+       VALUES ('ai_provider', $1::jsonb, NOW())
+       ON CONFLICT (secret_name) DO UPDATE
+       SET secret_value=COALESCE(existing.secret_value, '{}'::jsonb) || EXCLUDED.secret_value,
+           updated_at=NOW()`,
+      [JSON.stringify({ selectedProvider: provider, verifiedAt })]
+    );
+    this.connected = true;
+  }
+
   async saveSuperAdminConfig(config: SuperAdminPersistedConfig): Promise<{ success:boolean; database:boolean; snapshot:boolean; error?:string }> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return { success:false,database:false,snapshot:false };
     let client: PoolClient | null = null;
