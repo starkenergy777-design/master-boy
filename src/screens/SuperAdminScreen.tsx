@@ -1085,6 +1085,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           <div className="space-y-1">
             <label className="text-[10px] text-slate-400">{aiCopy.provider}</label>
             <select
+              disabled={loading || configLock.locked}
               value={selectedAIProvider}
               onChange={(e) => { void handleAiProviderChange(e.target.value as 'gemini' | 'openai' | ''); }}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
