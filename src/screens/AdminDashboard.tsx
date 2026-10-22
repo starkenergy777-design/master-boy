@@ -693,7 +693,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           <div className="admin-console-note rounded-2xl p-4 text-xs text-slate-300">
-            All accounting and ledger verification is automatically audited by AI_ADMIN (Gemini).
+            AI can prepare accounting and ledger reports when requested; it does not continuously audit payments.
           </div>
         </div>
       )}
@@ -1047,4 +1047,5 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   ));
 };
+
 
