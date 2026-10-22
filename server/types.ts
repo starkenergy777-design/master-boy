@@ -255,6 +255,8 @@ export interface ProviderConfig {
     selectedProvider: 'gemini' | 'openai' | null;
     geminiConfigured: boolean;
     openaiConfigured: boolean;
+    geminiModel?: string;
+    openaiModel?: string;
   };
 }
 
