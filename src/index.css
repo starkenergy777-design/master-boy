@@ -204,3 +204,83 @@
     border-radius: 1.25rem;
   }
 }
+
+
+/* Shared button treatment across every role cabinet.
+   Preserve each cabinet's color system while giving actions a consistent framed, tactile control. */
+.superadmin-dashboard button,
+.admin-console button,
+.craftsman-dashboard button,
+.adpartner-dashboard button {
+  border: 1px solid color-mix(in srgb, currentColor 32%, rgba(148, 163, 184, 0.52));
+  border-radius: 0.875rem;
+  box-shadow:
+    0 3px 0 rgba(2, 6, 23, 0.88),
+    0 7px 14px rgba(2, 6, 23, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+
+.superadmin-dashboard button:not(:disabled):hover,
+.admin-console button:not(:disabled):hover,
+.craftsman-dashboard button:not(:disabled):hover,
+.adpartner-dashboard button:not(:disabled):hover {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+  box-shadow:
+    0 4px 0 rgba(2, 6, 23, 0.88),
+    0 9px 17px rgba(2, 6, 23, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.superadmin-dashboard button:not(:disabled):active,
+.admin-console button:not(:disabled):active,
+.craftsman-dashboard button:not(:disabled):active,
+.adpartner-dashboard button:not(:disabled):active {
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 0 rgba(2, 6, 23, 0.9),
+    0 2px 5px rgba(2, 6, 23, 0.22),
+    inset 0 1px 2px rgba(2, 6, 23, 0.2);
+}
+
+.superadmin-dashboard button:focus-visible,
+.admin-console button:focus-visible,
+.craftsman-dashboard button:focus-visible,
+.adpartner-dashboard button:focus-visible {
+  outline: 2px solid rgba(103, 232, 249, 0.82);
+  outline-offset: 2px;
+}
+
+.superadmin-dashboard button:disabled,
+.admin-console button:disabled,
+.craftsman-dashboard button:disabled,
+.adpartner-dashboard button:disabled {
+  cursor: not-allowed;
+  box-shadow: 0 1px 3px rgba(2, 6, 23, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .superadmin-dashboard button,
+  .admin-console button,
+  .craftsman-dashboard button,
+  .adpartner-dashboard button {
+    transition: none;
+  }
+
+  .superadmin-dashboard button:not(:disabled):hover,
+  .admin-console button:not(:disabled):hover,
+  .craftsman-dashboard button:not(:disabled):hover,
+  .adpartner-dashboard button:not(:disabled):hover,
+  .superadmin-dashboard button:not(:disabled):active,
+  .admin-console button:not(:disabled):active,
+  .craftsman-dashboard button:not(:disabled):active,
+  .adpartner-dashboard button:not(:disabled):active {
+    transform: none;
+  }
+}
