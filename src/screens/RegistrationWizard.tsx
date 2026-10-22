@@ -366,8 +366,8 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
                 allLabel={t.allProfessions}
                 searchPlaceholder={t.searchProfession}
                 noResultsLabel={t.noProfessionMatch}
-                labelClassName="px-1 text-[11px] font-medium text-slate-400"
-                buttonClassName="rounded-xl border-slate-700 bg-slate-900 px-3 py-2.5 text-xs"
+                labelClassName="px-1 text-sm font-medium text-slate-300"
+                buttonClassName="min-h-14 rounded-xl border-slate-700 bg-slate-900 px-3 py-2.5 text-lg"
               />
             </div>
 
