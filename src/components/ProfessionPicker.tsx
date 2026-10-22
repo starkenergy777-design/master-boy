@@ -102,7 +102,7 @@ interface ProfessionIconProps {
 export const ProfessionIcon: React.FC<ProfessionIconProps> = ({ professionId, size = 'md' }) => {
   const Icon = professionIcons[professionId];
   const CustomGlyph = customProfessionGlyphs[professionId];
-  const sizeClassName = size === 'sm' ? 'h-8 w-8 rounded-lg' : 'h-9 w-9 rounded-xl';
+  const sizeClassName = size === 'sm' ? 'h-11 w-11 rounded-xl' : 'h-12 w-12 rounded-2xl';
 
   return (
     <span
@@ -110,11 +110,11 @@ export const ProfessionIcon: React.FC<ProfessionIconProps> = ({ professionId, si
       className={`flex shrink-0 items-center justify-center overflow-hidden border border-amber-500/25 bg-amber-500/10 ${sizeClassName}`}
     >
       {CustomGlyph ? (
-        <CustomGlyph className="h-[18px] w-[18px] max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
+        <CustomGlyph className="h-6 w-6 max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
       ) : Icon ? (
-        <Icon className="h-[18px] w-[18px] max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
+        <Icon className="h-6 w-6 max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
       ) : (
-        <BriefcaseBusiness className="h-[18px] w-[18px] max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
+        <BriefcaseBusiness className="h-6 w-6 max-h-full max-w-full shrink-0 text-amber-300" strokeWidth={2} />
       )}
     </span>
   );
@@ -217,54 +217,54 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
         aria-expanded={open}
         aria-controls={optionsId}
         onClick={() => setOpen((current) => !current)}
-        className={`flex w-full min-w-0 items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white transition-colors hover:border-amber-500/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${buttonClassName}`}
+        className={`flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-base text-white transition-colors hover:border-amber-500/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${buttonClassName}`}
       >
         {selectedProfession ? (
           <ProfessionIcon professionId={selectedProfession.id} size="sm" />
         ) : (
-          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-amber-300">
-            <BriefcaseBusiness className="h-4 w-4" />
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-amber-300">
+            <BriefcaseBusiness className="h-6 w-6" />
           </span>
         )}
         {selectedProfession && (
-          <span aria-hidden="true" className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-1 text-[10px] font-extrabold tabular-nums text-amber-300">
+          <span aria-hidden="true" className="shrink-0 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-sm font-extrabold tabular-nums text-amber-300">
             {professionNumberById.get(selectedProfession.id)}
           </span>
         )}
-        <span className="min-w-0 flex-1 break-words text-left leading-snug">
+        <span className="min-w-0 flex-1 break-words text-left text-lg font-semibold leading-snug">
           {selectedProfession?.name || (allowClear ? allLabel : placeholder)}
         </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div className="mt-2 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-xl shadow-black/40">
           <div className="border-b border-slate-800 p-2">
             <div className="relative">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
               <input
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 aria-label={searchPlaceholder}
                 placeholder={searchPlaceholder}
-                className="w-full rounded-lg border border-slate-800 bg-slate-900 py-2 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-amber-500"
+                className="w-full rounded-lg border border-slate-800 bg-slate-900 py-3 pl-10 pr-3 text-base text-white outline-none placeholder:text-slate-500 focus:border-amber-500"
               />
             </div>
           </div>
-          <div id={optionsId} role="listbox" aria-label={ariaLabel} className="max-h-60 overflow-y-auto overscroll-contain p-1.5">
+          <div id={optionsId} role="listbox" aria-label={ariaLabel} className="max-h-[60vh] overflow-y-auto overscroll-contain p-2">
             {allowClear && (
               <button
                 type="button"
                 role="option"
                 aria-selected={!value}
                 onClick={() => selectProfession('')}
-                className={`flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-amber-400 ${!value ? 'bg-emerald-500/10 text-emerald-100' : 'text-slate-200 hover:bg-slate-800'}`}
+                className={`flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-left text-base transition-colors focus-visible:outline-2 focus-visible:outline-amber-400 ${!value ? 'bg-emerald-500/10 text-emerald-100' : 'text-slate-200 hover:bg-slate-800'}`}
               >
-                <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300">
-                  <BriefcaseBusiness className="h-4 w-4" />
+                <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-300">
+                  <BriefcaseBusiness className="h-6 w-6" />
                 </span>
-                <span className="min-w-0 flex-1 break-words leading-snug">{allLabel}</span>
+                <span className="min-w-0 flex-1 break-words text-lg font-medium leading-snug">{allLabel}</span>
                 {!value && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-300" />}
               </button>
             )}
@@ -278,14 +278,14 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
                   role="option"
                   aria-selected={selected}
                   onClick={() => selectProfession(profession.id)}
-                  className={`flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-amber-400 ${selected ? 'bg-emerald-500/10 text-emerald-100' : 'text-slate-200 hover:bg-slate-800'}`}
+                  className={`flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-left text-base transition-colors focus-visible:outline-2 focus-visible:outline-amber-400 ${selected ? 'bg-emerald-500/10 text-emerald-100' : 'text-slate-200 hover:bg-slate-800'}`}
                 >
                   <ProfessionIcon professionId={profession.id} size="sm" />
-                  <span aria-hidden="true" className="w-7 shrink-0 rounded-md border border-slate-700 bg-slate-900 px-1 py-1 text-center text-[10px] font-extrabold tabular-nums text-slate-300">
+                  <span aria-hidden="true" className="w-10 shrink-0 rounded-lg border border-slate-700 bg-slate-900 px-1.5 py-2 text-center text-sm font-extrabold tabular-nums text-slate-200">
                     {displayNumber}
                   </span>
-                  <span className="min-w-0 flex-1 break-words leading-snug">{profession.name}</span>
-                  {selected && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-300" />}
+                  <span className="min-w-0 flex-1 break-words text-lg font-medium leading-snug">{profession.name}</span>
+                  {selected && <Check aria-hidden="true" className="h-5 w-5 shrink-0 text-emerald-300" />}
                 </button>
               );
             })}
