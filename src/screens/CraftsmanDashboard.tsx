@@ -202,7 +202,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   if (loading) {
     return localizeTree(lang, (
-      <div className="flex-1 flex items-center justify-center text-slate-400">
+      <div className="craftsman-dashboard flex-1 flex items-center justify-center text-slate-400">
         <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
       </div>
     ));
@@ -210,7 +210,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   if (profileLoadError) {
     return localizeTree(lang, (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center text-slate-100">
+      <div className="craftsman-dashboard flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center text-slate-100">
         <p role="alert" className="max-w-sm text-sm text-rose-300">{profileLoadError}</p>
         <button
           type="button"
@@ -224,7 +224,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   }
 
   return localizeTree(lang, (
-    <div className="flex-1 flex flex-col p-4 pb-20 space-y-4 animate-fade-in text-slate-100">
+    <div className="craftsman-dashboard flex-1 flex flex-col p-4 pb-20 space-y-4 animate-fade-in text-slate-100">
       {/* Craftsman Header with Listing Status Badge */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
