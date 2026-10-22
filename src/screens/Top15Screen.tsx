@@ -294,23 +294,25 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
 
               <div className="space-y-2">
                 {providers.map((prov) => (
-                  <div
+                  <button
+                    type="button"
                     key={prov.id}
+                    aria-pressed={selectedProviderId === prov.id}
                     onClick={() => setSelectedProviderId(prov.id)}
-                    className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                    className={`w-full text-left p-3 rounded-xl border flex items-center justify-between transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
                       selectedProviderId === prov.id
                         ? 'bg-amber-500/10 border-amber-500 text-white'
                         : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <span className="flex items-center gap-2.5">
                       <CreditCard className="w-4 h-4 text-amber-400" />
                       <span className="text-xs font-semibold">{prov.name}</span>
-                    </div>
+                    </span>
                     {selectedProviderId === prov.id && (
-                      <span className="w-2 h-2 rounded-full bg-amber-400" />
+                      <span aria-hidden="true" className="w-2 h-2 rounded-full bg-amber-400" />
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
