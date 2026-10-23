@@ -2774,7 +2774,7 @@ apiRouter.post('/admin/agent/chat', requireSuperAdmin, async (req: AuthRequest, 
     failedTranscript = conversation;
     // Ordinary questions use a small, plain-text request. Keep the existing
     // validated admin-action workflow for explicit administrative commands.
-    const explicitAdminCommand = /(?:^|[\\s,.;!?])(?:შეცვალე|დაამატე|წაშალე|დაბლოკე|განბლოკე|გააქტიურე|გამორთე|ჩართე|დააყენე|შეინახე|განაახლე|გაუქმე|შექმენი|შეასრულე|შეასწორე|დაარედაქტირე|change|update|delete|remove|create|add|block|unblock|enable|disable|set|save|execute|измен[иь]|удал[иь]|добав[ьи]|заблокируй|разблокируй|включи|выключи|создай|сохрани)(?=$|[\\s,.;!?])/i.test(message);
+    const explicitAdminCommand = /(?:^|[\s,.;!?])(?:შეცვალე|დაამატე|წაშალე|დაბლოკე|განბლოკე|გააქტიურე|გამორთე|ჩართე|დააყენე|შეინახე|განაახლე|გაუქმე|შექმენი|შეასრულე|შეასწორე|დაარედაქტირე|change|update|delete|remove|create|add|block|unblock|enable|disable|set|save|execute|измен[иь]|удал[иь]|добав[ьи]|заблокируй|разблокируй|включи|выключи|создай|сохрани)(?=$|[\s,.;!?])/i.test(message);
     if (!explicitAdminCommand) {
       const conversationInstructions = `You are the private assistant for the MASTER_BOY superadministrator.
 Reply in the language of the user's latest question (Georgian, Russian, or English). Respond with natural plain text, not JSON.
@@ -2786,7 +2786,7 @@ Saved administrator rules:
 ${safeRules || '(No additional administrator rules have been saved.)'}`;
       const plainReply = await generateAIText(redacted.text, conversationInstructions, false);
       const hiddenSecretLabel = responseLanguage === 'ru' ? '[скрыто]' : responseLanguage === 'en' ? '[hidden]' : '[დამალულია]';
-      const finalReply = plainReply.replace(/\\{\\{SECRET_\\d+\\}\\}/g, hiddenSecretLabel).slice(0, 4000);
+      const finalReply = plainReply.replace(/\{\{SECRET_\d+\}\}/g, hiddenSecretLabel).slice(0, 4000);
       const assistantMessage = { role: 'assistant' as const, content: finalReply, createdAt: new Date().toISOString() };
       const updated = await storage.saveSuperAdminAgentSettings({
         ...settings,
