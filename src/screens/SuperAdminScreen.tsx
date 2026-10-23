@@ -701,7 +701,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     e.preventDefault();
     setTop15Error(''); setTop15Notice('');
     const amount = Number(top15PriceGEL);
-    if (!top15CityId || !top15ProfessionId || !top15PriceGEL.trim() || !Number.isFinite(amount) || amount <= 0 || !/^\\d+(?:\\.\\d{1,2})?$/.test(top15PriceGEL.trim())) {
+    if (!top15CityId || !top15ProfessionId || !top15PriceGEL.trim() || !Number.isFinite(amount) || amount <= 0 || !/^\d+(?:\.\d{1,2})?$/.test(top15PriceGEL.trim())) {
       setTop15Error('აირჩიე ქალაქი, პროფესია და დადებითი ფასი, მაქსიმუმ ორი ათწილადით.'); return;
     }
     try {
