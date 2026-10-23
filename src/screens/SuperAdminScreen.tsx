@@ -305,8 +305,8 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const [listingPrice, setListingPrice] = useState<{ amountMinor: number; currency: string }>({ amountMinor: 1000, currency: 'GEL' });
   const [newListingPriceGEL, setNewListingPriceGEL] = useState('10');
 
-  const [top15Cities, setTop15Cities] = useState<Array<{id:string;name:Record<string,string>}>>([]);
-  const [top15Professions, setTop15Professions] = useState<Array<{id:string;name:Record<string,string>}>>([]);
+  const [top15Cities, setTop15Cities] = useState<Array<{id:string;name:string}>>([]);
+  const [top15Professions, setTop15Professions] = useState<Array<{id:string;name:string}>>([]);
   const [top15Prices, setTop15Prices] = useState<Array<{cityId:string;professionId:string;amountMinor:number}>>([]);
   const [top15CityId, setTop15CityId] = useState('');
   const [top15ProfessionId, setTop15ProfessionId] = useState('');
@@ -1421,14 +1421,14 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             <span className="text-slate-400">ქალაქი / City</span>
             <select required value={top15CityId} onChange={e => setTop15CityId(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
               <option value="">აირჩიე ქალაქი</option>
-              {top15Cities.map(city => <option key={city.id} value={city.id}>{city.name[lang] || city.name.ka}</option>)}
+              {top15Cities.map(city => <option key={city.id} value={city.id}>{city.name}</option>)}
             </select>
           </label>
           <label className="block space-y-1">
             <span className="text-slate-400">პროფესია / Profession</span>
             <select required value={top15ProfessionId} onChange={e => setTop15ProfessionId(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
               <option value="">აირჩიე პროფესია</option>
-              {top15Professions.map(prof => <option key={prof.id} value={prof.id}>{prof.name[lang] || prof.name.ka}</option>)}
+              {top15Professions.map(prof => <option key={prof.id} value={prof.id}>{prof.name}</option>)}
             </select>
           </label>
           {top15CityId && top15ProfessionId && <p className="text-amber-400">მიმდინარე ფასი: {selectedTop15Price ? (selectedTop15Price.amountMinor / 100).toFixed(2) + ' GEL' : '—'}</p>}
