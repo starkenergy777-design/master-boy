@@ -305,6 +305,16 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const [listingPrice, setListingPrice] = useState<{ amountMinor: number; currency: string }>({ amountMinor: 1000, currency: 'GEL' });
   const [newListingPriceGEL, setNewListingPriceGEL] = useState('10');
 
+  const [top15Cities, setTop15Cities] = useState<Array<{id:string;name:Record<string,string>}>>([]);
+  const [top15Professions, setTop15Professions] = useState<Array<{id:string;name:Record<string,string>}>>([]);
+  const [top15Prices, setTop15Prices] = useState<Array<{cityId:string;professionId:string;amountMinor:number}>>([]);
+  const [top15CityId, setTop15CityId] = useState('');
+  const [top15ProfessionId, setTop15ProfessionId] = useState('');
+  const [top15PriceGEL, setTop15PriceGEL] = useState('');
+  const [top15Busy, setTop15Busy] = useState(false);
+  const [top15Error, setTop15Error] = useState('');
+  const [top15Notice, setTop15Notice] = useState('');
+
   // Payment Providers State (Bank of Georgia, TBC Bank, Stripe)
   const [paymentProviders, setPaymentProviders] = useState<any[]>([]);
   const [editingProvider, setEditingProvider] = useState<any | null>(null);
@@ -344,6 +354,11 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const loadAll = async () => {
     try {
       setLoading(true);
+      void Promise.all([api.getCities(), api.getProfessions(), api.getAdminTop15Prices()])
+        .then(([cities, professions, prices]) => {
+          setTop15Cities(cities); setTop15Professions(professions); setTop15Prices(prices); setTop15Error('');
+        })
+        .catch(() => setTop15Error('Top 15-ის ფასები ვერ ჩაიტვირთა.'));
       const [aiStat, recStat, lockStat, bootStat, backStat, listPriceStat, provStat, adsStat, persistStat, agentStat, adminsStat] = await Promise.all([
         api.getAiProviderStatus(),
         api.getRecipientAccount(),
@@ -675,6 +690,28 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const selectedTop15Price = top15Prices.find(p => p.cityId === top15CityId && p.professionId === top15ProfessionId);
+  useEffect(() => {
+    setTop15PriceGEL(selectedTop15Price ? (selectedTop15Price.amountMinor / 100).toFixed(2) : '');
+  }, [top15CityId, top15ProfessionId, selectedTop15Price?.amountMinor]);
+
+  const handleUpdateTop15Price = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTop15Error(''); setTop15Notice('');
+    const amount = Number(top15PriceGEL);
+    if (!top15CityId || !top15ProfessionId || !top15PriceGEL.trim() || !Number.isFinite(amount) || amount <= 0 || !/^\\d+(?:\\.\\d{1,2})?$/.test(top15PriceGEL.trim())) {
+      setTop15Error('აირჩიე ქალაქი, პროფესია და დადებითი ფასი, მაქსიმუმ ორი ათწილადით.'); return;
+    }
+    try {
+      setTop15Busy(true);
+      const result = await api.updateTop15Price(top15CityId, top15ProfessionId, Math.round(amount * 100));
+      setTop15Prices(current => [...current.filter(p => !(p.cityId === top15CityId && p.professionId === top15ProfessionId)), result]);
+      setTop15Notice('Top 15-ის ფასი შენახულია.');
+    } catch (err: any) {
+      setTop15Error(err.status === 423 ? 'ფასის შეცვლა დაბლოკილია კონფიგურაციის საკეტით.' : (err.message || 'Top 15-ის ფასი ვერ შეიცვალა.'));
+    } finally { setTop15Busy(false); }
   };
 
   // Payment Providers Handlers (Bank of Georgia, TBC, Stripe)
@@ -1366,6 +1403,43 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded-xl text-xs transition-colors disabled:opacity-50"
           >
             Update Listing Subscription Price
+          </button>
+        </form>
+      </div>
+
+      {/* Top 15 pricing beside standard listing pricing. */}
+      <div className="superadmin-panel rounded-3xl p-5 sm:p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <CreditCard className="w-5 h-5 text-amber-400" />
+          <div>
+            <h3 className="text-xs font-bold text-white">Top 15-ის ფასის რეგულირება</h3>
+            <p className="text-[10px] text-slate-400">ცალკე ფასი თითოეული ქალაქისა და პროფესიისთვის</p>
+          </div>
+        </div>
+        <form onSubmit={handleUpdateTop15Price} className="space-y-3 text-xs">
+          <label className="block space-y-1">
+            <span className="text-slate-400">ქალაქი / City</span>
+            <select required value={top15CityId} onChange={e => setTop15CityId(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+              <option value="">აირჩიე ქალაქი</option>
+              {top15Cities.map(city => <option key={city.id} value={city.id}>{city.name[lang] || city.name.ka}</option>)}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-slate-400">პროფესია / Profession</span>
+            <select required value={top15ProfessionId} onChange={e => setTop15ProfessionId(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+              <option value="">აირჩიე პროფესია</option>
+              {top15Professions.map(prof => <option key={prof.id} value={prof.id}>{prof.name[lang] || prof.name.ka}</option>)}
+            </select>
+          </label>
+          {top15CityId && top15ProfessionId && <p className="text-amber-400">მიმდინარე ფასი: {selectedTop15Price ? (selectedTop15Price.amountMinor / 100).toFixed(2) + ' GEL' : '—'}</p>}
+          <label className="block space-y-1">
+            <span className="text-slate-400">Top 15-ის ფასი (GEL)</span>
+            <input type="number" required min="0.01" step="0.01" value={top15PriceGEL} onChange={e => setTop15PriceGEL(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
+          </label>
+          {top15Error && <p role="alert" className="text-red-400">{top15Error}</p>}
+          {top15Notice && <p role="status" className="text-emerald-400">{top15Notice}</p>}
+          <button type="submit" disabled={top15Busy || configLock.locked || !top15CityId || !top15ProfessionId} className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded-xl text-xs disabled:opacity-50">
+            {top15Busy ? '...' : 'Top 15-ის ფასის შენახვა'}
           </button>
         </form>
       </div>
