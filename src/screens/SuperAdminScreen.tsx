@@ -28,14 +28,14 @@ const AgentMessageContent: React.FC<{ text: string }> = ({ text }) => <>{text}</
 
 const superAdminAgentCopy = {
   ka: {
-    title: 'სუპერადმინის აგენტი',
-    description: 'დაავალე აგენტს მართვის მოქმედებები სუპერადმინის ავტორიზაციით. სუპერადმინის პაროლს აგენტი ვერ შეცვლის.',
+    title: 'ბუღალტერი და ეკონომიკურ-სტრატეგიული მრჩეველი',
+    description: 'აგენტს შეუძლია მიმდინარე შეჯამების წაკითხვა, ანგარიშების მომზადება და რეკომენდაციების გაცემა. აპის ჩანაწერებსა და პარამეტრებს ვერ ცვლის.',
     on: 'ჩართულია',
     off: 'გამორთულია',
     enable: 'აგენტის ჩართვა',
     disable: 'აგენტის გამორთვა',
-    rules: 'აგენტისთვის სავალდებულო წესები',
-    rulesHint: 'ჩაწერე, როგორ უნდა იმუშაოს აგენტმა. პაროლები და API გასაღებები აქ არ შეიყვანო.',
+    rules: 'მრჩევლის მუშაობის მითითებები',
+    rulesHint: 'მიუთითე ანალიზის პრიორიტეტები ან პასუხის ფორმა. წესები უფლებებს ვერ ანიჭებს; პაროლები და API გასაღებები არ შეიყვანო.',
     reloadRules: 'შენახული წესების ხელახლა ჩატვირთვა',
     rulesReloaded: 'შენახული წესები ჩაიტვირთა.',
     saveRules: 'წესების შენახვა',
@@ -48,7 +48,7 @@ const superAdminAgentCopy = {
     noRules: 'წესები ჯერ არ არის შენახული.',
     cancel: 'გაუქმება',
     chat: 'ჩატი აგენტთან',
-    chatHint: 'მოქმედებას მხოლოდ მაშინ შეასრულებს, როცა პირდაპირ დაავალებ. მაგალითად, საბანკო ანგარიშის შეცვლა.',
+    chatHint: 'აგენტს აქვს მხოლოდ მიმდინარე შეჯამების წაკითხვის შესაძლებლობა. მას შეუძლია ანალიზი და რჩევები; ცვლილებებს სუპერადმინი თავად აკეთებს.',
     placeholder: 'დაწერე დავალება...',
     send: 'გაგზავნა',
     waiting: 'ამუშავებს...',
@@ -57,20 +57,19 @@ const superAdminAgentCopy = {
     clearChat: 'ჩატის ისტორიის წაშლა',
     confirmClearChat: 'წაიშალოს ჩატის მთელი ისტორია? ეს მოქმედება ვერ აღდგება.',
     chatDeleted: 'ჩატის ისტორია წაიშალა.',
-    privacy: 'ყოველ შეტყობინებაზე აგენტი იღებს პანელის მიმდინარე შეჯამებას: ხელოსნების, ფასების, გადახდების, პროვაიდერებისა და სისტემის სტატუსს. საიდუმლო გასაღებები, პაროლები, IBAN-ები, საიდენტიფიკაციო ნომრები და ტელეფონის ნომრები შეჯამებაში არ შედის; ადმინისტრაციული API-ის პასუხებშიც მგრძნობიარე ველები იფარება. ჩატის ტექსტი და შეჯამება არჩეულ AI პროვაიდერს ეგზავნება. ჩატის ისტორია Supabase-ში ინახება და 7 დღის შემდეგ ავტომატურად იშლება; წესები ცალკე ინახება.',
-    actions: 'შესრულებული მოქმედებები',
+    privacy: 'ყოველ შეტყობინებაზე აგენტი იღებს აპის მიმდინარე, შეჯამებულ მონაცემებს: ხელოსნების, ფასების, გადახდების, პროვაიდერებისა და სისტემის სტატუსს. შეჯამებაში არ შედის გასაღებები, პაროლები, IBAN-ები, საიდენტიფიკაციო ან ტელეფონის ნომრები. ჩატის ტექსტი და შეჯამება არჩეულ AI პროვაიდერს ეგზავნება. ჩატის ისტორია Supabase-ში ინახება და 7 დღის შემდეგ ავტომატურად იშლება; წესები ცალკე ინახება.',
     loadFailed: 'აგენტის შენახული პარამეტრები ვერ ჩაიტვირთა.',
     failed: 'აგენტის მოთხოვნა ვერ შესრულდა.',
   },
   ru: {
-    title: 'Агент суперадминистратора',
-    description: 'Поручайте агенту действия с авторизацией суперадминистратора. Агент не может изменить пароль суперадминистратора.',
+    title: 'Бухгалтер и экономический/стратегический советник',
+    description: 'Агент читает текущую сводку, готовит бухгалтерские отчёты и экономические/стратегические рекомендации. Он не может менять записи и настройки приложения.',
     on: 'Включён',
     off: 'Выключен',
     enable: 'Включить агента',
     disable: 'Выключить агента',
-    rules: 'Обязательные правила для агента',
-    rulesHint: 'Укажите, как агент должен работать. Не вводите здесь пароли и API-ключи.',
+    rules: 'Инструкции для советника',
+    rulesHint: 'Укажите приоритеты анализа или формат ответа. Правила не дают агенту дополнительных прав; не вводите пароли и API-ключи.',
     reloadRules: 'Загрузить сохранённые правила',
     rulesReloaded: 'Сохранённые правила загружены.',
     saveRules: 'Сохранить правила',
@@ -83,7 +82,7 @@ const superAdminAgentCopy = {
     noRules: 'Правила ещё не сохранены.',
     cancel: 'Отмена',
     chat: 'Чат с агентом',
-    chatHint: 'Агент действует только по вашему прямому поручению. Например, изменить банковский счёт.',
+    chatHint: 'Агент может только читать текущую сводку, анализировать её и давать рекомендации. Изменения выполняет суперадминистратор в панели.',
     placeholder: 'Напишите поручение...',
     send: 'Отправить',
     waiting: 'Обрабатывает...',
@@ -92,20 +91,19 @@ const superAdminAgentCopy = {
     clearChat: 'Удалить историю чата',
     confirmClearChat: 'Удалить всю историю чата? Это действие нельзя отменить.',
     chatDeleted: 'История чата удалена.',
-    privacy: 'При каждом сообщении агент получает текущую сводку панели: мастера, цены, платежи, провайдеры и состояние системы. Сводка не содержит секретных ключей, паролей, IBAN, идентификационных номеров и телефонов; чувствительные поля также маскируются в ответах административного API. Текст чата и сводка передаются выбранному провайдеру ИИ. История чата хранится в Supabase и автоматически удаляется через 7 дней; правила хранятся отдельно.',
-    actions: 'Выполненные действия',
+    privacy: 'При каждом сообщении агент получает текущую агрегированную сводку приложения: мастера, цены, платежи, провайдеры и состояние системы. В сводке нет ключей, паролей, IBAN, идентификационных номеров и телефонов. Текст чата и сводка передаются выбранному провайдеру ИИ. История чата хранится в Supabase и автоматически удаляется через 7 дней; правила хранятся отдельно.',
     loadFailed: 'Не удалось загрузить сохранённые настройки агента.',
     failed: 'Не удалось выполнить запрос агенту.',
   },
   en: {
-    title: 'Superadmin agent',
-    description: 'Delegate admin tasks through the authenticated superadmin APIs. The agent cannot change the superadmin password.',
+    title: 'Accountant and economic/strategic adviser',
+    description: 'The agent reads the current summary, prepares accounting reports, and gives economic and strategic advice. It cannot change application records or settings.',
     on: 'Enabled',
     off: 'Disabled',
     enable: 'Enable agent',
     disable: 'Disable agent',
-    rules: 'Mandatory agent rules',
-    rulesHint: 'Set the agent’s operating rules. Do not enter passwords or API keys here.',
+    rules: 'Adviser instructions',
+    rulesHint: 'Set analysis priorities or answer format. Rules cannot grant permissions; do not enter passwords or API keys.',
     reloadRules: 'Reload saved rules',
     rulesReloaded: 'Saved rules loaded.',
     saveRules: 'Save rules',
@@ -118,7 +116,7 @@ const superAdminAgentCopy = {
     noRules: 'No rules have been saved yet.',
     cancel: 'Cancel',
     chat: 'Chat with agent',
-    chatHint: 'The agent acts only on your direct instruction, such as updating the recipient bank account.',
+    chatHint: 'The agent can only read the current summary, analyze it, and give recommendations. The superadmin makes changes in the dashboard.',
     placeholder: 'Write a task...',
     send: 'Send',
     waiting: 'Working...',
@@ -127,8 +125,7 @@ const superAdminAgentCopy = {
     clearChat: 'Delete chat history',
     confirmClearChat: 'Delete the entire chat history? This cannot be undone.',
     chatDeleted: 'Chat history deleted.',
-    privacy: 'Each message includes a live dashboard summary of craftsmen, prices, payments, providers, and system status. The snapshot excludes API keys, passwords, IBANs, tax IDs, and phone numbers; sensitive fields are also masked in admin API responses. Chat text and the summary go to the selected AI provider. Chat history is stored in Supabase and automatically deleted after 7 days; rules are stored separately.',
-    actions: 'Actions performed',
+    privacy: 'Each message includes a current aggregate summary of craftsmen, prices, payments, providers, and system status. It excludes API keys, passwords, IBANs, tax IDs, and phone numbers. Chat text and the summary go to the selected AI provider. Chat history is stored in Supabase and automatically deleted after 7 days; rules are stored separately.',
     loadFailed: 'Could not load the saved agent settings.',
     failed: 'The agent request failed.',
   },
@@ -287,7 +284,6 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const [agentBusy, setAgentBusy] = useState(false);
   const [agentError, setAgentError] = useState('');
   const [agentNotice, setAgentNotice] = useState('');
-  const [agentActions, setAgentActions] = useState<Array<{ success: boolean; status: number; method: string; path: string; purpose?: string }>>([]);
 
   // Recipient Account State (§3.5)
   const [recipient, setRecipient] = useState<any>({ iban: '', bankName: '', beneficiary: '' });
@@ -549,7 +545,6 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       setAgentBusy(true);
       await api.clearSuperAdminAgentChat();
       setAgentConfig(current => ({ ...current, messages: [] }));
-      setAgentActions([]);
       setAgentInput('');
       setAgentNotice(superAdminAgentCopy[lang].chatDeleted);
     } catch (err: any) {
@@ -569,14 +564,12 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       setAgentBusy(true);
       const updated: any = await api.sendSuperAdminAgentMessage(text);
       setAgentConfig({ enabled: updated.enabled, rules: updated.rules || '', messages: updated.messages || [] });
-      setAgentActions(updated.actions || []);
       setAgentInput('');
     } catch (err: any) {
       if (Array.isArray(err.data?.messages)) {
         setAgentConfig((current) => ({ ...current, messages: err.data.messages }));
         setAgentInput('');
       }
-      if (Array.isArray(err.data?.actions)) setAgentActions(err.data.actions);
       setAgentError(err.message || superAdminAgentCopy[lang].failed);
     } finally {
       setAgentBusy(false);
@@ -1121,7 +1114,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       </div>
       </div>
 
-      {/* Superadmin agent: tools, mandatory rules, and chat */}
+      {/* Superadmin accountant/adviser: analysis preferences and chat */}
       <section className="superadmin-panel superadmin-panel-featured rounded-3xl p-5 sm:p-6 space-y-5" aria-labelledby="superadmin-agent-title">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -1277,16 +1270,6 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               {agentBusy ? superAdminAgentCopy[lang].waiting : superAdminAgentCopy[lang].send}
             </button>
           </form>
-          {agentActions.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[10px] font-semibold text-slate-300">{superAdminAgentCopy[lang].actions}</p>
-              {agentActions.map((action, index) => (
-                <p key={`${action.path}-${index}`} className={`text-[10px] ${action.success ? 'text-emerald-300' : 'text-rose-300'}`}>
-                  {action.success ? '✓' : '✕'} {action.method} {action.path} · HTTP {action.status}{action.purpose ? ` · ${action.purpose}` : ''}
-                </p>
-              ))}
-            </div>
-          )}
           {agentError && <p role="alert" className="text-xs text-rose-300">{agentError}</p>}
           {agentNotice && <p role="status" className="text-xs text-emerald-300">{agentNotice}</p>}
           <p className="text-[10px] leading-relaxed text-slate-500">{superAdminAgentCopy[lang].privacy}</p>

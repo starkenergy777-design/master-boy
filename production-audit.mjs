@@ -163,8 +163,14 @@ check('both health endpoints query durable storage instead of trusting stale sta
 });
 check('agent snapshot and superadmin persistence status perform a live database probe', () => {
   assert.match(routes, /async function buildSuperAdminAgentAuditSnapshot\(\)/);
-  assert.match(routes, /currentAdminSnapshot: await buildSuperAdminAgentAuditSnapshot\(\)/);
+  assert.match(routes, /const snapshot = await buildSuperAdminAgentAuditSnapshot\(\)/);
+  assert.match(routes, /currentAdminSnapshot: snapshot/);
   assert.match(routes, /apiRouter\.get\('\/admin\/persistence\/status', requireSuperAdmin, async/);
+});
+check('accountant agent has read-only context and no administrative action executor', () => {
+  assert.match(routes, /You have READ-ONLY access to a server-generated summary/);
+  assert.match(routes, /You cannot create, change, delete, block, approve, or configure/);
+  assert.doesNotMatch(routes, /runSuperAdminAgentAction|validateAgentAdminAction/);
 });
 check('craftsman deletion handles drafts by map key and nullable payment owner safely', () => {
   assert.match(routes, /filter\(\(\[userId\]\) => userIds\.has\(userId\)\)/);

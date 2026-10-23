@@ -1,5 +1,5 @@
 export type Language = 'ka' | 'ru' | 'en';
-export type Role = 'CRAFTSMAN' | 'ADMIN' | 'SUPER_ADMIN' | 'AI_ADMIN' | 'AD_PARTNER';
+export type Role = 'CRAFTSMAN' | 'ADMIN' | 'SUPER_ADMIN' | 'AD_PARTNER';
 export type CraftsmanStatus = 'ACTIVE' | 'UNPAID_DRAFT' | 'EXPIRED' | 'PURGED' | 'BLOCKED' | 'DELETED';
 export type ListingStatus = 'UNPAID_DRAFT' | 'ACTIVE' | 'EXPIRED' | 'PURGED' | 'BLOCKED';
 

@@ -3,7 +3,9 @@ on:
   pull_request:
     branches: [codex/master-boy-supabase-render]
   push:
-    branches: [fix/verified-issues-ai-model-selection-20261022]
+    branches:
+      - codex/master-boy-supabase-render
+      - fix/verified-issues-ai-model-selection-20261022
 jobs:
   verify:
     runs-on: ubuntu-latest

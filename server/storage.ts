@@ -437,7 +437,7 @@ export class StorageService {
       await client.query('BEGIN');
       for(const x of s.users.values()) {
         if (!Array.isArray(x.roles)) throw new Error('User roles must be an array before persistence.');
-        await up("INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at,admin_share_percent) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,NOW(),$7) ON CONFLICT(id) DO UPDATE SET phone=EXCLUDED.phone,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,status=EXCLUDED.status,updated_at=NOW(),admin_share_percent=EXCLUDED.admin_share_percent",[x.id,x.phone,x.password||'',x.roles.filter((r)=>r!=='AI_ADMIN'),x.status,x.createdAt,x.adminSharePercent ?? null]);
+        await up("INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at,admin_share_percent) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,NOW(),$7) ON CONFLICT(id) DO UPDATE SET phone=EXCLUDED.phone,password_hash=EXCLUDED.password_hash,roles=EXCLUDED.roles,status=EXCLUDED.status,updated_at=NOW(),admin_share_percent=EXCLUDED.admin_share_percent",[x.id,x.phone,x.password||'',x.roles.filter((r)=>String(r)!=='AI_ADMIN'),x.status,x.createdAt,x.adminSharePercent ?? null]);
       }
       await sync('users','id',[...s.users.keys()]);
       const photoIds:string[]=[];
