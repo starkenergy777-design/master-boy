@@ -1,50 +1,7 @@
-# MASTER_BOY
+# Master Boy
 
-სამენოვანი ხელოსნების საძიებო და მართვის აპლიკაცია. წყარო კოდი არის ამ GitHub რეპოზიტორიაში; აპლიკაცია მუშაობს Render-ზე, ხოლო მუდმივი მონაცემები ინახება Supabase PostgreSQL-ში.
+Master Boy საქართველოში მომხმარებლებს ეხმარება სასურველი პროფესიის ხელოსნის მოძიებაში, ხოლო ხელოსნებს — საკუთარი მომსახურების შეთავაზებაში.
 
-## არქიტექტურა
+მომხმარებელს შეუძლია აირჩიოს ქალაქი და პროფესია, გაეცნოს ხელოსნების პროფილებს და დაუკავშირდეს მათ. ხელოსნები კი მართავენ საკუთარ პროფილსა და მომსახურების ინფორმაციას.
 
-- ბრაუზერი უკავშირდება მხოლოდ Render-ზე გაშვებულ Node.js/Express API-ს.
-- Render სერვისი ემსახურება React/Vite ინტერფეისს და API-ს ერთი აპლიკაციიდან.
-- სერვერის მონაცემთა ბაზაა Supabase PostgreSQL. ბრაუზერი Supabase-ის მონაცემთა ბაზას ან საიდუმლო გასაღებებს პირდაპირ არ უკავშირდება.
-- Render-ის Docker build იყენებს ამ რეპოზიტორიის root `Dockerfile`-ს. ცალკე Docker ანგარიში, Docker Hub, Firebase, Cloud Run ან Vercel განთავსებისთვის საჭირო არ არის.
-
-## გაშვება და შემოწმება
-
-```bash
-npm ci
-npm run dev
-```
-
-```bash
-npm run typecheck
-npm run build
-node production-audit.mjs
-node role-simulation.mjs
-```
-
-მონაცემთა ბაზის სქემის ცვლილებები მოთავსებულია `migrations/` დირექტორიაში. გაშვებისას მიგრაციები ავტომატურად არ ეშვება; მათი გაშვება ხდება Supabase migration tool-ით ან `npm run migrate` ბრძანებით.
-
-## Render-ის კონფიგურაცია
-
-Render Web Service აწყობს აპს root `Dockerfile`-ით. წარმოებაში აუცილებელია შემდეგი ცვლადების Render-ის **Environment / Secrets** განყოფილებაში დამატება:
-
-- `DATABASE_URL` — Supabase PostgreSQL connection string.
-- `SUPABASE_DB_CA_CERT` — CA certificate downloaded from Supabase **Database Settings → SSL Configuration**. Store its PEM text only in Render Environment; the server verifies the database certificate and hostname.
-- `ADMIN_PHONE`, `ADMIN_PASSWORD` — ადმინისტრატორის საწყისი მონაცემები.
-- `BOOTSTRAP_PHONE`, `BOOTSTRAP_PASSWORD` — სუპერადმინისტრატორის საწყისი მონაცემები.
-- `APP_URL` ან `APP_ORIGIN` — საჯარო Render მისამართი, CORS-ის შესაზღუდად.
-- სხვა პროვაიდერის გასაღებები (`GEMINI_API_KEY`, `BOG_*`, `TBC_*`, `STRIPE_*`, `SMS_WEBHOOK_URL`) — მხოლოდ თუ შესაბამისი ინტეგრაცია ჩართულია.
-
-ამ მნიშვნელობების ნაწილი GitHub-ზე არ უნდა აიტვირთოს. `.env.example` შეიცავს მხოლოდ ცვლადების სახელებს; რეალური მნიშვნელობები შეინახეთ Render-ის Secrets-ში. არ დაამატოთ `.env` ფაილები, პაროლები, მონაცემთა ბაზის ბმულები, CA სერტიფიკატის ტექსტი, API გასაღებები, service-account ფაილები ან მომხმარებლის მონაცემები GitHub-ში.
-
-## Supabase-ის დაცვა
-
-- `DATABASE_URL` მხოლოდ Render-ის სერვერზე ინახება.
-- საჯარო `anon` და `authenticated` როლებს აპლიკაციის ცხრილებზე წვდომა არ აქვთ; საჯარო API-ები გადის Render-ის როლებით შეზღუდულ backend-ზე.
-- მონაცემთა ბაზის ცხრილებზე ჩართულია RLS. სერვერის გასაღებები და გადახდის საიდუმლოები კლიენტში ან `system_config` ცხრილში არ შეინახოთ.
-- წარმოებაში მონაცემთა ბაზის კავშირის არქონისას აპლიკაცია არ იწყებს მუშაობას დროებითი საცავით.
-- გადახდა წარმატებულად არ ჩაითვლება, სანამ შესაბამისი გადახდის პროვაიდერი და სერვერული callback-ის შემოწმება რეალურად არ არის კონფიგურირებული.
-
-`/health` და `/api/v1/health` აჩვენებს მხოლოდ სერვისისა და მდგრადი საცავის მზადყოფნის სტატუსს; გარემოს საიდუმლო მნიშვნელობებს არ აბრუნებს.
-
+© Master Boy. ყველა უფლება დაცულია.
