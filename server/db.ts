@@ -147,7 +147,7 @@ class Database {
 
   // Bootstrap Super Admin credentials (§16)
   bootstrap = {
-    phone: process.env.BOOTSTRAP_PHONE || '+995000000000',
+    phone: process.env.BOOTSTRAP_PHONE || '',
     password: process.env.BOOTSTRAP_PASSWORD || '',
     enabled: Boolean(process.env.BOOTSTRAP_PASSWORD),
     invalidated: false,
@@ -208,7 +208,7 @@ class Database {
     const demoCraftsmen = [
       {
         id: 'cm-1',
-        phone: '+995599112233',
+        phone: '',
         name: 'გიორგი ბერიძე',
         description: 'პროფესიონალი სანტექნიკოსი 12 წლიანი გამოცდილებით. ნებისმიერი სირთულის სანტექნიკური სამუშაოები, მილების მონტაჟი, ონკანების შეცვლა.',
         phoneVisible: true,
@@ -240,7 +240,7 @@ class Database {
       },
       {
         id: 'cm-2',
-        phone: '+995577445566',
+        phone: '',
         name: 'დავით კაპანაძე',
         description: 'მაღალი კვალიფიკაციის ელექტრიკოსი. ელექტროგაყვანილობის სრული მონტაჟი, ავტომატების დაყენება, ჭაღების მონტაჟი, დამიწება.',
         phoneVisible: true,
@@ -272,7 +272,7 @@ class Database {
       },
       {
         id: 'cm-3',
-        phone: '+995555889900',
+        phone: '',
         name: 'ლევან მაისურაძე',
         description: 'კონდიციონერების მონტაჟი, დემონტაჟი, ფრეონის დატუმბვა და სრული სერვისი გარანტიით. ბათუმი და შემოგარენი.',
         phoneVisible: true,
@@ -304,7 +304,7 @@ class Database {
       },
       {
         id: 'cm-4',
-        phone: '+995593123456',
+        phone: '',
         name: 'ალექსანდრე ნოზაძე',
         description: 'კაფელისა და მეტლახის დაგება ლაზერული სიზუსტით. აბაზანების სრული რემონტი, მოზაიკა, ჰიდროიზოლაცია.',
         phoneVisible: false, // Testing phoneVisible = false (§3.4)
@@ -336,7 +336,7 @@ class Database {
       },
       {
         id: 'cm-5',
-        phone: '+995577112244',
+        phone: '',
         name: 'თორნიკე გელაშვილი',
         description: 'მალიარი და სამღებრო სამუშაოების ოსტატი. კედლების დაჭიმვა, შპაკლი, ემულსია, შპალერის გაკვრა უმაღლესი ხარისხით.',
         phoneVisible: true,
@@ -368,7 +368,7 @@ class Database {
       },
       {
         id: 'cm-6',
-        phone: '+995591998877',
+        phone: '',
         name: 'ვახტანგ ჯაფარიძე',
         description: 'საკეტების პროფესიონალი ოსტატი. ნებისმიერი ტიპის საკეტის გაღება დაზიანების გარეშე, ახლის ჩაყენება, შეკეთება.',
         phoneVisible: true,
@@ -400,7 +400,7 @@ class Database {
       },
       {
         id: 'cm-7',
-        phone: '+995558334455',
+        phone: '',
         name: 'ზურაბ ხუციშვილი',
         description: 'გათბობის სისტემების სრული მონტაჟი: ცენტრალური გათბობის ქვაბები, იატაკქვეშა გათბობა, რადიატორების შეცვლა და დიაგნოსტიკა.',
         phoneVisible: true,
@@ -432,7 +432,7 @@ class Database {
       },
       {
         id: 'cm-8',
-        phone: '+995574556677',
+        phone: '',
         name: 'გოჩა დოლიძე',
         description: 'ავეჯის ოსტატი და დურგალი. სამზარეულოს, საძინებლისა და ოფისის ავეჯის აწყობა-დაშლა, რესტავრაცია და მონტაჟი.',
         phoneVisible: true,
@@ -464,7 +464,7 @@ class Database {
       },
       {
         id: 'cm-9',
-        phone: '+995568123789',
+        phone: '',
         name: 'ირაკლი კვირიკაშვილი',
         description: 'სანტექნიკოსი ბათუმში. მილების შეცვლა, საშხაპე კაბინების მონტაჟი, კანალიზაციის გაწმენდა.',
         phoneVisible: true,
@@ -496,7 +496,7 @@ class Database {
       },
       {
         id: 'cm-10',
-        phone: '+995598443322',
+        phone: '',
         name: 'მამუკა ჩხეიძე',
         description: 'ელექტრიკოსი ქუთაისში. ელექტრობის სრული მონტაჟი და დიაგნოსტიკა სახლებსა და კომერციულ ობიექტებში.',
         phoneVisible: true,
@@ -528,7 +528,7 @@ class Database {
       },
       {
         id: 'cm-11',
-        phone: '+995577665544',
+        phone: '',
         name: 'ნიკოლოზ წიკლაური',
         description: 'კონდიციონერების ხელოსანი თბილისში. ყველა ბრენდის კონდიციონერის მონტაჟი, შეკეთება, გაწმენდა.',
         phoneVisible: true,
@@ -560,7 +560,7 @@ class Database {
       },
       {
         id: 'cm-12',
-        phone: '+995593887766',
+        phone: '',
         name: 'ოთარ გიორგაძე',
         description: 'კაფელ-მეტლახის ოსტატი რუსთავში და თბილისში. იატაკის და კედლის მოპირკეთება, გრანიტი, მარმარილო.',
         phoneVisible: true,
@@ -661,7 +661,7 @@ class Database {
     }
 
     // Pre-seed Secret Administrator credentials
-    const adminPhone = process.env.ADMIN_PHONE || '+995999000000';
+    const adminPhone = process.env.ADMIN_PHONE || '';
     const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(32).toString('base64url');
     const adminUser: User = {
       id: 'usr-admin',
@@ -738,7 +738,7 @@ class Database {
     this.advertisements.set(seedAdId, {
       id: seedAdId,
       company_name: '„გორგია“ - სამშენებლო ჰიპერმარკეტი (Gorgia)',
-      phone_number: '+995599001122',
+      phone_number: '',
       password: hashPassword(process.env.DEMO_AD_PASSWORD || crypto.randomBytes(24).toString('base64url')),
       expires_at: thirtyDaysFromNow,
       image_url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1200&q=80',
@@ -754,7 +754,7 @@ class Database {
     // Register ad partner as user for direct login
     this.users.set('usr-ad-gorgia', {
       id: 'usr-ad-gorgia',
-      phone: '+995599001122',
+      phone: '',
       password: hashPassword(process.env.DEMO_AD_PASSWORD || crypto.randomBytes(24).toString('base64url')),
       roles: ['AD_PARTNER'],
       status: 'ACTIVE',
