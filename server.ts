@@ -25,8 +25,8 @@ async function startServer() {
 
   // Body parsing middleware
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '8mb' }));
-  app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 
   // Security/CORS headers
   app.use((req, res, next) => {
@@ -88,6 +88,21 @@ async function startServer() {
 
   app.get('/ping', (req, res) => {
     res.status(200).send('pong');
+  });
+
+  // Never answer probes for deployment metadata or repository internals with
+  // the SPA shell; those paths must remain unavailable in every environment.
+  app.use((req, res, next) => {
+    let requestPath = req.path;
+    try {
+      requestPath = decodeURIComponent(requestPath);
+    } catch {
+      return res.sendStatus(400);
+    }
+    if (/(?:^|\\/)\\.(?:git(?:\\/|$)|env(?:[./]|$))/i.test(requestPath)) {
+      return res.sendStatus(404);
+    }
+    next();
   });
 
   // Check environment (dev vs prod)

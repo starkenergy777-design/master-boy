@@ -31,6 +31,11 @@ const OTP_TTL_MS = 5 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 const MAX_RATE_BUCKETS = 10_000;
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+const DUMMY_LOGIN_PASSWORD_HASH = hashPassword(crypto.randomBytes(32).toString('base64url'));
+const INVALID_LOGIN_RESPONSE = {
+  code: 'INVALID_CREDENTIALS',
+  message: 'Invalid phone number or password.',
+};
 
 function getClientIp(req: Request): string {
   // Render forwards the originating client address in X-Forwarded-For.
@@ -870,33 +875,21 @@ apiRouter.get('/config/backend', (req, res) => {
 
 // POST /auth/otp/request
 apiRouter.post('/auth/otp/request', (req, res) => {
-  const { phone } = req.body;
-  if (!phone || typeof phone !== 'string') {
+  const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+  if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
     return res.status(400).json({ code: 'INVALID_PHONE', message: 'E.164 phone number required' });
   }
-  const normalizedPhone = phone.trim();
+  const normalizedPhone = phone;
   if (!rateLimit(`otp:${getClientIp(req)}:${normalizedPhone}`, 5, 15 * 60 * 1000) ||
       !rateLimit(`otp-phone:${normalizedPhone}`, 20, 15 * 60 * 1000)) {
     return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many OTP requests. Try again later.' });
   }
 
-  // Super Admin Bootstrap check (§16.1)
-  if (db.bootstrap.enabled && phone === db.bootstrap.phone) {
-    const challengeId = `chal-bootstrap-${Date.now()}`;
-    return res.json({
-      challengeId,
-      next: 'PASSWORD',
-    });
-  }
-
   // SMS_WEBHOOK_URL alone is not an SMS integration: this server does not have
   // a defined provider contract or credentials to deliver the generated code.
-  // Return an explicit error instead of issuing an unusable challenge.
-  if (process.env.SMS_WEBHOOK_URL) {
-    return res.status(503).json({ code: 'OTP_DELIVERY_NOT_IMPLEMENTED', message: 'SMS provider delivery is not implemented; use phone and password login.' });
-  }
-
-  return res.status(503).json({ code: 'OTP_PROVIDER_NOT_CONFIGURED', message: 'SMS OTP provider is not configured; use phone and password login.' });
+  // Return one consistent response for every phone; never reveal whether it
+  // belongs to the bootstrap administrator or another account.
+  return res.status(503).json({ code: 'OTP_DELIVERY_NOT_IMPLEMENTED', message: 'SMS provider delivery is not implemented; use phone and password login.' });
 });
 
 // POST /auth/otp/verify
@@ -955,19 +948,20 @@ apiRouter.post('/auth/otp/verify', (req, res) => {
 
 // POST /auth/password/login (§16.1 bootstrap & Craftsman/Admin Phone+Password, also /auth/login and /auth/phone/login)
 apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (req, res) => {
-  const { phone, password } = req.body;
-  const normalizedPhone = String(phone || '').trim();
+  const rawPhone = req.body?.phone;
+  const password = req.body?.password;
+  const normalizedPhone = typeof rawPhone === 'string' && rawPhone.length <= 64 ? rawPhone.trim() : '';
   const loginKey = `login:${getClientIp(req)}:${normalizedPhone}`;
   if (!rateLimit(loginKey, 10, 15 * 60 * 1000) ||
       (normalizedPhone && !rateLimit(`login-phone:${normalizedPhone}`, 20, 15 * 60 * 1000))) {
     return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Too many login attempts. Try again later.' });
   }
-  if (!phone || !password) {
-    return res.status(400).json({ code: 'MISSING_CREDENTIALS', message: 'Phone and password required' });
+  if (!normalizedPhone || typeof password !== 'string' || password.length < 1 || password.length > 1024) {
+    return res.status(401).json(INVALID_LOGIN_RESPONSE);
   }
 
   // 1. Check Super Admin Bootstrap credentials (§16.1)
-  if (db.bootstrap.enabled && phone === db.bootstrap.phone && password === db.bootstrap.password) {
+  if (db.bootstrap.enabled && normalizedPhone === db.bootstrap.phone && password === db.bootstrap.password) {
     let superAdminUser: User | undefined;
     for (const u of db.users.values()) {
       if (u.roles.includes('SUPER_ADMIN')) {
@@ -1018,23 +1012,20 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
   // 2. Check Database Users (Craftsmen & Staff Admins)
   let foundUser: User | undefined;
   for (const u of db.users.values()) {
-    if (u.phone === phone) {
+    if (u.phone === normalizedPhone) {
       foundUser = u;
       break;
     }
   }
 
-  if (foundUser) {
-    if (foundUser.status === 'BLOCKED') {
-      return res.status(403).json({
-        code: 'ACCOUNT_BLOCKED',
-        message: 'თქვენი ანგარიში დაბლოკილია / Your account is blocked',
-      });
-    }
+  // Verify against a dummy hash for unknown, blocked, and deleted accounts too,
+  // so the public login endpoint does not reveal which phone numbers exist.
+  const isPasswordValid = verifyPassword(password, foundUser?.password || DUMMY_LOGIN_PASSWORD_HASH);
+  if (!foundUser || foundUser.status !== 'ACTIVE' || !isPasswordValid) {
+    return res.status(401).json(INVALID_LOGIN_RESPONSE);
+  }
 
-    // Verify the stored password hash
-    const isPasswordValid = verifyPassword(password, foundUser.password);
-    if (isPasswordValid) {
+  {
       const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
       db.sessions.set(sessionToken, { userId: foundUser.id, createdAt: Date.now() });
 
@@ -1062,24 +1053,12 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
         isAdPartner: foundUser.roles.includes('AD_PARTNER'),
         isNewUser: !craftsman && !foundUser.roles.some(r => r === 'ADMIN' || r === 'SUPER_ADMIN' || r === 'AD_PARTNER'),
       });
-    } else {
-      return res.status(401).json({
-        code: 'INVALID_PASSWORD',
-        message: 'არასწორი პაროლი / Invalid password',
-      });
-    }
   }
-
-  // User not found with this phone number
-  res.status(404).json({
-    code: 'USER_NOT_FOUND',
-    message: 'მომხმარებელი ამ ნომრით არ არის რეგისტრირებული. გთხოვთ გაიაროთ რეგისტრაცია.',
-    notRegistered: true,
-  });
 });
 
 // POST /auth/craftsman/register (also /auth/register and /craftsmen/register)
 apiRouter.post(['/auth/craftsman/register', '/auth/register'], (req, res) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const {
     phone,
     password,
@@ -1094,25 +1073,64 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], (req, res) => {
     paid,
     providerId,
     bankAccount,
-  } = req.body;
+  } = body;
 
-  const resolvedName = (name || req.body.fullName || '').trim() || 'ხელოსანი';
+  const fullName = body.fullName;
+  if ((name !== undefined && typeof name !== 'string') || (fullName !== undefined && typeof fullName !== 'string')) {
+    return res.status(400).json({ code: 'INVALID_NAME', message: 'Name must be text.' });
+  }
+  const resolvedName = (typeof name === 'string' ? name : typeof fullName === 'string' ? fullName : '').trim() || 'ხელოსანი';
+  if (resolvedName.length > 150) {
+    return res.status(400).json({ code: 'INVALID_NAME', message: 'Name must be 150 characters or fewer.' });
+  }
 
   const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
   if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
     return res.status(400).json({ code: 'INVALID_PHONE', message: 'შეიყვანეთ ვალიდური ტელეფონის ნომერი (მინ. 8 ციფრი)' });
   }
-
-  if (!password || password.length < 12) {
-    return res.status(400).json({ code: 'PASSWORD_TOO_SHORT', message: 'პაროლი უნდა შეიცავდეს მინიმუმ 12 სიმბოლოს' });
+  if (!rateLimit(`craftsman-register:${getClientIp(req)}`, 10, 15 * 60 * 1000) ||
+      !rateLimit(`craftsman-register-phone:${normalizedPhone}`, 3, 24 * 60 * 60 * 1000)) {
+    return res.status(429).json({ code: 'TOO_MANY_REGISTRATION_ATTEMPTS', message: 'Too many registration attempts. Try again later.' });
   }
 
-  if (!resolvedName || !cityId || !professionId) {
+  if (typeof password !== 'string' || password.length < 12 || password.length > 128) {
+    return res.status(400).json({ code: 'INVALID_PASSWORD', message: 'Password must be between 12 and 128 characters.' });
+  }
+
+  if (typeof cityId !== 'string' || cityId.length > 64 || !db.cities.some(city => city.id === cityId && city.isActive) ||
+      typeof professionId !== 'string' || professionId.length > 64 || !db.professions.some(profession => profession.id === professionId)) {
     return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'სახელი, ქალაქი და პროფესია სავალდებულოა' });
   }
 
-  if (typeof bankAccount !== 'string' || !bankAccount.trim()) {
+  const normalizedBankAccount = typeof bankAccount === 'string' ? bankAccount.trim() : '';
+  if (!normalizedBankAccount || normalizedBankAccount.length > 64) {
     return res.status(422).json({ code: 'BANK_ACCOUNT_REQUIRED', message: 'საბანკო ანგარიში სავალდებულოა.' });
+  }
+
+  if (description !== undefined && (typeof description !== 'string' || description.length > 4000)) {
+    return res.status(400).json({ code: 'INVALID_DESCRIPTION', message: 'Description must be text under 4,000 characters.' });
+  }
+  if (phoneVisible !== undefined && typeof phoneVisible !== 'boolean') {
+    return res.status(400).json({ code: 'INVALID_PHONE_VISIBILITY', message: 'phoneVisible must be a boolean.' });
+  }
+  if (workingHours !== undefined && (!workingHours || typeof workingHours !== 'object' || Array.isArray(workingHours))) {
+    return res.status(400).json({ code: 'INVALID_WORKING_HOURS', message: 'workingHours must be an object.' });
+  }
+
+  const incomingPhotos = photos === undefined ? (photoUrl ? [photoUrl] : []) : photos;
+  if (!Array.isArray(incomingPhotos)) {
+    return res.status(400).json({ code: 'INVALID_PHOTOS', message: 'Photos must be a list.' });
+  }
+  const photoUrls: string[] = [];
+  for (const photo of incomingPhotos.slice(0, 1)) {
+    const photoUrlValue = typeof photo === 'string'
+      ? photo
+      : photo && typeof photo === 'object' && typeof photo.url === 'string' ? photo.url : '';
+    const validatedPhotoUrl = validateHttpUrl(photoUrlValue, 'photo_url', false);
+    if (!validatedPhotoUrl) {
+      return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'Photo URL must use HTTP or HTTPS.' });
+    }
+    photoUrls.push(validatedPhotoUrl);
   }
 
   const isFree = db.listingPrice.amountMinor === 0;
@@ -1164,9 +1182,7 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], (req, res) => {
   const initialStatus: CraftsmanStatus = isPaid ? 'ACTIVE' : 'UNPAID_DRAFT';
 
   // Photo handling (strictly max 1 photo)
-  const incomingPhotos = photos || (photoUrl ? [photoUrl] : []);
-  const craftsmanPhotos: CraftsmanPhoto[] = incomingPhotos.slice(0, 1).map((p: any, idx: number) => {
-    const url = typeof p === 'string' ? p : p.url;
+  const craftsmanPhotos: CraftsmanPhoto[] = photoUrls.map((url, idx) => {
     return {
       id: `ph-${craftsmanId}-${idx}`,
       craftsmanId,
@@ -1199,7 +1215,7 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], (req, res) => {
     status: initialStatus,
     cityId,
     professionId,
-    bankAccount: bankAccount || null,
+    bankAccount: normalizedBankAccount,
     photos: craftsmanPhotos,
     createdAt: startsAt,
     updatedAt: startsAt,

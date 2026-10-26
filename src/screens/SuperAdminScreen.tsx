@@ -294,7 +294,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
   // Bootstrap Migration State (§16.3)
   const [bootstrapStatus, setBootstrapStatus] = useState<any>(null);
-  const [newPhone, setNewPhone] = useState('+995599001122');
+  const [newPhone, setNewPhone] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [bootstrapOtp, setBootstrapOtp] = useState('');
 

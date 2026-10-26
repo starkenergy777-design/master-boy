@@ -26,14 +26,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [showPassword, setShowPassword] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState('');
-  const [userNotRegistered, setUserNotRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // 1. Password Login (Craftsman & Admin Phone + Password)
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
-    setUserNotRegistered(false);
 
     if (!phone || phone.trim().length < 8) {
       setErrorMsg(lang === 'ka' ? 'შეიყვანეთ ვალიდური ტელეფონის ნომერი' : 'Enter valid phone number');
@@ -50,15 +48,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       api.setToken(res.sessionToken);
       onLoginSuccess(res.user, res.isNewUser || false);
     } catch (err: any) {
-      if (err.data?.notRegistered || err.code === 'USER_NOT_FOUND') {
-        setUserNotRegistered(true);
-        setErrorMsg(
-          lang === 'ka'
-            ? 'ხელოსნის ანგარიში ამ ნომრით არ არის რეგისტრირებული. თუ გსურთ დარეგისტრირდეთ როგორც ხელოსანი, გაიარეთ ხელოსნის რეგისტრაცია.'
-            : 'No craftsman account exists for this number. Register only if you are a craftsman.'
-        );
-      } else if (err.code === 'INVALID_PASSWORD') {
-        setErrorMsg(lang === 'ka' ? 'არასწორი პაროლი. სცადეთ თავიდან.' : 'Incorrect password. Try again.');
+      if (err.code === 'INVALID_CREDENTIALS') {
+        setErrorMsg(lang === 'ka' ? 'ტელეფონის ნომერი ან პაროლი არასწორია.' : lang === 'ru' ? 'Неверный номер телефона или пароль.' : 'The phone number or password is incorrect.');
       } else {
         setErrorMsg(err.message || 'Login failed');
       }
@@ -93,17 +84,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
                 <span>{errorMsg}</span>
               </div>
-              {userNotRegistered && onOpenRegister && (
-                <button
-                  type="button"
-                  onClick={onOpenRegister}
-                  className="mt-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>{lang === 'ka' ? 'ხელოსნის რეგისტრაცია' : lang === 'ru' ? 'Регистрация мастера' : 'Craftsman registration'}</span>
-                </button>
-              )}
-            </div>
+                          </div>
           )}
 
           {/* MAIN FORM: PHONE NUMBER + PASSWORD */}

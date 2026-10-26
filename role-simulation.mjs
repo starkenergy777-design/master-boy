@@ -14,6 +14,7 @@ const [{ default: express }, { apiRouter }, { db }] = await Promise.all([
   import('./.audit-build/db.js'),
 ]);
 
+const { hashPassword } = await import('./.audit-build/db.js');
 const app = express();
 app.use(express.json());
 app.use('/api/v1', apiRouter);
@@ -86,6 +87,7 @@ try {
     SUPER_ADMIN: addSession('SUPER_ADMIN'),
     AD_PARTNER: addSession('AD_PARTNER'),
   };
+  roles.CRAFTSMAN.user.password = hashPassword('Audit-only-password-123');
   const gates = [
     { role: 'CRAFTSMAN', path: '/craftsmen/me/listing', allowed: 200 },
     { role: 'ADMIN', path: '/admin/analytics', allowed: 200 },
@@ -217,6 +219,41 @@ try {
   check('super admin can delete a craftsman and its profile', deleteCraftsman.status === 200 && !db.craftsmen.has(auditCraftsmanId));
   check('craftsman deletion removes the linked account and draft', !db.users.has(craftsmanUserId) && !db.craftsmanDrafts.has(craftsmanUserId));
   check('craftsman deletion leaves unrelated ad payment records intact', db.paymentIntents.get(auditPaymentIntentId)?.craftsmanId === null);
+
+  const knownPhoneFailure = await request('/auth/password/login', {
+    method: 'POST', body: { phone: roles.CRAFTSMAN.user.phone, password: 'wrong-audit-password' },
+  });
+  const unknownPhoneFailure = await request('/auth/password/login', {
+    method: 'POST', body: { phone: '+19999999999', password: 'wrong-audit-password' },
+  });
+  check('login failures do not reveal whether a phone number is registered',
+    knownPhoneFailure.status === 401 && unknownPhoneFailure.status === 401 &&
+    knownPhoneFailure.body.code === 'INVALID_CREDENTIALS' && unknownPhoneFailure.body.code === 'INVALID_CREDENTIALS');
+  const malformedLogin = await request('/auth/password/login', {
+    method: 'POST', body: { phone: roles.CRAFTSMAN.user.phone, password: { oversized: 'not a string' } },
+  });
+  check('malformed login data receives a bounded generic failure', malformedLogin.status === 401 && malformedLogin.body.code === 'INVALID_CREDENTIALS');
+
+  const savedBootstrap = { ...db.bootstrap };
+  db.bootstrap = { ...db.bootstrap, phone: '+995555901299', password: 'Audit-bootstrap-password', enabled: true };
+  const bootstrapOtp = await request('/auth/otp/request', { method: 'POST', body: { phone: db.bootstrap.phone } });
+  const ordinaryOtp = await request('/auth/otp/request', { method: 'POST', body: { phone: '+995555901298' } });
+  check('OTP request response does not reveal the bootstrap phone',
+    bootstrapOtp.status === 503 && ordinaryOtp.status === 503 && bootstrapOtp.body.code === ordinaryOtp.body.code);
+  db.bootstrap = savedBootstrap;
+
+  const malformedRegistration = await request('/auth/register', {
+    method: 'POST', body: { phone: '+995555901297', password: 'Audit-password-123', name: { malicious: true } },
+  });
+  check('registration rejects malformed profile objects without a server error', malformedRegistration.status === 400);
+  const registrationPhone = '+995555901296';
+  let lastRegistrationAttempt;
+  for (let i = 0; i < 4; i++) {
+    lastRegistrationAttempt = await request('/auth/register', {
+      method: 'POST', body: { phone: registrationPhone, password: 'short', name: 'Audit-only' },
+    });
+  }
+  check('free public registration is rate limited by phone', lastRegistrationAttempt.status === 429);
 
   console.log('ALL HTTP ROLE AND PAYMENT SIMULATIONS PASSED');
 } finally {

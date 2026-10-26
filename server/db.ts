@@ -163,9 +163,9 @@ class Database {
 
   // Bootstrap Super Admin credentials (§16)
   bootstrap = {
-    phone: process.env.BOOTSTRAP_PHONE || '+995000000000',
+    phone: process.env.BOOTSTRAP_PHONE || '',
     password: process.env.BOOTSTRAP_PASSWORD || '',
-    enabled: Boolean(process.env.BOOTSTRAP_PASSWORD),
+    enabled: Boolean(process.env.BOOTSTRAP_PHONE && process.env.BOOTSTRAP_PASSWORD),
     invalidated: false,
     completedAt: null as string | null,
   };
@@ -1176,15 +1176,18 @@ class Database {
 }
 
 export function hashPassword(password: string): string {
+  if (typeof password !== 'string' || password.length > 1024) {
+    throw new TypeError('Password must be a string no longer than 1,024 characters.');
+  }
   const salt = crypto.randomBytes(16).toString('hex');
   const derived = crypto.scryptSync(password, salt, 64).toString('hex');
   return `scrypt$${salt}$${derived}`;
 }
 
 export function verifyPassword(password: string, stored: string | undefined): boolean {
-  if (!stored || !stored.startsWith('scrypt$')) return false;
+  if (typeof password !== 'string' || password.length > 1024 || !stored || !stored.startsWith('scrypt$')) return false;
   const [, salt, expected] = stored.split('$');
-  if (!salt || !expected) return false;
+  if (!/^[0-9a-f]{32}$/i.test(salt || '') || !/^[0-9a-f]{128}$/i.test(expected || '')) return false;
   const actual = crypto.scryptSync(password, salt, 64).toString('hex');
   const actualBuffer = Buffer.from(actual, 'hex');
   const expectedBuffer = Buffer.from(expected, 'hex');

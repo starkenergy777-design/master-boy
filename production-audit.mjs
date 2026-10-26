@@ -75,7 +75,7 @@ check('registration frontend enforces the server 12-character password minimum',
 });
 check('SMS login does not claim to send an undelivered code', () => {
   assert.match(routes, /OTP_DELIVERY_NOT_IMPLEMENTED/);
-  assert.match(routes, /OTP_PROVIDER_NOT_CONFIGURED/);
+  assert.doesNotMatch(routes, /OTP_PROVIDER_NOT_CONFIGURED/);
 });
 check('provider API responses omit secret values', () => {
   assert.match(routes, /function safeProvider/);
@@ -183,7 +183,52 @@ check('AI user interface identifies the selected provider and does not promise c
 });
 check('production build runs TypeScript checks before bundling', () => assert.match(packageJson.scripts.build, /typecheck[\s\S]*vite build/));
 
-const failed = checks.filter(x => x.startsWith('FAIL:'));
+check('public login uses one non-enumerating failure response and a dummy password hash', () => {
+  const loginStart = routes.indexOf("apiRouter.post(['/auth/password/login'");
+  const loginEnd = routes.indexOf('// POST /auth/craftsman/register', loginStart);
+  const loginRoute = routes.slice(loginStart, loginEnd);
+  assert.ok(loginRoute.includes('DUMMY_LOGIN_PASSWORD_HASH'));
+  assert.ok(loginRoute.includes('INVALID_CREDENTIALS'));
+  assert.ok(!loginRoute.includes('USER_NOT_FOUND'));
+});
+check('OTP request does not disclose bootstrap or account existence', () => {
+  const otpStart = routes.indexOf("apiRouter.post('/auth/otp/request'");
+  const otpEnd = routes.indexOf("apiRouter.post('/auth/otp/verify'", otpStart);
+  const otpRoute = routes.slice(otpStart, otpEnd);
+  assert.ok(!otpRoute.includes('db.bootstrap'));
+  assert.ok(!otpRoute.includes('challengeId'));
+  assert.ok(otpRoute.includes('OTP_DELIVERY_NOT_IMPLEMENTED'));
+});
+check('untrusted request sizes and password lengths are bounded', () => {
+  assert.ok(server.includes("express.json({ limit: '1mb' })"));
+  assert.ok(routes.includes('password.length > 1024'));
+  assert.ok(routes.includes('password.length > 128'));
+  assert.ok(db.includes('Password must be a string no longer than 1,024 characters'));
+});
+check('deployment metadata and repository paths are explicitly blocked', () => {
+  assert.ok(server.includes('decodeURIComponent(requestPath)'));
+  assert.ok(server.includes('git(?:'));
+  assert.ok(server.includes('env(?:'));
+  assert.ok(server.includes('return res.sendStatus(404)'));
+});
+check('bootstrap credentials have no predictable fallback phone', () => {
+  assert.ok(db.includes("phone: process.env.BOOTSTRAP_PHONE || ''"));
+  assert.ok(db.includes('enabled: Boolean(process.env.BOOTSTRAP_PHONE && process.env.BOOTSTRAP_PASSWORD)'));
+  assert.ok(superAdmin.includes("useState('')"));
+  assert.ok(!superAdmin.includes("setNewPhone('+995"));
+});
+check('public profile registration validates text, catalog IDs, bank field, and photo URLs', () => {
+  assert.ok(routes.includes('resolvedName.length > 150'));
+  assert.ok(routes.includes('description.length > 4000'));
+  assert.ok(routes.includes('normalizedBankAccount.length > 64'));
+  assert.ok(routes.includes('INVALID_PHOTO_URL'));
+});
+check('free public registration has IP and phone throttles', () => {
+  assert.ok(routes.includes('craftsman-register:${getClientIp(req)}'));
+  assert.ok(routes.includes('craftsman-register-phone:${normalizedPhone}'));
+  assert.ok(routes.includes('TOO_MANY_REGISTRATION_ATTEMPTS'));
+});
+const failed = checks.filter(x => x.startsWith('FAIL:'))
 console.log(checks.join('\n'));
 console.log(`AUDIT_RESULT: ${failed.length ? 'FAILED' : 'PASSED'} (${checks.length - failed.length}/${checks.length})`);
 process.exitCode = failed.length ? 1 : 0;
