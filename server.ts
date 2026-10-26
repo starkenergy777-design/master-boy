@@ -99,7 +99,7 @@ async function startServer() {
     } catch {
       return res.sendStatus(400);
     }
-    if (/(?:^|\\/)\\.(?:git(?:\\/|$)|env(?:[./]|$))/i.test(requestPath)) {
+    if (/(?:^|\/)\.(?:git(?:\/|$)|env(?:[./]|$))/i.test(requestPath)) {
       return res.sendStatus(404);
     }
     next();
