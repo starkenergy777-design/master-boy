@@ -187,8 +187,10 @@ check('public login uses one non-enumerating failure response and a dummy passwo
   const loginStart = routes.indexOf("apiRouter.post(['/auth/password/login'");
   const loginEnd = routes.indexOf('// POST /auth/craftsman/register', loginStart);
   const loginRoute = routes.slice(loginStart, loginEnd);
-  assert.ok(loginRoute.includes('DUMMY_LOGIN_PASSWORD_HASH'));
-  assert.ok(loginRoute.includes('INVALID_CREDENTIALS'));
+  assert.match(routes, /const DUMMY_LOGIN_PASSWORD_HASH = hashPassword\(crypto\.randomBytes\(32\)\.toString\('base64url'\)\);/);
+  assert.match(routes, /const INVALID_LOGIN_RESPONSE = \{\s*code: 'INVALID_CREDENTIALS',/);
+  assert.ok(loginRoute.includes('foundUser?.password || DUMMY_LOGIN_PASSWORD_HASH'));
+  assert.ok(loginRoute.includes('json(INVALID_LOGIN_RESPONSE)'));
   assert.ok(!loginRoute.includes('USER_NOT_FOUND'));
 });
 check('OTP request does not disclose bootstrap or account existence', () => {
