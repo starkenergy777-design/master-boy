@@ -128,7 +128,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                   ))}
                 </div>
               </div>
-            )
+            )}
 
           </div>
 
