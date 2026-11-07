@@ -254,7 +254,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
         <span className="min-w-0 flex-1 break-words text-left text-lg font-semibold leading-snug">
           {selectedProfession?.name || (allowClear ? allLabel : placeholder)}
         </span>
-        <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown aria-hidden="true" className={`h-6 w-6 shrink-0 text-slate-300 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={3} />
       </button>
 
       {open && (
