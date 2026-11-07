@@ -100,7 +100,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             <select
               value={selectedCityId}
               onChange={(e) => setSelectedCityId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+              className="w-full min-h-14 bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2.5 text-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
             >
               <option value="">{t.allCities}</option>
               {cities.map((city) => (
