@@ -106,9 +106,9 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                 style={{ backgroundColor: '#15803d', color: '#ffffff', colorScheme: 'light' }}
               >
                 <option value="" style={{ backgroundColor: '#15803d', color: '#ffffff' }}>{t.allCities}</option>
-                {cities.map((city) => (
+                {cities.map((city, index) => (
                   <option key={city.id} value={city.id} style={{ backgroundColor: '#15803d', color: '#ffffff' }}>
-                    {city.name}
+                    {String(index + 1).padStart(2, '0')}. {city.name}
                   </option>
                 ))}
               </select>
