@@ -177,15 +177,13 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           </div>
         )}
 
-        <div className="mb-2 px-3 py-2">
-          <p className="text-xs leading-relaxed text-slate-400">
+        <p className="mb-2 px-3 py-2 text-xs leading-relaxed text-slate-400">
             {lang === 'ka'
               ? 'ხელოსნის მოსაძებნად რეგისტრაცია საჭირო არ არის — აირჩიეთ ქალაქი და პროფესია.'
               : lang === 'ru'
                 ? 'Для поиска мастера регистрация не нужна — выберите город и профессию.'
                 : 'You do not need an account to find a craftsman — choose a city and profession.'}
-          </p>
-        </div>
+        </p>
 
       </div>
 
