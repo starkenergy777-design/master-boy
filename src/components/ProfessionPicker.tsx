@@ -237,7 +237,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
         aria-expanded={open}
         aria-controls={optionsId}
         onClick={() => setOpen((current) => !current)}
-        className={`flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-base text-white transition-colors hover:border-amber-500/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${buttonClassName}`}
+        className={`relative flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 pl-3 pr-12 py-2.5 text-base text-white transition-colors hover:border-amber-500/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${buttonClassName}`}
       >
         {selectedProfession ? (
           <ProfessionIcon professionId={selectedProfession.id} size="sm" />
@@ -254,7 +254,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
         <span className="min-w-0 flex-1 break-words text-left text-lg font-semibold leading-snug">
           {selectedProfession?.name || (allowClear ? allLabel : placeholder)}
         </span>
-        <ChevronDown aria-hidden="true" className={`h-6 w-6 shrink-0 text-slate-300 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={3} />
+        <ChevronDown aria-hidden="true" className={`pointer-events-none absolute right-3 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-300 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={3} />
       </button>
 
       {open && (
