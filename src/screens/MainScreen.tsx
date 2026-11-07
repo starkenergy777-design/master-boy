@@ -65,10 +65,9 @@ export const MainScreen: React.FC<MainScreenProps> = ({
       {/* Top Banner & Search Controls grouped */}
       <div className="space-y-3 shrink-0">
         {/* Unified welcome and search panel */}
-        <div className="rounded-xl border border-slate-800 overflow-hidden shadow-sm bg-slate-900/90">
+        <div className="rounded-xl border border-slate-800 shadow-sm bg-slate-900/90 p-3 sm:p-4 space-y-3">
         {/* Top Banner / Welcome - compact */}
-        <div className="bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 p-3 sm:p-4 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
+        <div>
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
@@ -87,8 +86,8 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           </p>
         </div>
 
-        {/* Main Search Controls */}
-        <div className="p-3 sm:p-4 space-y-2">
+        {/* Main Search Controls — same surface, no inner frame */}
+        <div className="space-y-2">
           {/* City selector */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between px-0.5">
