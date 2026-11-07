@@ -180,12 +180,12 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   return localizeTree(lang, (
     <div className="flex-1 flex flex-col p-4 pb-20 space-y-4 animate-fade-in text-slate-100">
       {/* Top Filter Bar */}
-      <div className="flex items-center gap-2">
-        <div className="flex-1 flex gap-2">
+      <div className="w-full min-w-0">
+        <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
           <select
             value={cityId}
             onChange={(e) => handleFilterChange(e.target.value, professionId)}
-            className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            className="h-[66px] w-full min-w-0 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-base text-white focus:outline-none focus:border-amber-500"
           >
             <option value="">{t.selectCity}...</option>
             {cities.map((ct) => (
@@ -206,8 +206,8 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
             noResultsLabel={t.noProfessionMatch}
             closeLabel={t.close}
             allowClear
-            className="flex-1"
-            buttonClassName="min-h-14 rounded-xl px-3 py-2.5 text-lg"
+            className="w-full min-w-0"
+            buttonClassName="min-h-[66px] rounded-xl px-3 py-2.5 text-lg"
           />
         </div>
       </div>
