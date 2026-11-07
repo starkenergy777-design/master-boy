@@ -60,14 +60,6 @@ export const MainScreen: React.FC<MainScreenProps> = ({
     onSearch(selectedCityId || undefined, selectedProfessionId || undefined);
   };
 
-  const handleQuickCity = (cityId: string) => {
-    const nextCity = selectedCityId === cityId ? '' : cityId;
-    setSelectedCityId(nextCity);
-    if (selectedProfessionId) {
-      onSearch(nextCity || undefined, selectedProfessionId);
-    }
-  };
-
   return localizeTree(lang, (
     <div className="flex-1 flex flex-col p-3 sm:p-4 pb-0 animate-fade-in text-slate-100 min-h-0">
       {/* Top Banner & Search Controls grouped */}
@@ -95,7 +87,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
 
         {/* Main Search Controls */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm space-y-2">
-          {/* City selector & Quick chips */}
+          {/* City selector */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between px-0.5">
               <label className="text-sm sm:text-[15px] font-semibold text-slate-300">
@@ -117,24 +109,6 @@ export const MainScreen: React.FC<MainScreenProps> = ({
               ))}
             </select>
 
-            {/* Quick Georgian City Chips */}
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {cities.slice(0, 4).map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  aria-pressed={selectedCityId === c.id}
-                  onClick={() => handleQuickCity(c.id)}
-                  className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
-                    selectedCityId === c.id
-                      ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
-                      : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
-                  }`}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Profession dropdown */}
