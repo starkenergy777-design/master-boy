@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Search,
   ChevronDown,
+  X,
   ExternalLink,
 } from 'lucide-react';
 import { translations } from '../i18n.js';
@@ -24,6 +25,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
   const [cities, setCities] = useState<City[]>([]);
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [selectedCityId, setSelectedCityId] = useState<string>('');
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [selectedProfessionId, setSelectedProfessionId] = useState<string>('');
   const [activeAd, setActiveAd] = useState<AdvertisementPublic | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,21 +101,40 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             </div>
 
             <div className="relative">
-              <select
-                value={selectedCityId}
-                onChange={(e) => setSelectedCityId(e.target.value)}
-                className="w-full h-[66px] appearance-none border border-slate-700/80 rounded-lg pl-3 pr-12 py-2.5 text-lg font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
-                style={{ backgroundColor: '#15803d', color: '#ffffff', colorScheme: 'light' }}
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={cityPickerOpen}
+                onClick={() => setCityPickerOpen(true)}
+                className="relative w-full h-[66px] border border-slate-700/80 rounded-lg pl-3 pr-12 py-2.5 text-left text-lg font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
+                style={{ backgroundColor: '#15803d' }}
               >
-                <option value="" style={{ backgroundColor: '#15803d', color: '#ffffff' }}>{t.allCities}</option>
-                {cities.map((city, index) => (
-                  <option key={city.id} value={city.id} style={{ backgroundColor: '#15803d', color: '#ffffff' }}>
-                    {String(index + 1).padStart(2, '0')}. {city.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 h-6 w-6 pointer-events-none text-slate-300" strokeWidth={3} />
+                {cities.find((city) => city.id === selectedCityId)?.name || t.allCities}
+                <ChevronDown aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 h-6 w-6 pointer-events-none text-slate-300" strokeWidth={3} />
+              </button>
             </div>
+            {cityPickerOpen && (
+              <div role="dialog" aria-modal="true" aria-label={t.selectCity} className="fixed inset-0 z-[110] flex flex-col bg-slate-950 text-white">
+                <div className="flex shrink-0 items-center justify-between border-b border-slate-700 px-4 py-3">
+                  <h2 className="text-lg font-bold">{t.selectCity}</h2>
+                  <button type="button" onClick={() => setCityPickerOpen(false)} aria-label={t.close} className="rounded-lg p-2 text-slate-200 focus-visible:outline-2 focus-visible:outline-amber-400">
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2">
+                  <button type="button" onClick={() => { setSelectedCityId(''); setCityPickerOpen(false); }} className="flex w-full items-center gap-3 rounded-lg border-b border-slate-800 px-3 py-4 text-left text-lg font-semibold text-white">
+                    <span className="w-10 shrink-0 text-center text-amber-300">—</span>
+                    {t.allCities}
+                  </button>
+                  {cities.map((city, index) => (
+                    <button key={city.id} type="button" onClick={() => { setSelectedCityId(city.id); setCityPickerOpen(false); }} className="flex w-full items-center gap-3 rounded-lg border-b border-slate-800 px-3 py-4 text-left text-lg text-white hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-amber-400">
+                      <span className="w-10 shrink-0 text-center font-extrabold tabular-nums text-amber-300">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="flex-1">{city.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
 
           </div>
 
