@@ -71,13 +71,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
         <div className="rounded-xl border border-slate-800 shadow-sm bg-slate-900/90 p-3 sm:p-4 space-y-3">
         {/* Top Banner / Welcome - compact */}
         <div>
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
-              {t.appName}
-            </span>
-          </div>
-          <h1 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
             {t.tagline}
           </h1>
           <p className="text-[10px] sm:text-[11px] text-slate-400 leading-snug hidden sm:block mt-0.5">
