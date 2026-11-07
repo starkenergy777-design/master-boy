@@ -177,7 +177,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           </div>
         )}
 
-        <div className="mb-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2">
+        <div className="mb-2 px-3 py-2">
           <p className="text-xs leading-relaxed text-slate-400">
             {lang === 'ka'
               ? 'ხელოსნის მოსაძებნად რეგისტრაცია საჭირო არ არის — აირჩიეთ ქალაქი და პროფესია.'
