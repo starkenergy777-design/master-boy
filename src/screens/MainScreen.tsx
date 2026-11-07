@@ -2,6 +2,7 @@ import { localizeTree } from '../i18n.js';
 import React, { useState, useEffect } from 'react';
 import {
   Search,
+  ChevronDown,
   ExternalLink,
 } from 'lucide-react';
 import { translations } from '../i18n.js';
@@ -97,19 +98,22 @@ export const MainScreen: React.FC<MainScreenProps> = ({
               <span className="text-xs text-slate-400">საქართველო</span>
             </div>
 
-            <select
-              value={selectedCityId}
-              onChange={(e) => setSelectedCityId(e.target.value)}
-              className="w-full h-[66px] border border-slate-700/80 rounded-lg px-3 py-2.5 text-lg font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
-              style={{ backgroundColor: '#15803d', color: '#ffffff', colorScheme: 'light' }}
-            >
-              <option value="" style={{ backgroundColor: '#15803d', color: '#ffffff' }}>{t.allCities}</option>
-              {cities.map((city) => (
-                <option key={city.id} value={city.id} style={{ backgroundColor: '#15803d', color: '#ffffff' }}>
-                  {city.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={selectedCityId}
+                onChange={(e) => setSelectedCityId(e.target.value)}
+                className="w-full h-[66px] appearance-none border border-slate-700/80 rounded-lg pl-3 pr-12 py-2.5 text-lg font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
+                style={{ backgroundColor: '#15803d', color: '#ffffff', colorScheme: 'light' }}
+              >
+                <option value="" style={{ backgroundColor: '#15803d', color: '#ffffff' }}>{t.allCities}</option>
+                {cities.map((city) => (
+                  <option key={city.id} value={city.id} style={{ backgroundColor: '#15803d', color: '#ffffff' }}>
+                    {city.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 h-6 w-6 pointer-events-none text-slate-300" strokeWidth={3} />
+            </div>
 
           </div>
 
