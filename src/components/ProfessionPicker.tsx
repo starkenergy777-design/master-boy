@@ -136,6 +136,7 @@ interface ProfessionPickerProps {
   labelClassName?: string;
   className?: string;
   buttonClassName?: string;
+  buttonStyle?: React.CSSProperties;
 }
 
 export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
@@ -153,6 +154,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
   labelClassName = '',
   className = '',
   buttonClassName = '',
+  buttonStyle,
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -227,6 +229,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
       )}
       <button
         ref={triggerRef}
+        style={buttonStyle}
         id={triggerId}
         type="button"
         aria-label={ariaLabel}
