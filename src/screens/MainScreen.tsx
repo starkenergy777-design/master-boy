@@ -127,7 +127,8 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             closeLabel={t.close}
             allowClear
             labelClassName="px-0.5"
-            buttonClassName="min-h-14 rounded-lg border-slate-700/80 px-3 py-2.5 text-lg !bg-green-700"
+            buttonClassName="min-h-14 rounded-lg border-slate-700/80 px-3 py-2.5 text-lg"
+            buttonStyle={{ backgroundColor: '#15803d', color: '#ffffff' }}
           />
 
           <div className="pt-1 grid grid-cols-1 gap-1.5">
