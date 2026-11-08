@@ -141,6 +141,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             ariaLabel={t.selectProfession}
             placeholder={lang === 'ka' ? 'პროფესია' : lang === 'ru' ? 'Профессия' : 'Profession'}
             allLabel={t.allProfessions}
+            emptyTriggerLabel={lang === 'ka' ? 'პროფესია' : lang === 'ru' ? 'Профессия' : 'Profession'}
             searchPlaceholder={t.searchProfession}
             noResultsLabel={t.noProfessionMatch}
             closeLabel={t.close}
