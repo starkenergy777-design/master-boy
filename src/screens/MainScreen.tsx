@@ -100,7 +100,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                 aria-haspopup="dialog"
                 aria-expanded={cityPickerOpen}
                 onClick={() => setCityPickerOpen(true)}
-                className="relative w-full h-[66px] border border-slate-700/80 rounded-lg pl-3 pr-12 py-2.5 text-left text-lg font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
+                className="relative w-full h-[66px] border border-slate-700/80 rounded-lg pl-[68px] pr-12 py-2.5 text-left text-lg font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
                 style={{ backgroundColor: '#15803d' }}
               >
                 {cities.find((city) => city.id === selectedCityId)?.name || (lang === 'ka' ? 'ქალაქი' : lang === 'ru' ? 'Город' : 'City')}
