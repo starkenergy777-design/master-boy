@@ -128,6 +128,7 @@ interface ProfessionPickerProps {
   ariaLabel: string;
   placeholder: string;
   allLabel: string;
+  emptyTriggerLabel?: string;
   searchPlaceholder: string;
   noResultsLabel: string;
   closeLabel: string;
@@ -146,6 +147,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
   ariaLabel,
   placeholder,
   allLabel,
+  emptyTriggerLabel,
   searchPlaceholder,
   noResultsLabel,
   closeLabel,
@@ -252,7 +254,7 @@ export const ProfessionPicker: React.FC<ProfessionPickerProps> = ({
           </span>
         )}
         <span className="min-w-0 flex-1 break-words text-left text-lg font-semibold leading-snug">
-          {selectedProfession?.name || (allowClear ? allLabel : placeholder)}
+          {selectedProfession?.name || (emptyTriggerLabel ?? (allowClear ? allLabel : placeholder))}
         </span>
         <ChevronDown aria-hidden="true" className={`pointer-events-none absolute right-3 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-300 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={3} />
       </button>
