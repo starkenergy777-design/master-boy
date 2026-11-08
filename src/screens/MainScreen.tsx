@@ -100,10 +100,11 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                 aria-haspopup="dialog"
                 aria-expanded={cityPickerOpen}
                 onClick={() => setCityPickerOpen(true)}
-                className="relative w-full h-[66px] border border-slate-700/80 rounded-lg pl-[68px] pr-12 py-2.5 text-left text-lg font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
+                className="relative flex w-full h-[66px] min-w-0 items-center gap-3 border border-slate-700/80 rounded-lg pl-3 pr-12 py-2.5 text-left text-lg font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
                 style={{ backgroundColor: '#15803d' }}
               >
-                {cities.find((city) => city.id === selectedCityId)?.name || (lang === 'ka' ? 'ქალაქი' : lang === 'ru' ? 'Город' : 'City')}
+                <span aria-hidden="true" className="h-11 w-11 shrink-0 invisible" />
+                <span className="min-w-0 flex-1 text-left text-lg font-semibold leading-snug">{cities.find((city) => city.id === selectedCityId)?.name || (lang === 'ka' ? 'ქალაქი' : lang === 'ru' ? 'Город' : 'City')}</span>
                 <ChevronDown aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 h-6 w-6 pointer-events-none text-slate-300" strokeWidth={3} />
               </button>
             </div>
