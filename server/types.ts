@@ -168,7 +168,7 @@ export interface Top15Reservation {
   amountMinor: number;
   currency: string;
   expiresAt: number; // Unix timestamp ms
-  status: 'HELD' | 'PAID' | 'EXPIRED';
+  status: 'CANDIDATE' | 'HELD' | 'PAID' | 'EXPIRED' | 'CANCELLED';
 }
 
 export interface Top15Membership {
