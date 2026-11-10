@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 41350)
-Total output lines: 3812
-
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { isIP } from 'node:net';
@@ -1035,7 +1032,1661 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
   }
 
   {
-      const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;…16350 tokens truncated…, userMessage];
+      const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
+      db.sessions.set(sessionToken, { userId: foundUser.id, createdAt: Date.now() });
+
+      let craftsman: Craftsman | undefined;
+      for (const c of db.craftsmen.values()) {
+        if (c.userId === foundUser.id) {
+          craftsman = c;
+          break;
+        }
+      }
+
+      return res.json({
+        sessionToken,
+        token: sessionToken,
+        user: {
+          id: foundUser.id,
+          phone: foundUser.phone,
+          roles: foundUser.roles,
+          ...(foundUser.roles.includes('ADMIN')
+            ? { adminSharePercent: typeof foundUser.adminSharePercent === 'number' ? foundUser.adminSharePercent : null }
+            : {}),
+        },
+        hasCraftsmanProfile: !!craftsman,
+        craftsmanId: craftsman?.id || null,
+        isAdPartner: foundUser.roles.includes('AD_PARTNER'),
+        isNewUser: !craftsman && !foundUser.roles.some(r => r === 'ADMIN' || r === 'SUPER_ADMIN' || r === 'AD_PARTNER'),
+      });
+  }
+});
+
+// POST /auth/craftsman/register (also /auth/register and /craftsmen/register)
+apiRouter.post(['/auth/craftsman/register', '/auth/register'], (req, res) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const {
+    phone,
+    password,
+    name,
+    cityId,
+    professionId,
+    description,
+    photoUrl,
+    photos,
+    phoneVisible,
+    workingHours,
+    paid,
+    providerId,
+    bankAccount,
+  } = body;
+
+  const fullName = body.fullName;
+  if ((name !== undefined && typeof name !== 'string') || (fullName !== undefined && typeof fullName !== 'string')) {
+    return res.status(400).json({ code: 'INVALID_NAME', message: 'Name must be text.' });
+  }
+  const resolvedName = (typeof name === 'string' ? name : typeof fullName === 'string' ? fullName : '').trim() || 'ხელოსანი';
+  if (resolvedName.length > 150) {
+    return res.status(400).json({ code: 'INVALID_NAME', message: 'Name must be 150 characters or fewer.' });
+  }
+
+  const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
+  if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
+    return res.status(400).json({ code: 'INVALID_PHONE', message: 'შეიყვანეთ ვალიდური ტელეფონის ნომერი (მინ. 8 ციფრი)' });
+  }
+  if (!rateLimit(`craftsman-register:${getClientIp(req)}`, 10, 15 * 60 * 1000) ||
+      !rateLimit(`craftsman-register-phone:${normalizedPhone}`, 3, 24 * 60 * 60 * 1000)) {
+    return res.status(429).json({ code: 'TOO_MANY_REGISTRATION_ATTEMPTS', message: 'Too many registration attempts. Try again later.' });
+  }
+
+  if (typeof password !== 'string' || password.length < 12 || password.length > 128) {
+    return res.status(400).json({ code: 'INVALID_PASSWORD', message: 'Password must be between 12 and 128 characters.' });
+  }
+
+  if (typeof cityId !== 'string' || cityId.length > 64 || !db.cities.some(city => city.id === cityId && city.isActive) ||
+      typeof professionId !== 'string' || professionId.length > 64 || !db.professions.some(profession => profession.id === professionId)) {
+    return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'სახელი, ქალაქი და პროფესია სავალდებულოა' });
+  }
+
+  const normalizedBankAccount = typeof bankAccount === 'string' ? bankAccount.trim() : '';
+  if (!normalizedBankAccount || normalizedBankAccount.length > 64) {
+    return res.status(422).json({ code: 'BANK_ACCOUNT_REQUIRED', message: 'საბანკო ანგარიში სავალდებულოა.' });
+  }
+
+  if (description !== undefined && (typeof description !== 'string' || description.length > 4000)) {
+    return res.status(400).json({ code: 'INVALID_DESCRIPTION', message: 'Description must be text under 4,000 characters.' });
+  }
+  if (phoneVisible !== undefined && typeof phoneVisible !== 'boolean') {
+    return res.status(400).json({ code: 'INVALID_PHONE_VISIBILITY', message: 'phoneVisible must be a boolean.' });
+  }
+  if (workingHours !== undefined && (!workingHours || typeof workingHours !== 'object' || Array.isArray(workingHours))) {
+    return res.status(400).json({ code: 'INVALID_WORKING_HOURS', message: 'workingHours must be an object.' });
+  }
+
+  const incomingPhotos = photos === undefined ? (photoUrl ? [photoUrl] : []) : photos;
+  if (!Array.isArray(incomingPhotos)) {
+    return res.status(400).json({ code: 'INVALID_PHOTOS', message: 'Photos must be a list.' });
+  }
+  const photoUrls: string[] = [];
+  for (const photo of incomingPhotos.slice(0, 1)) {
+    const photoUrlValue = typeof photo === 'string'
+      ? photo
+      : photo && typeof photo === 'object' && typeof photo.url === 'string' ? photo.url : '';
+    const validatedPhotoUrl = validateHttpUrl(photoUrlValue, 'photo_url', false);
+    if (!validatedPhotoUrl) {
+      return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'Photo URL must use HTTP or HTTPS.' });
+    }
+    photoUrls.push(validatedPhotoUrl);
+  }
+
+  const isFree = db.listingPrice.amountMinor === 0;
+  const isPaid = isFree || paid === true;
+  if (!isPaid) {
+    return res.status(402).json({ code: 'PAYMENT_REQUIRED', message: 'ხელოსნის ანგარიშის შექმნამდე საჭიროა გამოწერის გადახდა.' });
+  }
+  if (!isFree) {
+    if (!requireRealPaymentIntegration(res)) return;
+    const provider = db.providerConfig.payment.find(p => p.id === providerId);
+    if (!provider || !provider.isActive) {
+      return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+    }
+  }
+
+  // Check if phone already registered with a craftsman profile
+  let user: User | undefined;
+  for (const u of db.users.values()) {
+    if (u.phone === normalizedPhone) {
+      user = u;
+      break;
+    }
+  }
+
+  if (user) {
+    // An unauthenticated, paid registration must never reset an existing account's
+    // password or grant a new role. Existing users should sign in to continue.
+    return res.status(409).json({
+      code: 'PHONE_ALREADY_REGISTERED',
+      message: 'ეს ნომერი უკვე რეგისტრირებულია. გთხოვთ გაიაროთ ავტორიზაცია.',
+    });
+  } else {
+    // Create new user
+    const userId = `usr-${Date.now()}`;
+    user = {
+      id: userId,
+      phone: normalizedPhone,
+      password: hashPassword(password),
+      roles: ['CRAFTSMAN'],
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    };
+    db.users.set(userId, user);
+  }
+
+  const now = new Date();
+  const startsAt = now.toISOString();
+  const craftsmanId = `cm-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const initialStatus: CraftsmanStatus = isPaid ? 'ACTIVE' : 'UNPAID_DRAFT';
+
+  // Photo handling (strictly max 1 photo)
+  const craftsmanPhotos: CraftsmanPhoto[] = photoUrls.map((url, idx) => {
+    return {
+      id: `ph-${craftsmanId}-${idx}`,
+      craftsmanId,
+      url,
+      displayOrder: idx,
+      isPrimary: true,
+      createdAt: startsAt,
+      updatedAt: startsAt,
+    };
+  });
+
+  const newCraftsman: Craftsman = {
+    id: craftsmanId,
+    userId: user.id,
+    name: resolvedName,
+    description: description || '',
+    phone: user.phone,
+    phoneVisible: phoneVisible !== false,
+    latitude: null,
+    longitude: null,
+    workingHours: workingHours || {
+      monday: '09:00-18:00',
+      tuesday: '09:00-18:00',
+      wednesday: '09:00-18:00',
+      thursday: '09:00-18:00',
+      friday: '09:00-18:00',
+      saturday: '10:00-15:00',
+      sunday: null,
+    },
+    status: initialStatus,
+    cityId,
+    professionId,
+    bankAccount: normalizedBankAccount,
+    photos: craftsmanPhotos,
+    createdAt: startsAt,
+    updatedAt: startsAt,
+  };
+
+  db.craftsmen.set(craftsmanId, newCraftsman);
+
+  // Setup 180-day listing
+  const listExpiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString();
+  const listGraceEndsAt = new Date(now.getTime() + (180 + 30) * 24 * 60 * 60 * 1000).toISOString();
+
+  let paymentIntentId: string | null = null;
+  if (isPaid && !isFree) {
+    paymentIntentId = `pi-list-${Date.now()}`;
+    db.paymentIntents.set(paymentIntentId, {
+      id: paymentIntentId,
+      reservationId: craftsmanId,
+      craftsmanId,
+      providerId: providerId || 'prov-bog',
+      amountMinor: db.listingPrice.amountMinor,
+      currency: db.listingPrice.currency,
+      idempotencyKey: `init-${craftsmanId}`,
+      status: 'SUCCEEDED',
+      createdAt: startsAt,
+    });
+  }
+
+  db.craftsmanListings.set(craftsmanId, {
+    id: `list-${craftsmanId}`,
+    craftsmanId,
+    cityId,
+    professionId,
+    status: isPaid ? 'ACTIVE' : 'UNPAID_DRAFT',
+    startsAt: isPaid ? startsAt : null,
+    expiresAt: isPaid ? listExpiresAt : null,
+    graceEndsAt: isPaid ? listGraceEndsAt : null,
+    lastPaymentId: paymentIntentId,
+    createdAt: startsAt,
+    updatedAt: startsAt,
+  });
+
+  // Issue session token
+  const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
+  db.sessions.set(sessionToken, { userId: user.id, createdAt: Date.now() });
+
+  res.status(201).json({
+    sessionToken,
+    token: sessionToken,
+    user: {
+      id: user.id,
+      phone: user.phone,
+      roles: user.roles,
+    },
+    craftsman: newCraftsman,
+    isNewUser: true,
+  });
+});
+
+// POST /auth/logout
+apiRouter.post('/auth/logout', requireAuth, (req: AuthRequest, res) => {
+  if (req.sessionToken) {
+    db.sessions.delete(req.sessionToken);
+  }
+  res.json({ success: true });
+});
+
+// GET /auth/me
+apiRouter.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
+  res.json({
+    id: req.user!.id,
+    phone: req.user!.phone,
+    roles: req.user!.roles,
+    status: req.user!.status,
+    ...(req.user!.roles.includes('ADMIN')
+      ? { adminSharePercent: typeof req.user!.adminSharePercent === 'number' ? req.user!.adminSharePercent : null }
+      : {}),
+  });
+});
+
+// ==========================================
+// 6.3 CRAFTSMAN (SESSION) ENDPOINTS
+// ==========================================
+
+// Helper to get craftsman for current user
+function getMyCraftsman(userId: string): Craftsman | undefined {
+  for (const c of db.craftsmen.values()) {
+    if (c.userId === userId && c.status !== 'DELETED') {
+      return c;
+    }
+  }
+  return undefined;
+}
+
+// PUT /craftsmen/me/draft (wizard auto-save)
+apiRouter.put('/craftsmen/me/draft', requireCraftsman, (req: AuthRequest, res) => {
+  const { step, data } = req.body;
+  if (typeof step !== 'number' || !data) {
+    return res.status(400).json({ code: 'INVALID_DRAFT', message: 'Valid step number and data required' });
+  }
+
+  const draft = {
+    step,
+    data,
+    updatedAt: new Date().toISOString(),
+  };
+  db.craftsmanDrafts.set(req.user!.id, draft);
+  res.json(draft);
+});
+
+// POST /craftsmen/register (draft -> ACTIVE)
+apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res) => {
+  const existing = getMyCraftsman(req.user!.id);
+  if (existing) {
+    return res.status(409).json({ code: 'ALREADY_REGISTERED', message: 'Craftsman profile already exists' });
+  }
+
+  const draft = db.craftsmanDrafts.get(req.user!.id);
+  const incoming = req.body.data || req.body || {};
+  const data = { ...(draft?.data || {}), ...incoming };
+
+  if (!data.name || !data.cityId || !data.professionId) {
+    return res.status(422).json({ code: 'VALIDATION_FAILED', message: 'Name, City, and Profession are required' });
+  }
+
+  const bankAccount = typeof data.bankAccount === 'string' ? data.bankAccount.trim() : '';
+  if (!bankAccount) {
+    return res.status(422).json({ code: 'BANK_ACCOUNT_REQUIRED', message: 'საბანკო ანგარიში სავალდებულოა.' });
+  }
+
+  const isFree = db.listingPrice.amountMinor === 0;
+  const isPaid = isFree || data.paid === true;
+  if (!isPaid) {
+    return res.status(402).json({ code: 'PAYMENT_REQUIRED', message: 'A subscription payment is required before the craftsman account can be created.' });
+  }
+  if (!isFree) {
+    if (!requireRealPaymentIntegration(res)) return;
+    const provider = db.providerConfig.payment.find(p => p.id === data.providerId);
+    if (!provider || !provider.isActive) {
+      return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+    }
+  }
+
+  if (data.password && typeof data.password === 'string' && data.password.length >= 12) {
+    req.user!.password = hashPassword(data.password);
+  }
+
+  const now = new Date();
+  const startsAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString();
+  const graceEndsAt = new Date(now.getTime() + (180 + 30) * 24 * 60 * 60 * 1000).toISOString();
+
+  const craftsmanId = `cm-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const initialStatus: CraftsmanStatus = isPaid ? 'ACTIVE' : 'UNPAID_DRAFT';
+
+  const newCraftsman: Craftsman = {
+    id: craftsmanId,
+    userId: req.user!.id,
+    name: data.name,
+    description: data.description || '',
+    phone: req.user!.phone,
+    phoneVisible: data.phoneVisible !== false,
+    latitude: null,
+    longitude: null,
+    workingHours: data.workingHours || { monday: '09:00-18:00', friday: '09:00-18:00' },
+    status: initialStatus,
+    cityId: data.cityId,
+    professionId: data.professionId,
+    bankAccount,
+    photos: (data.photos || []).slice(0, 1).map((p: any, idx: number) => {
+      if (typeof p === 'string') {
+        return {
+          id: `ph-${craftsmanId}-${idx}`,
+          craftsmanId,
+          url: p,
+          displayOrder: idx,
+          isPrimary: true,
+          createdAt: startsAt,
+          updatedAt: startsAt,
+        };
+      }
+      return p;
+    }),
+    createdAt: startsAt,
+    updatedAt: startsAt,
+  };
+
+  db.craftsmen.set(craftsmanId, newCraftsman);
+  db.craftsmanDrafts.delete(req.user!.id);
+
+  // Initialize craftsman listing subscription (§3.11, §7.7, §24)
+  db.craftsmanListings.set(craftsmanId, {
+    id: `list-${craftsmanId}`,
+    craftsmanId,
+    cityId: data.cityId,
+    professionId: data.professionId,
+    status: isPaid ? 'ACTIVE' : 'UNPAID_DRAFT',
+    startsAt: isPaid ? startsAt : null,
+    expiresAt: isPaid ? expiresAt : null,
+    graceEndsAt: isPaid ? graceEndsAt : null,
+    createdAt: startsAt,
+    updatedAt: startsAt,
+  });
+
+  if (isPaid && !isFree) {
+    const paymentIntentId = `pi-reg-${Date.now()}`;
+    db.paymentIntents.set(paymentIntentId, {
+      id: paymentIntentId,
+      reservationId: `list-${craftsmanId}`,
+      craftsmanId,
+      providerId: data.providerId || 'prov-bog',
+      amountMinor: db.listingPrice.amountMinor,
+      currency: db.listingPrice.currency,
+      idempotencyKey: (req.headers['idempotency-key'] as string) || `idem-reg-${Date.now()}`,
+      status: 'SUCCEEDED',
+      createdAt: startsAt,
+    });
+  }
+
+  res.json({
+    ...newCraftsman,
+    listing: db.craftsmanListings.get(craftsmanId),
+  });
+});
+
+// GET /craftsmen/me (also /craftsman/profile and /craftsmen/profile)
+apiRouter.get(['/craftsmen/me', '/craftsman/profile', '/craftsmen/profile'], requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  const draft = db.craftsmanDrafts.get(req.user!.id);
+
+  if (!c) {
+    return res.json({
+      registered: false,
+      craftsman: null,
+      draft: draft || null,
+    });
+  }
+
+  const listing = db.getCraftsmanListing(c.id);
+
+  res.json({
+    registered: true,
+    craftsman: c,
+    ...c,
+    fullName: c.name,
+    listing,
+    status: listing?.status || c.status,
+    draft: draft || null,
+  });
+});
+
+// PUT /craftsmen/me (also /craftsman/profile, /craftsman/phone-visibility, /craftsmen/phone-visibility)
+apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibility', '/craftsmen/phone-visibility'], requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
+  }
+
+  const { name, description, workingHours, phoneVisible, isPhoneHidden, bankAccount } = req.body;
+
+  if (name !== undefined) c.name = name;
+  if (description !== undefined) c.description = description;
+  if (workingHours !== undefined) c.workingHours = workingHours;
+  if (phoneVisible !== undefined) c.phoneVisible = !!phoneVisible;
+  if (isPhoneHidden !== undefined) c.phoneVisible = !isPhoneHidden;
+  if (bankAccount !== undefined) c.bankAccount = bankAccount;
+  c.updatedAt = new Date().toISOString();
+
+  res.json({
+    ...c,
+    fullName: c.name,
+    isPhoneHidden: !c.phoneVisible,
+    phoneVisible: c.phoneVisible,
+    success: true,
+  });
+});
+
+// POST /craftsmen/me/photos
+apiRouter.post('/craftsmen/me/photos', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
+  }
+
+  if (c.photos.length >= 1) {
+    return res.status(422).json({
+      code: 'MAX_PHOTOS_EXCEEDED',
+      message: 'ხელოსანს აქვს მაქსიმუმ 1 ფოტოს ატვირთვის უფლება. წაშალეთ არსებული ფოტო მის შესაცვლელად. (Maximum 1 photo allowed)',
+    });
+  }
+
+  const { url, isPrimary } = req.body;
+  if (!url) {
+    return res.status(400).json({ code: 'INVALID_URL', message: 'Photo URL is required' });
+  }
+
+  const photoId = `ph-${Date.now()}-${Math.floor(Math.random() * 100)}`;
+  const shouldBePrimary = isPrimary || c.photos.length === 0;
+
+  if (shouldBePrimary) {
+    c.photos.forEach(p => (p.isPrimary = false));
+  }
+
+  const newPhoto: CraftsmanPhoto = {
+    id: photoId,
+    craftsmanId: c.id,
+    url,
+    displayOrder: c.photos.length,
+    isPrimary: shouldBePrimary,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  c.photos.push(newPhoto);
+  res.json(newPhoto);
+});
+
+// PUT /craftsmen/me/photos/:id
+apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+
+  const photo = c.photos.find(p => p.id === req.params.id);
+  if (!photo) {
+    return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
+  }
+
+  const { isPrimary, displayOrder } = req.body;
+  if (isPrimary) {
+    c.photos.forEach(p => (p.isPrimary = false));
+    photo.isPrimary = true;
+  }
+  if (typeof displayOrder === 'number') {
+    photo.displayOrder = displayOrder;
+  }
+  photo.updatedAt = new Date().toISOString();
+
+  res.json(photo);
+});
+
+// DELETE /craftsmen/me/photos/:id
+apiRouter.delete('/craftsmen/me/photos/:id', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+
+  const idx = c.photos.findIndex(p => p.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
+  }
+
+  const deleted = c.photos.splice(idx, 1)[0];
+  if (deleted.isPrimary && c.photos.length > 0) {
+    c.photos[0].isPrimary = true;
+  }
+
+  res.json({ success: true });
+});
+
+// ==========================================
+// 6.3 CRAFTSMAN LISTING SUBSCRIPTION (§3.11, §6.3, §24)
+// ==========================================
+
+// GET /craftsmen/me/listing
+apiRouter.get('/craftsmen/me/listing', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
+  }
+
+  db.runListingWorkers();
+  let listing = db.getCraftsmanListing(c.id);
+  if (!listing) {
+    return res.json({
+      status: 'UNPAID_DRAFT',
+      cityId: c.cityId,
+      professionId: c.professionId,
+      price: {
+        amountMinor: db.listingPrice.amountMinor,
+        currency: db.listingPrice.currency,
+      },
+    });
+  }
+
+  let secondsRemaining: number | undefined;
+  if (listing.status === 'ACTIVE' && listing.expiresAt) {
+    secondsRemaining = Math.max(0, Math.floor((new Date(listing.expiresAt).getTime() - Date.now()) / 1000));
+  }
+
+  res.json({
+    status: listing.status,
+    cityId: listing.cityId,
+    professionId: listing.professionId,
+    startsAt: listing.startsAt,
+    expiresAt: listing.expiresAt,
+    secondsRemaining,
+    graceEndsAt: listing.graceEndsAt,
+    price: {
+      amountMinor: db.listingPrice.amountMinor,
+      currency: db.listingPrice.currency,
+    },
+  });
+});
+
+// POST /craftsmen/me/listing/pay
+apiRouter.post('/craftsmen/me/listing/pay', requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+
+  const { providerId } = req.body;
+  const idempotencyKey = (req.headers['idempotency-key'] as string) || `idem-list-${Date.now()}`;
+
+  for (const intent of db.paymentIntents.values()) {
+    if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === c.id) {
+      return res.json({
+        status: 'SUCCEEDED',
+        paymentIntentId: intent.id,
+        alreadyProcessed: true,
+      });
+    }
+  }
+
+  const now = new Date();
+  const startsAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString(); // 180 days (6 months)
+  const graceEndsAt = new Date(now.getTime() + (180 + 30) * 24 * 60 * 60 * 1000).toISOString();
+
+  let listing = db.getCraftsmanListing(c.id);
+  if (!listing) {
+    listing = {
+      id: `list-${c.id}`,
+      craftsmanId: c.id,
+      cityId: c.cityId,
+      professionId: c.professionId,
+      status: 'ACTIVE',
+      startsAt,
+      expiresAt,
+      graceEndsAt,
+      createdAt: startsAt,
+      updatedAt: startsAt,
+    };
+    db.craftsmanListings.set(c.id, listing);
+  } else {
+    listing.status = 'ACTIVE';
+    listing.startsAt = startsAt;
+    listing.expiresAt = expiresAt;
+    listing.graceEndsAt = graceEndsAt;
+    listing.updatedAt = startsAt;
+  }
+
+  c.status = 'ACTIVE';
+  c.updatedAt = startsAt;
+
+  const paymentIntentId = `pi-list-${Date.now()}`;
+  db.paymentIntents.set(paymentIntentId, {
+    id: paymentIntentId,
+    reservationId: listing.id,
+    craftsmanId: c.id,
+    providerId: providerId || 'prov-bog',
+    amountMinor: db.listingPrice.amountMinor,
+    currency: db.listingPrice.currency,
+    idempotencyKey,
+    status: 'SUCCEEDED',
+    createdAt: startsAt,
+  });
+
+  listing.lastPaymentId = paymentIntentId;
+
+  res.json({
+    status: 'SUCCEEDED',
+    paymentIntentId,
+    listing: {
+      status: listing.status,
+      startsAt: listing.startsAt,
+      expiresAt: listing.expiresAt,
+      graceEndsAt: listing.graceEndsAt,
+      secondsRemaining: Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000),
+    },
+  });
+});
+
+// POST /craftsmen/me/listing/renew
+apiRouter.post('/craftsmen/me/listing/renew', requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  }
+
+  db.runListingWorkers();
+  let listing = db.getCraftsmanListing(c.id);
+  if (!listing) {
+    return res.status(404).json({ code: 'LISTING_NOT_FOUND', message: 'Listing not found' });
+  }
+
+  if (listing.status === 'PURGED') {
+    return res.status(410).json({ code: 'LISTING_PURGED', message: 'Grace window expired; account was purged.' });
+  }
+
+  const { providerId } = req.body;
+  const idempotencyKey = (req.headers['idempotency-key'] as string) || `idem-renew-${Date.now()}`;
+
+  for (const intent of db.paymentIntents.values()) {
+    if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === c.id) {
+      return res.json({
+        status: 'SUCCEEDED',
+        paymentIntentId: intent.id,
+        alreadyProcessed: true,
+      });
+    }
+  }
+
+  const now = new Date();
+  let newExpiresAt: Date;
+
+  if (listing.status === 'ACTIVE' && listing.expiresAt && new Date(listing.expiresAt).getTime() > now.getTime()) {
+    // Add 180 days to current expiry (no overlap, no loss per §3.11, R-27)
+    newExpiresAt = new Date(new Date(listing.expiresAt).getTime() + 180 * 24 * 60 * 60 * 1000);
+  } else {
+    // During grace or expired: reactivate from moment of payment (R-27)
+    newExpiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
+    listing.startsAt = now.toISOString();
+  }
+
+  listing.status = 'ACTIVE';
+  listing.expiresAt = newExpiresAt.toISOString();
+  listing.graceEndsAt = new Date(newExpiresAt.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  listing.updatedAt = now.toISOString();
+
+  c.status = 'ACTIVE';
+  c.updatedAt = now.toISOString();
+
+  const paymentIntentId = `pi-renew-${Date.now()}`;
+  db.paymentIntents.set(paymentIntentId, {
+    id: paymentIntentId,
+    reservationId: listing.id,
+    craftsmanId: c.id,
+    providerId: providerId || 'prov-bog',
+    amountMinor: db.listingPrice.amountMinor,
+    currency: db.listingPrice.currency,
+    idempotencyKey,
+    status: 'SUCCEEDED',
+    createdAt: now.toISOString(),
+  });
+
+  listing.lastPaymentId = paymentIntentId;
+
+  res.json({
+    status: 'SUCCEEDED',
+    paymentIntentId,
+    listing: {
+      status: listing.status,
+      startsAt: listing.startsAt,
+      expiresAt: listing.expiresAt,
+      graceEndsAt: listing.graceEndsAt,
+      secondsRemaining: Math.floor((newExpiresAt.getTime() - Date.now()) / 1000),
+    },
+  });
+});
+
+// GET /top15/availability?cityId=&professionId=
+apiRouter.get('/top15/availability', requireCraftsman, (req, res) => {
+  const cityId = req.query.cityId as string;
+  const professionId = req.query.professionId as string;
+  if (!cityId || !professionId) {
+    return res.status(400).json({ code: 'MISSING_PARAMS', message: 'cityId and professionId required' });
+  }
+
+  const { freeSlots, price } = db.getTop15Availability(cityId, professionId);
+  if (!price) {
+    return res.status(404).json({ code: 'PRICE_NOT_SET', message: 'Price is not configured for this category' });
+  }
+
+  res.json({
+    freeSlots,
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+  });
+});
+
+// POST /top15/reserve (creates a 3-minute candidate ticket; it does not occupy a slot)
+apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  if (!db.providerConfig.payment.some(provider => provider.isActive)) {
+    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'No active payment provider is available.' });
+  }
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Only registered craftsmen can reserve Top 15 slots' });
+  }
+
+  // Prerequisite: Top 15 requires ACTIVE listing (§24.3, §24.7)
+  db.runListingWorkers();
+  const listing = db.getCraftsmanListing(c.id);
+  if (!listing || listing.status !== 'ACTIVE') {
+    return res.status(403).json({
+      code: 'LISTING_ACTIVE_REQUIRED',
+      message: 'Top 15-ის შესაძენად აუცილებელია აქტიური გამოწერა. განაახლეთ გამოწერა კაბინეტიდან.',
+    });
+  }
+
+  const { cityId, professionId } = req.body;
+  if (!cityId || !professionId) {
+    return res.status(400).json({ code: 'MISSING_PARAMS', message: 'cityId and professionId required' });
+  }
+
+  // User Rule: Only registered craftsmen in this exact city and profession can buy a Top 15 slot!
+  if (c.cityId !== cityId || c.professionId !== professionId) {
+    return res.status(403).json({
+      code: 'CATEGORY_MISMATCH',
+      message: 'ხელოსანს აქვს უფლება შეიძინოს Top 15 ადგილი მხოლოდ თავისი რეგისტრაციის ქალაქისა და პროფესიის განყოფილებაში.',
+    });
+  }
+
+  // Check against the same eligible memberships used by search and slot counts.
+  if (db.getActiveTop15Memberships(cityId, professionId).some(membership => membership.craftsmanId === c.id)) {
+    return res.status(409).json({
+      code: 'ALREADY_ACTIVE',
+      message: 'თქვენ უკვე გაქვთ აქტიური Top 15 ადგილი ამ განყოფილებაში (მოქმედებს 30 დღე).',
+    });
+  }
+
+  const { freeSlots, price } = db.getTop15Availability(cityId, professionId);
+  if (!price) {
+    return res.status(404).json({ code: 'PRICE_NOT_SET', message: 'Top 15 price not configured' });
+  }
+  if (freeSlots <= 0) {
+    return res.status(409).json({
+      code: 'TOP15_FULL',
+      message: 'Top 15 სავსეა (ყველა 15 ადგილი დაკავებულია). ადგილის შეძენის უფლება გექნებათ, როდესაც ვინმეს გაუვა 30 დღიანი ვადა.',
+    });
+  }
+
+  const holdDurationMs = 3 * 60 * 1000; // 3 minutes per §4.2
+  const reservationId = `res-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const expiresAt = Date.now() + holdDurationMs;
+
+  const reservation = {
+    id: reservationId,
+    craftsmanId: c.id,
+    cityId,
+    professionId,
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+    expiresAt,
+    status: 'CANDIDATE' as const,
+  };
+
+  db.top15Reservations.set(reservationId, reservation);
+
+  res.json({
+    reservationId,
+    ttlSeconds: 180,
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+  });
+});
+
+// GET /top15/providers
+apiRouter.get('/top15/providers', (req, res) => {
+  // The only available production path is fail-closed until a live gateway adapter exists.
+  const simulationEnabled = process.env.NODE_ENV !== 'production' && process.env.PAYMENTS_SIMULATION === 'true';
+  const activeProviders = (simulationEnabled ? db.providerConfig.payment : [])
+    .filter(p => p.isActive)
+    .map(p => ({
+      id: p.id,
+      name: p.name,
+      code: p.id.replace('prov-', ''),
+      isActive: p.isActive,
+    }));
+  res.json(activeProviders);
+});
+
+// POST /top15/pay & /top15/purchase (first click wins after a fixed arbitration window)
+apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!craftsman) {
+    return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'A registered craftsman profile is required.' });
+  }
+  const idempotencyKey = req.header('Idempotency-Key')?.trim();
+  if (!idempotencyKey || idempotencyKey.length < 16 || idempotencyKey.length > 128) {
+    return res.status(400).json({ code: 'INVALID_IDEMPOTENCY_KEY', message: 'Idempotency-Key must be 16-128 characters.' });
+  }
+
+  // Check if idempotency key was already processed
+  for (const intent of db.paymentIntents.values()) {
+    if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === craftsman.id) {
+      return res.json({
+        id: intent.id,
+        status: intent.status,
+        alreadyProcessed: true,
+      });
+    }
+  }
+
+  const { reservationId, providerId } = req.body;
+  if (!reservationId || !providerId) {
+    return res.status(400).json({ code: 'MISSING_PARAMS', message: 'reservationId and providerId required' });
+  }
+
+  const reservation = db.top15Reservations.get(reservationId);
+  if (!reservation || reservation.craftsmanId !== craftsman.id) {
+    return res.status(404).json({ code: 'RESERVATION_NOT_FOUND', message: 'Reservation not found' });
+  }
+  const paymentProvider = db.providerConfig.payment.find(provider => provider.id === providerId && provider.isActive);
+  if (!paymentProvider) {
+    return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
+  }
+
+  if (!['CANDIDATE', 'HELD'].includes(reservation.status) || reservation.expiresAt < Date.now()) {
+    reservation.status = 'EXPIRED';
+    return res.status(410).json({ code: 'RESERVATION_EXPIRED', message: 'Reservation expired. Try again.' });
+  }
+
+  // Release legacy pre-pay holds too; every payment attempt must enter the same arbitration.
+  if (reservation.status === 'HELD') reservation.status = 'CANDIDATE';
+
+  if (reservation.status === 'CANDIDATE') {
+    const categoryKey = `${reservation.cityId}:${reservation.professionId}`;
+    const now = Date.now();
+    let paymentWindow = top15PaymentWindows.get(categoryKey);
+    if (!paymentWindow || paymentWindow.closesAt <= now || paymentWindow.resolved) {
+      paymentWindow = { closesAt: now + TOP15_PAYMENT_ARBITRATION_MS, attempts: [], resolved: false };
+      top15PaymentWindows.set(categoryKey, paymentWindow);
+    }
+    if (!paymentWindow.attempts.some(attempt => attempt.reservationId === reservationId)) {
+      paymentWindow.attempts.push({ reservationId, requestedAt: now, order: ++top15PaymentAttemptOrder });
+    }
+    const waitMs = Math.max(0, paymentWindow.closesAt - Date.now());
+    if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+
+    // Synchronous resolution makes all requests in this Node process observe one winner.
+    if (!paymentWindow.resolved) {
+      const availableSlots = db.getTop15Availability(reservation.cityId, reservation.professionId).freeSlots;
+      const eligibleAttempts = paymentWindow.attempts
+        .filter(attempt => {
+          const candidate = db.top15Reservations.get(attempt.reservationId);
+          return candidate?.status === 'CANDIDATE' && candidate.expiresAt > Date.now();
+        })
+        .sort((a, b) => a.requestedAt - b.requestedAt || a.order - b.order);
+      const winners = new Set(eligibleAttempts.slice(0, availableSlots).map(attempt => attempt.reservationId));
+      for (const attempt of eligibleAttempts) {
+        const candidate = db.top15Reservations.get(attempt.reservationId)!;
+        if (winners.has(attempt.reservationId)) candidate.status = 'HELD';
+        else candidate.status = 'CANCELLED';
+      }
+      paymentWindow.winnerIds = winners;
+      paymentWindow.resolved = true;
+    }
+
+    if (!paymentWindow.winnerIds?.has(reservationId)) {
+      reservation.status = 'CANCELLED';
+      const { freeSlots } = db.getTop15Availability(reservation.cityId, reservation.professionId);
+      return res.status(409).json({
+        code: freeSlots === 0 ? 'TOP15_FULL' : 'TOP15_PAYMENT_LOST',
+        message: freeSlots === 0
+          ? 'Top 15 სავსეა. თანხა არ ჩამოგეჭრათ.'
+          : 'სხვა ხელოსანმა გადახდაზე უფრო ადრე დააჭირა. თანხა არ ჩამოგეჭრათ.',
+      });
+    }
+  }
+
+  const paymentIntentId = `pi-${Date.now()}`;
+  const paymentIntent = {
+    id: paymentIntentId,
+    reservationId,
+    craftsmanId: reservation.craftsmanId,
+    providerId,
+    amountMinor: reservation.amountMinor,
+    currency: reservation.currency,
+    idempotencyKey,
+    status: 'SUCCEEDED' as const,
+    createdAt: new Date().toISOString(),
+  };
+
+  db.paymentIntents.set(paymentIntentId, paymentIntent);
+  reservation.status = 'PAID';
+
+  // Create 30 days Top 15 membership
+  const city = db.cities.find(c => c.id === reservation.cityId)!;
+  const prof = db.professions.find(p => p.id === reservation.professionId)!;
+  const memId = `mem-${Date.now()}`;
+  const startsAt = new Date();
+  const expiresAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  db.top15Memberships.set(memId, {
+    id: memId,
+    craftsmanId: reservation.craftsmanId,
+    cityId: reservation.cityId,
+    cityName: city ? city.name.ka : '',
+    professionId: reservation.professionId,
+    professionName: prof ? prof.name.ka : '',
+    startsAt: startsAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    status: 'ACTIVE',
+  });
+
+  res.json({
+    id: paymentIntentId,
+    status: 'SUCCEEDED',
+    membershipId: memId,
+    expiresAt: expiresAt.toISOString(),
+  });
+});
+
+// GET /top15/payment/:id/status
+apiRouter.get('/top15/payment/:id/status', requireCraftsman, (req: AuthRequest, res) => {
+  const intent = db.paymentIntents.get(req.params.id);
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!intent || !craftsman || intent.craftsmanId !== craftsman.id) {
+    return res.status(404).json({ code: 'PAYMENT_NOT_FOUND', message: 'Payment intent not found' });
+  }
+  res.json({
+    id: intent.id,
+    status: intent.status,
+    amountMinor: intent.amountMinor,
+    currency: intent.currency,
+  });
+});
+
+// GET /top15/me/memberships
+apiRouter.get('/top15/me/memberships', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.json([]);
+  }
+  const memberships = Array.from(db.top15Memberships.values()).filter(m => m.craftsmanId === c.id);
+  res.json(memberships);
+});
+
+// GET /support/messages?after=&size=
+apiRouter.get('/support/messages', requireCraftsman, (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Support chat is for craftsmen only' });
+  }
+
+  const after = req.query.after as string;
+  const size = Math.min(parseInt(req.query.size as string) || 50, 100);
+
+  let msgs = db.supportMessages.filter(m => m.craftsmanId === c.id);
+  if (after) {
+    const afterTime = new Date(after).getTime();
+    msgs = msgs.filter(m => new Date(m.createdAt).getTime() > afterTime);
+  }
+
+  res.json({
+    messages: msgs.slice(-size),
+    total: msgs.length,
+  });
+});
+
+// POST /support/messages & /support/chat (7 msg/day limit, configured AI response with autonomous fallback)
+apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (req: AuthRequest, res) => {
+  const c = getMyCraftsman(req.user!.id);
+  if (!c) {
+    return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Support chat is for craftsmen only' });
+  }
+
+  const text = (req.body.text || req.body.message || req.body.body || '').toString().trim();
+  if (!text) {
+    return res.status(400).json({ code: 'INVALID_MESSAGE', message: 'Message text required' });
+  }
+  if (text.length > 1000) {
+    return res.status(422).json({ code: 'MESSAGE_TOO_LONG', message: 'Message exceeds 1000 characters' });
+  }
+
+  // Count craftsman's messages today (Georgia time / UTC date)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const messagesToday = db.supportMessages.filter(
+    m => m.craftsmanId === c.id && m.sender === 'CRAFTSMAN' && m.createdAt.startsWith(todayStr)
+  ).length;
+
+  if (messagesToday >= 7) {
+    return res.status(429).json({
+      code: 'CHAT_LIMIT_REACHED',
+      message: 'You have reached the maximum limit of 7 support messages today',
+      remainingToday: 0,
+    });
+  }
+
+  const lang = getLang(req);
+
+  // Store craftsman message
+  const userMsg: ChatMessage = {
+    id: `msg-${Date.now()}-u`,
+    craftsmanId: c.id,
+    sender: 'CRAFTSMAN',
+    body: text,
+    flaggedForHuman: false,
+    createdAt: new Date().toISOString(),
+  };
+  db.supportMessages.push(userMsg);
+
+  // Autonomous selected-provider reply or verified platform fallback
+  let replyResult = {
+    reply: lang === 'ka'
+      ? 'გამარჯობა! თქვენი შეტყობინება მიღებულია. MASTER_BOY პლატფორმის მონაცემების განახლება შეგიძლიათ თქვენი პირადი კაბინეტიდან.'
+      : lang === 'ru'
+        ? 'Здравствуйте! Ваше обращение получено. Вы можете обновить профиль мастера в личном кабинете.'
+        : 'Hello! Your inquiry has been received. You can update your craftsman profile directly from your dashboard.',
+    flaggedForHuman: false,
+  };
+
+  if (db.providerConfig.ai.configured) {
+    try {
+      replyResult = await generateSupportReply(c.id, text, lang);
+    } catch {
+      // Use fallback
+    }
+  }
+
+  userMsg.flaggedForHuman = replyResult.flaggedForHuman;
+
+  const aiMsg: ChatMessage = {
+    id: `msg-${Date.now()}-ai`,
+    craftsmanId: c.id,
+    sender: 'AI_ADMIN',
+    body: replyResult.reply,
+    flaggedForHuman: replyResult.flaggedForHuman,
+    createdAt: new Date().toISOString(),
+  };
+  db.supportMessages.push(aiMsg);
+
+  const remainingToday = Math.max(0, 7 - (messagesToday + 1));
+
+  res.json({
+    userMessage: userMsg,
+    replyMessage: aiMsg,
+    reply: replyResult.reply,
+    text: replyResult.reply,
+    remainingToday,
+    flaggedForHuman: replyResult.flaggedForHuman,
+  });
+});
+
+// ==========================================
+// 6.4 & 6.5 ADMIN+ ENDPOINTS
+// ==========================================
+
+// GET /admin/craftsmen?query=&status=&page= (§6.5)
+apiRouter.get('/admin/craftsmen', requireAdmin, (req, res) => {
+  db.runListingWorkers();
+  const query = (req.query.query as string)?.toLowerCase() || '';
+  const status = req.query.status as string;
+  const page = parseInt(req.query.page as string) || 1;
+  const size = Math.min(parseInt(req.query.size as string) || 20, 50);
+
+  let list = Array.from(db.craftsmen.values()).map(c => {
+    const listing = db.getCraftsmanListing(c.id);
+    return {
+      ...c,
+      listingStatus: listing?.status || (c.status as any),
+      listing,
+    };
+  });
+
+  if (query) {
+    list = list.filter(c => c.name.toLowerCase().includes(query) || c.phone.includes(query));
+  }
+  if (status === 'DELETED') {
+    list = list.filter(c => c.status === 'DELETED');
+  } else {
+    list = list.filter(c => c.status !== 'DELETED');
+    if (status && status !== 'ALL') {
+      list = list.filter(c => c.status === status || c.listingStatus === status);
+    }
+  }
+
+  const offset = (page - 1) * size;
+  const paginatedCraftsmen = list.slice(offset, offset + size).map(craftsman => safeAdminCraftsman(craftsman));
+  res.json({
+    content: paginatedCraftsmen,
+    data: paginatedCraftsmen,
+    page,
+    size,
+    totalElements: list.length,
+    totalPages: Math.ceil(list.length / size),
+  });
+});
+
+// GET /admin/reports?type=&page=
+apiRouter.get('/admin/reports', requireAdmin, (req, res) => {
+  const type = req.query.type as string;
+  const page = parseInt(req.query.page as string) || 1;
+  const size = Math.min(parseInt(req.query.size as string) || 20, 50);
+
+  let list = [...db.aiReports].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  if (type) {
+    list = list.filter(r => r.type === type);
+  }
+
+  const offset = (page - 1) * size;
+  const paginatedReports = list.slice(offset, offset + size);
+  res.json({
+    content: paginatedReports,
+    data: paginatedReports,
+    page,
+    size,
+    totalElements: list.length,
+    totalPages: Math.ceil(list.length / size),
+  });
+});
+
+// POST /admin/reports/generate (report generation on administrator request)
+apiRouter.post('/admin/reports/generate', requireAdmin, async (req: AuthRequest, res) => {
+  const requestedType = req.body?.type ?? 'RECOMMENDATIONS';
+  if (typeof requestedType !== 'string' || !['ACCOUNTING', 'RECOMMENDATIONS', 'HEALTH'].includes(requestedType)) {
+    return res.status(400).json({ code: 'INVALID_REPORT_TYPE', message: 'Choose ACCOUNTING, RECOMMENDATIONS, or HEALTH.' });
+  }
+  const type = requestedType as 'ACCOUNTING' | 'RECOMMENDATIONS' | 'HEALTH';
+  const reportKey = `${req.user!.id}:${type}`;
+  if (reportGenerationsInProgress.has(reportKey)) {
+    return res.status(409).json({ code: 'REPORT_GENERATION_IN_PROGRESS', message: 'A report of this type is already being generated.' });
+  }
+  reportGenerationsInProgress.add(reportKey);
+
+  let newReport: any = null;
+  let auditEntry: any = null;
+  try {
+    const content = await generatePeriodicReport(type);
+    const repId = `rep-${crypto.randomUUID()}`;
+    newReport = {
+      id: repId,
+      type,
+      periodFrom: new Date().toISOString().split('T')[0],
+      periodTo: new Date().toISOString().split('T')[0],
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    db.aiReports.unshift(newReport);
+
+    auditEntry = {
+      id: `audit-${crypto.randomUUID()}`,
+      actorType: 'AI_ADMIN',
+      actorId: req.user!.id,
+      action: 'REPORT_GENERATED',
+      targetType: 'REPORT',
+      targetId: repId,
+      reason: `Automated on-demand report: ${type}`,
+      createdAt: new Date().toISOString(),
+    };
+    db.auditLog.unshift(auditEntry);
+
+    await db.persistRuntimeState();
+    return res.json(newReport);
+  } catch {
+    if (newReport) {
+      const reportIndex = db.aiReports.indexOf(newReport);
+      if (reportIndex >= 0) db.aiReports.splice(reportIndex, 1);
+    }
+    if (auditEntry) {
+      const auditIndex = db.auditLog.indexOf(auditEntry);
+      if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+    }
+    console.warn('[MASTER_BOY] Admin report could not be saved to durable storage.');
+    return res.status(503).json({ code: 'REPORT_NOT_PERSISTED', message: 'The report could not be saved. Try again after checking the database connection.' });
+  } finally {
+    reportGenerationsInProgress.delete(reportKey);
+  }
+});
+
+// GET /admin/users?query=&page=
+apiRouter.get('/admin/users', requireAdmin, (req, res) => {
+  const query = (req.query.query as string)?.toLowerCase() || '';
+  const page = parseInt(req.query.page as string) || 1;
+  const size = Math.min(parseInt(req.query.size as string) || 20, 50);
+
+  let list = Array.from(db.users.values());
+  if (query) {
+    list = list.filter(u => u.phone.includes(query));
+  }
+
+  const offset = (page - 1) * size;
+  const paginatedUsers = list.slice(offset, offset + size).map(safeUser);
+  res.json({
+    content: paginatedUsers,
+    data: paginatedUsers,
+    page,
+    size,
+    totalElements: list.length,
+    totalPages: Math.ceil(list.length / size),
+  });
+});
+
+// PUT /admin/users/:id/block & /admin/craftsmen/:id/block
+apiRouter.put(['/admin/users/:id/block', '/admin/craftsmen/:id/block'], requireAdmin, async (req: AuthRequest, res) => {
+  let user = db.users.get(req.params.id);
+  let craftsman = db.craftsmen.get(req.params.id);
+
+  if (!user && craftsman?.userId) user = db.users.get(craftsman.userId);
+  if (!craftsman && user) craftsman = Array.from(db.craftsmen.values()).find(c => c.userId === user!.id);
+
+  if (!user && !craftsman) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'User or craftsman not found' });
+  }
+  if (user && !canManageAccount(req, res, user, 'block')) return;
+  if (user?.status === 'DELETED' || craftsman?.status === 'DELETED') {
+    return res.status(409).json({ code: 'DELETED_ACCOUNT_CANNOT_BE_BLOCKED', message: 'Deleted accounts cannot be blocked.' });
+  }
+
+  const relatedCraftsmen = user
+    ? Array.from(db.craftsmen.values()).filter(c => c.userId === user!.id)
+    : craftsman ? [craftsman] : [];
+  if ((!user || user.status === 'BLOCKED') && relatedCraftsmen.every(c => c.status === 'BLOCKED')) {
+    return res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+  }
+
+  const previousUserStatus = user?.status;
+  const previousCraftsmanStatuses = relatedCraftsmen.map(item => ({ item, status: item.status }));
+  if (user) user.status = 'BLOCKED';
+  for (const item of relatedCraftsmen) item.status = 'BLOCKED';
+  if (user) revokeUserSessions(user.id);
+
+  const auditEntry = {
+    id: `audit-${crypto.randomUUID()}`,
+    actorType: 'USER' as const,
+    actorId: req.user!.id,
+    action: 'BLOCK_USER',
+    targetType: 'USER' as const,
+    targetId: user ? user.id : craftsman!.id,
+    createdAt: new Date().toISOString(),
+  };
+  db.auditLog.unshift(auditEntry);
+  if (!await persistAdminMutation(res, () => {
+    if (user && previousUserStatus) user.status = previousUserStatus;
+    for (const previous of previousCraftsmanStatuses) previous.item.status = previous.status;
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
+
+  res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+});
+
+// PUT /admin/users/:id/unblock & /admin/craftsmen/:id/unblock
+apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requireAdmin, async (req: AuthRequest, res) => {
+  let user = db.users.get(req.params.id);
+  let craftsman = db.craftsmen.get(req.params.id);
+
+  if (!user && craftsman?.userId) user = db.users.get(craftsman.userId);
+  if (!craftsman && user) craftsman = Array.from(db.craftsmen.values()).find(c => c.userId === user!.id);
+
+  if (!user && !craftsman) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'User or craftsman not found' });
+  }
+  if (user && !canManageAccount(req, res, user, 'unblock')) return;
+  if (user?.status === 'DELETED' || craftsman?.status === 'DELETED') {
+    return res.status(409).json({ code: 'DELETED_ACCOUNT_CANNOT_BE_RESTORED', message: 'Deleted accounts cannot be reactivated.' });
+  }
+
+  const relatedCraftsmen = user
+    ? Array.from(db.craftsmen.values()).filter(c => c.userId === user!.id)
+    : craftsman ? [craftsman] : [];
+  const hasBlockedState = user?.status === 'BLOCKED' || relatedCraftsmen.some(c => c.status === 'BLOCKED');
+  if (!hasBlockedState) {
+    return res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+  }
+
+  const previousUserStatus = user?.status;
+  const previousCraftsmanStatuses = relatedCraftsmen.map(item => ({ item, status: item.status }));
+  if (user) user.status = 'ACTIVE';
+  for (const item of relatedCraftsmen) item.status = 'ACTIVE';
+
+  const auditEntry = {
+    id: `audit-${crypto.randomUUID()}`,
+    actorType: 'USER' as const,
+    actorId: req.user!.id,
+    action: 'UNBLOCK_USER',
+    targetType: 'USER' as const,
+    targetId: user ? user.id : craftsman!.id,
+    createdAt: new Date().toISOString(),
+  };
+  db.auditLog.unshift(auditEntry);
+  if (!await persistAdminMutation(res, () => {
+    if (user && previousUserStatus) user.status = previousUserStatus;
+    for (const previous of previousCraftsmanStatuses) previous.item.status = previous.status;
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
+
+  res.json({ success: true, user: user ? safeUser(user) : null, craftsman: safeAdminCraftsman(craftsman) });
+});
+
+// DELETE /admin/craftsmen/:id & /admin/users/:id
+apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, async (req: AuthRequest, res) => {
+  let craftsman = db.craftsmen.get(req.params.id);
+  let user = db.users.get(req.params.id);
+
+  if (!craftsman && user) craftsman = Array.from(db.craftsmen.values()).find(item => item.userId === user!.id);
+  if (!user && craftsman?.userId) user = db.users.get(craftsman.userId);
+
+  if (!craftsman && !user) return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
+  if (user && !canManageAccount(req, res, user, 'delete')) return;
+
+  const affectedCraftsmen = user
+    ? Array.from(db.craftsmen.values()).filter(item => item.userId === user!.id)
+    : craftsman ? [craftsman] : [];
+  const targetCraftsmen = affectedCraftsmen.length ? affectedCraftsmen : craftsman ? [craftsman] : [];
+  const isCraftsmanAccount = targetCraftsmen.length > 0 || user?.roles.includes('CRAFTSMAN') === true;
+
+  if (!isCraftsmanAccount && user?.status === 'DELETED') {
+    return res.json({ success: true, alreadyDeleted: true });
+  }
+
+  const craftsmanIds = new Set(targetCraftsmen.map(item => item.id));
+  const userIds = new Set(targetCraftsmen.map(item => item.userId));
+  if (user) userIds.add(user.id);
+
+  const previousUsers = Array.from(db.users.entries())
+    .filter(([id]) => userIds.has(id))
+    .map(([id, item]) => [id, { ...item }] as const);
+  const previousCraftsmen = targetCraftsmen.map(item => [item.id, item] as const);
+  // Drafts are keyed by user ID; CraftsmanDraft intentionally contains only
+  // wizard data, so use the map key when collecting rows for rollback.
+  const previousDrafts = Array.from(db.craftsmanDrafts.entries()).filter(([userId]) => userIds.has(userId));
+  const previousListings = Array.from(db.craftsmanListings.entries()).filter(([, listing]) => craftsmanIds.has(listing.craftsmanId));
+  const previousReservations = Array.from(db.top15Reservations.entries()).filter(([, reservation]) => craftsmanIds.has(reservation.craftsmanId));
+  const previousMemberships = Array.from(db.top15Memberships.entries()).filter(([, membership]) => craftsmanIds.has(membership.craftsmanId));
+  const previousPayments = Array.from(db.paymentIntents.entries())
+    .filter(([, payment]) => payment.craftsmanId !== null && craftsmanIds.has(payment.craftsmanId))
+    .map(([id, payment]) => [id, { ...payment }] as const);
+  const previousSessions = Array.from(db.sessions.entries()).filter(([, session]) => userIds.has(session.userId));
+  const previousSupportMessages = db.supportMessages;
+  const previousAiReports = db.aiReports;
+
+  if (isCraftsmanAccount) {
+    for (const id of craftsmanIds) db.craftsmen.delete(id);
+    for (const [id, listing] of previousListings) db.craftsmanListings.delete(id);
+    for (const [id] of previousReservations) db.top15Reservations.delete(id);
+    for (const [id] of previousMemberships) db.top15Memberships.delete(id);
+    for (const [id, payment] of previousPayments) {
+      db.paymentIntents.set(id, { ...payment, craftsmanId: '' });
+    }
+    for (const id of userIds) {
+      db.craftsmanDrafts.delete(id);
+      db.users.delete(id);
+      revokeUserSessions(id);
+    }
+    db.supportMessages = db.supportMessages.filter(message => !craftsmanIds.has(message.craftsmanId));
+    db.aiReports = db.aiReports.filter(report => !report.craftsmanId || !craftsmanIds.has(report.craftsmanId));
+  } else if (user) {
+    user.status = 'DELETED';
+    revokeUserSessions(user.id);
+  }
+
+  const auditEntry = {
+    id: `audit-${crypto.randomUUID()}`,
+    actorType: 'USER' as const,
+    actorId: req.user!.id,
+    action: 'DELETE_CRAFTSMAN',
+    targetType: isCraftsmanAccount ? 'CRAFTSMAN' as const : 'USER' as const,
+    targetId: craftsman ? craftsman.id : (user ? user.id : req.params.id),
+    reason: isCraftsmanAccount ? 'Craftsman profile permanently deleted' : undefined,
+    createdAt: new Date().toISOString(),
+  };
+  db.auditLog.unshift(auditEntry);
+
+  if (!await persistAdminMutation(res, () => {
+    for (const [id, item] of previousUsers) db.users.set(id, item);
+    for (const [id, item] of previousCraftsmen) db.craftsmen.set(id, item);
+    for (const [id, item] of previousDrafts) db.craftsmanDrafts.set(id, item);
+    for (const [id, item] of previousListings) db.craftsmanListings.set(id, item);
+    for (const [id, item] of previousReservations) db.top15Reservations.set(id, item);
+    for (const [id, item] of previousMemberships) db.top15Memberships.set(id, item);
+    for (const [id, item] of previousPayments) db.paymentIntents.set(id, item);
+    for (const [id, item] of previousSessions) db.sessions.set(id, item);
+    db.supportMessages = previousSupportMessages;
+    db.aiReports = previousAiReports;
+    const auditIndex = db.auditLog.indexOf(auditEntry);
+    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+  })) return;
+
+  res.json({ success: true, deletedFromDatabase: isCraftsmanAccount });
+});
+
+// GET /admin/top15/prices & /admin/prices
+apiRouter.get(['/admin/top15/prices', '/admin/prices'], requireAdmin, (req, res) => {
+  const list = Array.from(db.top15Prices.values());
+  res.json(list);
+});
+
+apiRouter.get('/admin/top15/members', requireAdmin, (_req, res) => {
+  const members = db.getActiveTop15Memberships()
+    .flatMap(membership => {
+      const craftsman = db.craftsmen.get(membership.craftsmanId);
+      if (!craftsman) return [];
+      const city = db.cities.find(item => item.id === membership.cityId);
+      const profession = db.professions.find(item => item.id === membership.professionId);
+      return [{
+        id: membership.id,
+        craftsmanId: craftsman.id,
+        craftsmanName: craftsman.name,
+        cityName: {
+          ka: city ? db.getLocalizedName(city, 'ka') : membership.cityName,
+          ru: city ? db.getLocalizedName(city, 'ru') : membership.cityName,
+          en: city ? db.getLocalizedName(city, 'en') : membership.cityName,
+        },
+        professionName: {
+          ka: profession ? db.getLocalizedName(profession, 'ka') : membership.professionName,
+          ru: profession ? db.getLocalizedName(profession, 'ru') : membership.professionName,
+          en: profession ? db.getLocalizedName(profession, 'en') : membership.professionName,
+        },
+        startsAt: membership.startsAt,
+        expiresAt: membership.expiresAt,
+      }];
+    })
+    .sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
+  res.json(members);
+});
+
+// PUT /admin/top15/prices & /admin/prices (Protected by config lock!)
+apiRouter.put(['/admin/top15/prices', '/admin/prices'], requireAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  const { cityId, professionId, amountMinor } = req.body;
+  if (!cityId || !professionId || typeof amountMinor !== 'number' || amountMinor <= 0) {
+    return res.status(400).json({ code: 'INVALID_PRICE', message: 'Valid cityId, professionId and amountMinor > 0 required' });
+  }
+
+  const key = `${cityId}:${professionId}`;
+  const updated = {
+    cityId,
+    professionId,
+    amountMinor,
+    currency: 'GEL',
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user!.id,
+  };
+  db.top15Prices.set(key, updated);
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'UPDATE_PRICE',
+    targetType: 'PRICE',
+    targetId: key,
+    reason: `Price set to ${amountMinor / 100} GEL`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({
+    success: true,
+    ...updated,
+  });
+});
+
+// GET /admin/analytics
+apiRouter.get('/admin/analytics', requireAdmin, (req, res) => {
+  const registeredCraftsmen = Array.from(db.craftsmen.values()).filter(c => c.status !== 'DELETED');
+  const totalCraftsmen = registeredCraftsmen.length;
+  const deletedCraftsmen = db.craftsmen.size - totalCraftsmen;
+  const activeCraftsmen = registeredCraftsmen.filter(c => c.status === 'ACTIVE').length;
+  const activeMemberships = db.getActiveTop15Memberships().length;
+  const totalRevenueMinor = Array.from(db.paymentIntents.values())
+    .filter(p => p.status === 'SUCCEEDED')
+    .reduce((sum, p) => sum + p.amountMinor, 0);
+
+  res.json({
+    totalCraftsmen,
+    registeredCraftsmen: totalCraftsmen,
+    deletedCraftsmen,
+    activeCraftsmen,
+    activeTop15Slots: activeMemberships,
+    totalRevenueGEL: totalRevenueMinor / 100,
+    totalDisputes: db.aiReports.filter(r => r.type === 'DISPUTE').length,
+    activeSessions: db.sessions.size,
+    configLocked: db.configLock.locked,
+    configLockedUntil: db.configLock.lockedUntil,
+  });
+});
+
+// GET /admin/audit-log
+apiRouter.get('/admin/audit-log', requireAdmin, (req, res) => {
+  res.json(db.auditLog.slice(0, 50));
+});
+
+// Superadmin-only AI helper. Settings and conversation history stay in the private server_secrets store.
+apiRouter.get('/admin/agent', requireSuperAdmin, async (_req, res) => {
+  try {
+    res.json(await storage.loadSuperAdminAgentSettings());
+  } catch {
+    res.status(503).json({ code: 'AGENT_STORAGE_UNAVAILABLE', message: 'Agent settings are temporarily unavailable.' });
+  }
+});
+
+apiRouter.put('/admin/agent/settings', requireSuperAdmin, async (req, res) => {
+  const body = req.body || {};
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+    return res.status(400).json({ code: 'INVALID_AGENT_SETTING', message: 'enabled must be a boolean.' });
+  }
+  if (body.rules !== undefined && (typeof body.rules !== 'string' || body.rules.length > 6000)) {
+    return res.status(400).json({ code: 'INVALID_AGENT_RULES', message: 'Rules must be text under 6,000 characters.' });
+  }
+  if (typeof body.rules === 'string' && redactAgentSecrets(body.rules).values.length > 0) {
+    return res.status(422).json({ code: 'AGENT_RULES_CONTAIN_SECRET', message: 'Do not put passwords or API keys in agent rules.' });
+  }
+  try {
+    const current = await storage.loadSuperAdminAgentSettings();
+    const updated = await storage.saveSuperAdminAgentSettings({
+      ...current,
+      ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+      ...(body.rules === undefined ? {} : { rules: body.rules.trim() }),
+    });
+    res.json(updated);
+  } catch {
+    res.status(503).json({ code: 'AGENT_STORAGE_UNAVAILABLE', message: 'Agent settings could not be saved.' });
+  }
+});
+
+apiRouter.delete('/admin/agent/chat', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const userId = req.user?.id || '';
+  if (agentChatsInProgress.has(userId)) {
+    return res.status(409).json({ code: 'AGENT_REQUEST_IN_PROGRESS', message: 'Wait for the current agent response to finish before clearing chat history.' });
+  }
+  try {
+    const current = await storage.loadSuperAdminAgentSettings();
+    const updated = await storage.saveSuperAdminAgentSettings({ ...current, messages: [] });
+    res.json(updated);
+  } catch {
+    res.status(503).json({ code: 'AGENT_STORAGE_UNAVAILABLE', message: 'Agent chat history could not be cleared.' });
+  }
+});
+
+apiRouter.post('/admin/agent/chat', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const userId = req.user?.id || '';
+  if (!rateLimit(`superadmin-agent:${userId}`, 20, 10 * 60 * 1000)) {
+    return res.status(429).json({ code: 'AGENT_RATE_LIMITED', message: 'Too many agent requests. Try again later.' });
+  }
+  if (agentChatsInProgress.has(userId)) {
+    return res.status(409).json({ code: 'AGENT_REQUEST_IN_PROGRESS', message: 'Wait for the current agent response to finish.' });
+  }
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (!message || message.length > 4000) {
+    return res.status(400).json({ code: 'INVALID_AGENT_MESSAGE', message: 'Enter a message under 4,000 characters.' });
+  }
+  let settings;
+  try {
+    settings = await storage.loadSuperAdminAgentSettings();
+  } catch {
+    return res.status(503).json({ code: 'AGENT_STORAGE_UNAVAILABLE', message: 'Agent settings are temporarily unavailable.' });
+  }
+  if (!settings.enabled) {
+    return res.status(409).json({ code: 'AGENT_DISABLED', message: 'Enable the agent before starting a chat.' });
+  }
+  if (!db.providerConfig.ai.configured) {
+    return res.status(503).json({ code: 'AI_PROVIDER_NOT_CONFIGURED', message: 'Choose and verify an AI provider first.' });
+  }
+
+  agentChatsInProgress.add(userId);
+  let responseLanguage = 'ka';
+  let failedTranscript: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }> = [];
+  try {
+    const redacted = redactAgentSecrets(message);
+    const safeRules = redactAgentSecrets(settings.rules).text;
+    const requestLanguage = (req.header('Accept-Language') || 'ka').split(',')[0].trim().slice(0, 2);
+    responseLanguage = ['ka', 'ru', 'en'].includes(requestLanguage) ? requestLanguage : 'ka';
+    const userMessage = { role: 'user' as const, content: redacted.text, createdAt: new Date().toISOString() };
+    const conversation = [...settings.messages.slice(-10), userMessage];
     failedTranscript = conversation;
     const snapshot = await buildSuperAdminAgentAuditSnapshot();
     const isReportRequest = /(?:ანგარიშ|აუდიტ|შეჯამ|report|audit|summary|summar|отч[её]т|аудит|сводк)/i.test(message);
@@ -1867,295 +3518,3 @@ apiRouter.post('/admin/advertisements', requireSuperAdmin, async (req: AuthReque
       db.advertisements.delete(adId);
       return res.status(409).json({ code: 'PHONE_ALREADY_ASSIGNED', message: 'This phone number already belongs to another application role and cannot be converted into an advertisement partner.' });
     }
-    existingUser.password = hashPassword(password);
-    existingUser.status = 'ACTIVE';
-  } else {
-    const userId = `usr-ad-${Date.now()}`;
-    db.users.set(userId, {
-      id: userId,
-      phone: cleanPhone,
-      password: hashPassword(password),
-      roles: ['AD_PARTNER'],
-      status: 'ACTIVE',
-      createdAt: new Date().toISOString(),
-    });
-  }
-
-  db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
-    actorType: 'USER',
-    actorId: req.user!.id,
-    action: 'CREATE_AD_PARTNER',
-    targetType: 'ADVERTISEMENT',
-    targetId: adId,
-    reason: `Provisioned ad partner ${company_name} (${cleanPhone})`,
-    createdAt: new Date().toISOString(),
-  });
-
-  await db.persistSuperAdminConfig();
-
-  res.json({ success: true, advertisement: safeAdvertisement(newAd) });
-});
-
-// POST /admin/advertisements/:id/block-and-delete (Delete & Block Ad button)
-apiRouter.post('/admin/advertisements/:id/block-and-delete', requireSuperAdmin, async (req: AuthRequest, res) => {
-  const ad = db.advertisements.get(req.params.id);
-  if (!ad) {
-    return res.status(404).json({ code: 'NOT_FOUND', message: 'Advertisement not found' });
-  }
-
-  ad.image_url = '';
-  ad.is_active = false;
-  ad.payment_status = 'pending';
-  ad.updated_at = new Date().toISOString();
-
-  // Block partner user account
-  for (const u of db.users.values()) {
-    if (u.phone === ad.phone_number) {
-      u.status = 'BLOCKED';
-    }
-  }
-
-  db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
-    actorType: 'USER',
-    actorId: req.user!.id,
-    action: 'DELETE_AND_BLOCK_AD',
-    targetType: 'ADVERTISEMENT',
-    targetId: ad.id,
-    reason: `Banner deleted and partner account blocked for rule violation: ${ad.company_name}`,
-    createdAt: new Date().toISOString(),
-  });
-
-  await db.persistSuperAdminConfig();
-
-  res.json({ success: true, message: 'Ad banner deleted and partner access blocked.', advertisement: safeAdvertisement(ad) });
-});
-
-// PUT /admin/advertisements/:id (Update ad settings / validity)
-apiRouter.put('/admin/advertisements/:id', requireSuperAdmin, async (req: AuthRequest, res) => {
-  const ad = db.advertisements.get(req.params.id);
-  if (!ad) {
-    return res.status(404).json({ code: 'NOT_FOUND', message: 'Advertisement not found' });
-  }
-
-  const { company_name, is_active, daysToAdd, expires_at } = req.body;
-  if (company_name !== undefined) {
-    if (typeof company_name !== 'string' || company_name.trim().length === 0) {
-      return res.status(400).json({ code: 'COMPANY_NAME_REQUIRED', message: 'Company name is required.' });
-    }
-    ad.company_name = company_name.trim();
-  }
-  // Super Admin may deactivate an advertisement, but cannot mark an unpaid ad as paid/active.
-  if (is_active !== undefined) {
-    if (Boolean(is_active) && ad.payment_status !== 'paid') {
-      return res.status(409).json({ code: 'PAYMENT_REQUIRED', message: 'An advertisement cannot be activated before confirmed payment.' });
-    }
-    ad.is_active = Boolean(is_active);
-  }
-  if (expires_at !== undefined) {
-    const parsedExpiry = Date.parse(String(expires_at));
-    if (!Number.isFinite(parsedExpiry)) return res.status(400).json({ code: 'INVALID_EXPIRY', message: 'Invalid expiration date.' });
-    ad.expires_at = new Date(parsedExpiry).toISOString();
-  }
-  if (daysToAdd !== undefined) {
-    const extraDays = Number.parseInt(String(daysToAdd), 10);
-    if (!Number.isInteger(extraDays) || extraDays < 1 || extraDays > 3650) {
-      return res.status(400).json({ code: 'INVALID_DURATION', message: 'Additional duration must be between 1 and 3650 days.' });
-    }
-    const currentExp = new Date(ad.expires_at).getTime();
-    const baseTime = currentExp > Date.now() ? currentExp : Date.now();
-    ad.expires_at = new Date(baseTime + extraDays * 24 * 60 * 60 * 1000).toISOString();
-  }
-  ad.updated_at = new Date().toISOString();
-
-  await db.persistSuperAdminConfig();
-
-  res.json({ success: true, advertisement: safeAdvertisement(ad) });
-});
-
-// 3. AD PARTNER PORTAL ENDPOINTS
-function getAdByPartnerPhone(phone: string) {
-  for (const ad of db.advertisements.values()) {
-    if (ad.phone_number === phone) {
-      return ad;
-    }
-  }
-  return undefined;
-}
-
-// GET /partner/ad
-apiRouter.get('/partner/ad', requireAdPartner, (req: AuthRequest, res) => {
-  const user = req.user!;
-  let ad = getAdByPartnerPhone(user.phone);
-  if (!ad) {
-    const adId = `ad-${Date.now()}`;
-    ad = {
-      id: adId,
-      company_name: '',
-      phone_number: user.phone,
-      expires_at: new Date(Date.now() - 1000).toISOString(),
-      image_url: '',
-      target_url: '',
-      is_active: false,
-      payment_status: 'pending',
-      terms_accepted: false,
-      price_gel: 50,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    db.advertisements.set(adId, ad);
-  }
-  res.json({ ad: safeAdvertisement(ad) });
-});
-
-// POST /partner/accept-terms
-apiRouter.post('/partner/accept-terms', requireAdPartner, async (req: AuthRequest, res) => {
-  const ad = getAdByPartnerPhone(req.user!.phone);
-  if (!ad) {
-    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
-  }
-  ad.terms_accepted = true;
-  ad.updated_at = new Date().toISOString();
-  await db.persistSuperAdminConfig();
-  res.json({ success: true, ad: safeAdvertisement(ad) });
-});
-
-// POST /partner/pay (disabled in production until a verified gateway is integrated)
-apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) => {
-  if (!requireRealPaymentIntegration(res)) return;
-  const ad = getAdByPartnerPhone(req.user!.phone);
-  if (!ad) {
-    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
-  }
-
-  if (!ad.terms_accepted) {
-    return res.status(400).json({
-      code: 'TERMS_NOT_ACCEPTED',
-      message: 'გადახდამდე აუცილებელია სარეკლამო პოლიტიკის წესებზე თანხმობის დადასტურება.',
-    });
-  }
-
-  const paymentProvider = db.providerConfig.payment.find(provider => provider.isActive);
-  if (!paymentProvider) {
-    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'No active payment provider is available.' });
-  }
-  const idempotencyKey = String(req.headers['idempotency-key'] || '').trim();
-  if (idempotencyKey.length < 16 || idempotencyKey.length > 128) {
-    return res.status(400).json({ code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'A valid Idempotency-Key is required for advertisement payments.' });
-  }
-  for (const intent of db.paymentIntents.values()) {
-    if (intent.idempotencyKey === idempotencyKey && intent.reservationId === ad.id) {
-      return res.json({ success: intent.status === 'SUCCEEDED', paymentIntentId: intent.id, ad: safeAdvertisement(ad), replay: true });
-    }
-  }
-
-  const durationDays = Number((ad as any).days_duration || 30);
-  const currentExp = new Date(ad.expires_at).getTime();
-  const baseTime = currentExp > Date.now() ? currentExp : Date.now();
-  const newExpiresAt = new Date(baseTime + durationDays * 24 * 60 * 60 * 1000).toISOString();
-
-  const priceGel = Number(ad.price_gel ?? 50);
-  const amountMinor = Math.round(priceGel * 100);
-  const paymentIntentId = `pi-ad-${crypto.randomUUID()}`;
-  db.paymentIntents.set(paymentIntentId, {
-    id: paymentIntentId,
-    reservationId: ad.id,
-    craftsmanId: null,
-    providerId: paymentProvider.id,
-    amountMinor,
-    currency: 'GEL',
-    idempotencyKey,
-    status: 'SUCCEEDED',
-    createdAt: new Date().toISOString(),
-  });
-
-  ad.expires_at = newExpiresAt;
-  ad.payment_status = 'paid';
-  ad.is_active = true;
-  ad.updated_at = new Date().toISOString();
-
-  await db.persistSuperAdminConfig();
-
-  res.json({
-    success: true,
-    paymentIntentId,
-    ad: safeAdvertisement(ad),
-    message: `სატესტო გადახდა შესრულდა (${priceGel} GEL). რეკლამა გააქტიურებულია ${durationDays} დღით.`,
-    simulated: true,
-  });
-});
-
-// PUT /partner/ad (Update content: company_name, image_url, target_url)
-apiRouter.put('/partner/ad', requireAdPartner, async (req: AuthRequest, res) => {
-  const ad = getAdByPartnerPhone(req.user!.phone);
-  if (!ad) {
-    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
-  }
-
-  const isPaid = ad.payment_status === 'paid' && new Date(ad.expires_at) > new Date();
-  if (!isPaid) {
-    return res.status(403).json({
-      code: 'PAYMENT_REQUIRED',
-      message: 'კონტენტის რედაქტირება შესაძლებელია მხოლოდ გადახდილი და აქტიური პაკეტის დროს.',
-    });
-  }
-
-  const { company_name, image_url, target_url } = req.body;
-
-  if (company_name !== undefined) {
-    if (!company_name || company_name.trim().length === 0) {
-      return res.status(400).json({
-        code: 'COMPANY_NAME_REQUIRED',
-        message: 'კომპანიის/ბრენდის ოფიციალური იურიდიული სახელწოდება სავალდებულოა!',
-      });
-    }
-    ad.company_name = company_name.trim();
-  }
-
-  if (image_url !== undefined) {
-    const imageValue = String(image_url);
-    if (imageValue.startsWith('data:')) {
-      if (!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(imageValue) || imageValue.length > 7 * 1024 * 1024) {
-        return res.status(422).json({ code: 'INVALID_IMAGE', message: 'Only PNG/JPEG/WebP images up to 5MB are allowed.' });
-      }
-      ad.image_url = imageValue;
-    } else {
-      const validatedImage = validateHttpUrl(imageValue, 'image_url');
-      if (validatedImage === null || validatedImage === '') return res.status(422).json({ code: 'INVALID_IMAGE_URL', message: 'Image URL must use HTTP or HTTPS.' });
-      ad.image_url = validatedImage;
-    }
-  }
-
-  if (target_url !== undefined) {
-    const validatedTarget = validateHttpUrl(target_url, 'target_url');
-    if (validatedTarget === null || validatedTarget === '') return res.status(422).json({ code: 'INVALID_TARGET_URL', message: 'Target URL must use HTTP or HTTPS.' });
-    ad.target_url = validatedTarget;
-  }
-
-  ad.updated_at = new Date().toISOString();
-
-  await db.persistSuperAdminConfig();
-
-  res.json({ success: true, ad: safeAdvertisement(ad) });
-});
-
-// GET /admin/persistence/status
-apiRouter.get('/admin/persistence/status', requireSuperAdmin, async (req, res) => {
-  await storage.checkDatabaseHealth();
-  res.json({
-    ...storage.getStatus(),
-    lastCheck: new Date().toISOString(),
-    config: {
-      listingPrice: db.listingPrice,
-      totalTop15Prices: db.top15Prices.size,
-      totalAdvertisements: db.advertisements.size,
-      configLocked: db.configLock.locked,
-      bootstrapInvalidated: db.bootstrap.invalidated,
-      recipientAccount: db.recipientAccount.iban,
-      backendUrl: db.backendConfig.baseUrl,
-    },
-  });
-});
-
-
