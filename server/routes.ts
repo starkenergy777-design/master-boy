@@ -3518,3 +3518,295 @@ apiRouter.post('/admin/advertisements', requireSuperAdmin, async (req: AuthReque
       db.advertisements.delete(adId);
       return res.status(409).json({ code: 'PHONE_ALREADY_ASSIGNED', message: 'This phone number already belongs to another application role and cannot be converted into an advertisement partner.' });
     }
+    existingUser.password = hashPassword(password);
+    existingUser.status = 'ACTIVE';
+  } else {
+    const userId = `usr-ad-${Date.now()}`;
+    db.users.set(userId, {
+      id: userId,
+      phone: cleanPhone,
+      password: hashPassword(password),
+      roles: ['AD_PARTNER'],
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'CREATE_AD_PARTNER',
+    targetType: 'ADVERTISEMENT',
+    targetId: adId,
+    reason: `Provisioned ad partner ${company_name} (${cleanPhone})`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, advertisement: safeAdvertisement(newAd) });
+});
+
+// POST /admin/advertisements/:id/block-and-delete (Delete & Block Ad button)
+apiRouter.post('/admin/advertisements/:id/block-and-delete', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const ad = db.advertisements.get(req.params.id);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Advertisement not found' });
+  }
+
+  ad.image_url = '';
+  ad.is_active = false;
+  ad.payment_status = 'pending';
+  ad.updated_at = new Date().toISOString();
+
+  // Block partner user account
+  for (const u of db.users.values()) {
+    if (u.phone === ad.phone_number) {
+      u.status = 'BLOCKED';
+    }
+  }
+
+  db.auditLog.unshift({
+    id: `audit-${Date.now()}`,
+    actorType: 'USER',
+    actorId: req.user!.id,
+    action: 'DELETE_AND_BLOCK_AD',
+    targetType: 'ADVERTISEMENT',
+    targetId: ad.id,
+    reason: `Banner deleted and partner account blocked for rule violation: ${ad.company_name}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, message: 'Ad banner deleted and partner access blocked.', advertisement: safeAdvertisement(ad) });
+});
+
+// PUT /admin/advertisements/:id (Update ad settings / validity)
+apiRouter.put('/admin/advertisements/:id', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const ad = db.advertisements.get(req.params.id);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Advertisement not found' });
+  }
+
+  const { company_name, is_active, daysToAdd, expires_at } = req.body;
+  if (company_name !== undefined) {
+    if (typeof company_name !== 'string' || company_name.trim().length === 0) {
+      return res.status(400).json({ code: 'COMPANY_NAME_REQUIRED', message: 'Company name is required.' });
+    }
+    ad.company_name = company_name.trim();
+  }
+  // Super Admin may deactivate an advertisement, but cannot mark an unpaid ad as paid/active.
+  if (is_active !== undefined) {
+    if (Boolean(is_active) && ad.payment_status !== 'paid') {
+      return res.status(409).json({ code: 'PAYMENT_REQUIRED', message: 'An advertisement cannot be activated before confirmed payment.' });
+    }
+    ad.is_active = Boolean(is_active);
+  }
+  if (expires_at !== undefined) {
+    const parsedExpiry = Date.parse(String(expires_at));
+    if (!Number.isFinite(parsedExpiry)) return res.status(400).json({ code: 'INVALID_EXPIRY', message: 'Invalid expiration date.' });
+    ad.expires_at = new Date(parsedExpiry).toISOString();
+  }
+  if (daysToAdd !== undefined) {
+    const extraDays = Number.parseInt(String(daysToAdd), 10);
+    if (!Number.isInteger(extraDays) || extraDays < 1 || extraDays > 3650) {
+      return res.status(400).json({ code: 'INVALID_DURATION', message: 'Additional duration must be between 1 and 3650 days.' });
+    }
+    const currentExp = new Date(ad.expires_at).getTime();
+    const baseTime = currentExp > Date.now() ? currentExp : Date.now();
+    ad.expires_at = new Date(baseTime + extraDays * 24 * 60 * 60 * 1000).toISOString();
+  }
+  ad.updated_at = new Date().toISOString();
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, advertisement: safeAdvertisement(ad) });
+});
+
+// 3. AD PARTNER PORTAL ENDPOINTS
+function getAdByPartnerPhone(phone: string) {
+  for (const ad of db.advertisements.values()) {
+    if (ad.phone_number === phone) {
+      return ad;
+    }
+  }
+  return undefined;
+}
+
+// GET /partner/ad
+apiRouter.get('/partner/ad', requireAdPartner, (req: AuthRequest, res) => {
+  const user = req.user!;
+  let ad = getAdByPartnerPhone(user.phone);
+  if (!ad) {
+    const adId = `ad-${Date.now()}`;
+    ad = {
+      id: adId,
+      company_name: '',
+      phone_number: user.phone,
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+      image_url: '',
+      target_url: '',
+      is_active: false,
+      payment_status: 'pending',
+      terms_accepted: false,
+      price_gel: 50,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    db.advertisements.set(adId, ad);
+  }
+  res.json({ ad: safeAdvertisement(ad) });
+});
+
+// POST /partner/accept-terms
+apiRouter.post('/partner/accept-terms', requireAdPartner, async (req: AuthRequest, res) => {
+  const ad = getAdByPartnerPhone(req.user!.phone);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
+  }
+  ad.terms_accepted = true;
+  ad.updated_at = new Date().toISOString();
+  await db.persistSuperAdminConfig();
+  res.json({ success: true, ad: safeAdvertisement(ad) });
+});
+
+// POST /partner/pay (disabled in production until a verified gateway is integrated)
+apiRouter.post('/partner/pay', requireAdPartner, async (req: AuthRequest, res) => {
+  if (!requireRealPaymentIntegration(res)) return;
+  const ad = getAdByPartnerPhone(req.user!.phone);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
+  }
+
+  if (!ad.terms_accepted) {
+    return res.status(400).json({
+      code: 'TERMS_NOT_ACCEPTED',
+      message: 'გადახდამდე აუცილებელია სარეკლამო პოლიტიკის წესებზე თანხმობის დადასტურება.',
+    });
+  }
+
+  const paymentProvider = db.providerConfig.payment.find(provider => provider.isActive);
+  if (!paymentProvider) {
+    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'No active payment provider is available.' });
+  }
+  const idempotencyKey = String(req.headers['idempotency-key'] || '').trim();
+  if (idempotencyKey.length < 16 || idempotencyKey.length > 128) {
+    return res.status(400).json({ code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'A valid Idempotency-Key is required for advertisement payments.' });
+  }
+  for (const intent of db.paymentIntents.values()) {
+    if (intent.idempotencyKey === idempotencyKey && intent.reservationId === ad.id) {
+      return res.json({ success: intent.status === 'SUCCEEDED', paymentIntentId: intent.id, ad: safeAdvertisement(ad), replay: true });
+    }
+  }
+
+  const durationDays = Number((ad as any).days_duration || 30);
+  const currentExp = new Date(ad.expires_at).getTime();
+  const baseTime = currentExp > Date.now() ? currentExp : Date.now();
+  const newExpiresAt = new Date(baseTime + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const priceGel = Number(ad.price_gel ?? 50);
+  const amountMinor = Math.round(priceGel * 100);
+  const paymentIntentId = `pi-ad-${crypto.randomUUID()}`;
+  db.paymentIntents.set(paymentIntentId, {
+    id: paymentIntentId,
+    reservationId: ad.id,
+    craftsmanId: null,
+    providerId: paymentProvider.id,
+    amountMinor,
+    currency: 'GEL',
+    idempotencyKey,
+    status: 'SUCCEEDED',
+    createdAt: new Date().toISOString(),
+  });
+
+  ad.expires_at = newExpiresAt;
+  ad.payment_status = 'paid';
+  ad.is_active = true;
+  ad.updated_at = new Date().toISOString();
+
+  await db.persistSuperAdminConfig();
+
+  res.json({
+    success: true,
+    paymentIntentId,
+    ad: safeAdvertisement(ad),
+    message: `სატესტო გადახდა შესრულდა (${priceGel} GEL). რეკლამა გააქტიურებულია ${durationDays} დღით.`,
+    simulated: true,
+  });
+});
+
+// PUT /partner/ad (Update content: company_name, image_url, target_url)
+apiRouter.put('/partner/ad', requireAdPartner, async (req: AuthRequest, res) => {
+  const ad = getAdByPartnerPhone(req.user!.phone);
+  if (!ad) {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Ad record not found' });
+  }
+
+  const isPaid = ad.payment_status === 'paid' && new Date(ad.expires_at) > new Date();
+  if (!isPaid) {
+    return res.status(403).json({
+      code: 'PAYMENT_REQUIRED',
+      message: 'კონტენტის რედაქტირება შესაძლებელია მხოლოდ გადახდილი და აქტიური პაკეტის დროს.',
+    });
+  }
+
+  const { company_name, image_url, target_url } = req.body;
+
+  if (company_name !== undefined) {
+    if (!company_name || company_name.trim().length === 0) {
+      return res.status(400).json({
+        code: 'COMPANY_NAME_REQUIRED',
+        message: 'კომპანიის/ბრენდის ოფიციალური იურიდიული სახელწოდება სავალდებულოა!',
+      });
+    }
+    ad.company_name = company_name.trim();
+  }
+
+  if (image_url !== undefined) {
+    const imageValue = String(image_url);
+    if (imageValue.startsWith('data:')) {
+      if (!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(imageValue) || imageValue.length > 7 * 1024 * 1024) {
+        return res.status(422).json({ code: 'INVALID_IMAGE', message: 'Only PNG/JPEG/WebP images up to 5MB are allowed.' });
+      }
+      ad.image_url = imageValue;
+    } else {
+      const validatedImage = validateHttpUrl(imageValue, 'image_url');
+      if (validatedImage === null || validatedImage === '') return res.status(422).json({ code: 'INVALID_IMAGE_URL', message: 'Image URL must use HTTP or HTTPS.' });
+      ad.image_url = validatedImage;
+    }
+  }
+
+  if (target_url !== undefined) {
+    const validatedTarget = validateHttpUrl(target_url, 'target_url');
+    if (validatedTarget === null || validatedTarget === '') return res.status(422).json({ code: 'INVALID_TARGET_URL', message: 'Target URL must use HTTP or HTTPS.' });
+    ad.target_url = validatedTarget;
+  }
+
+  ad.updated_at = new Date().toISOString();
+
+  await db.persistSuperAdminConfig();
+
+  res.json({ success: true, ad: safeAdvertisement(ad) });
+});
+
+// GET /admin/persistence/status
+apiRouter.get('/admin/persistence/status', requireSuperAdmin, async (req, res) => {
+  await storage.checkDatabaseHealth();
+  res.json({
+    ...storage.getStatus(),
+    lastCheck: new Date().toISOString(),
+    config: {
+      listingPrice: db.listingPrice,
+      totalTop15Prices: db.top15Prices.size,
+      totalAdvertisements: db.advertisements.size,
+      configLocked: db.configLock.locked,
+      bootstrapInvalidated: db.bootstrap.invalidated,
+      recipientAccount: db.recipientAccount.iban,
+      backendUrl: db.backendConfig.baseUrl,
+    },
+  });
+});
+
+
