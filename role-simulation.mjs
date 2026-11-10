@@ -25,6 +25,7 @@ const address = server.address();
 assert.ok(address && typeof address === 'object');
 const baseUrl = `http://127.0.0.1:${address.port}/api/v1`;
 const auditUsers = [];
+const auditCategoryIds = [];
 const auditCraftsmanId = 'audit-craftsman-profile';
 let createdAdminId;
 const auditPaymentIntentId = 'audit-ad-payment-null-craftsman';
@@ -110,6 +111,64 @@ try {
   for (const path of ['/cities', '/professions', '/search']) {
     check(`public endpoint ${path} responds without login`, (await request(path)).status === 200);
   }
+  const publicProfessions = await request('/professions');
+  const expectedProfessionIds = db.professions.map((profession) => profession.id);
+  const publicProfessionIds = publicProfessions.body.map((profession) => profession.id);
+  check('public profession catalog matches the complete server catalog',
+    publicProfessions.status === 200 && publicProfessionIds.length === expectedProfessionIds.length &&
+    new Set(publicProfessionIds).size === expectedProfessionIds.length &&
+    expectedProfessionIds.every((id) => publicProfessionIds.includes(id)) &&
+    publicProfessions.body.every((profession) => typeof profession.name === 'string' && profession.name.trim().length > 0));
+
+  // Create one disposable active listing per city/profession pair in this
+  // in-memory simulation. This covers every public search filter and Top 15
+  // availability lookup without touching Supabase or sending payment requests.
+  for (const city of db.cities) {
+    for (const profession of db.professions) {
+      const id = `audit-category-${city.id}-${profession.id}`;
+      const now = new Date().toISOString();
+      db.craftsmen.set(id, {
+        id, userId: roles.CRAFTSMAN.id, name: `Audit ${profession.name.ka}`, description: '',
+        phone: '+995555000000', phoneVisible: true, latitude: null, longitude: null,
+        workingHours: null, status: 'ACTIVE', cityId: city.id, professionId: profession.id,
+        createdAt: now, updatedAt: now, photos: [],
+      });
+      db.craftsmanListings.set(id, {
+        id: `listing-${id}`, craftsmanId: id, cityId: city.id, professionId: profession.id,
+        status: 'ACTIVE', startsAt: now, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: now, updatedAt: now,
+      });
+      auditCategoryIds.push(id);
+    }
+  }
+
+  let categorySearchChecks = 0;
+  let categoryAvailabilityChecks = 0;
+  for (const profession of db.professions) {
+    for (const city of db.cities) {
+      const expectedId = `audit-category-${city.id}-${profession.id}`;
+      const search = await request(`/search?cityId=${encodeURIComponent(city.id)}&professionId=${encodeURIComponent(profession.id)}&size=50`);
+      const results = [...(search.body.top15 || []), ...(search.body.data || [])];
+      assert.equal(search.status, 200, `search failed for ${city.id}/${profession.id}`);
+      assert.ok(results.some((craftsman) => craftsman.id === expectedId), `missing simulated listing for ${city.id}/${profession.id}`);
+      assert.ok(results.every((craftsman) => craftsman.cityId === city.id && craftsman.professionId === profession.id),
+        `search mixed categories for ${city.id}/${profession.id}`);
+      categorySearchChecks++;
+
+      const availability = await request(`/top15/availability?cityId=${encodeURIComponent(city.id)}&professionId=${encodeURIComponent(profession.id)}`, { token: roles.CRAFTSMAN.token });
+      assert.equal(availability.status, 200, `Top 15 availability failed for ${city.id}/${profession.id}`);
+      assert.ok(Number.isInteger(availability.body.amountMinor) && availability.body.amountMinor > 0,
+        `invalid Top 15 price for ${city.id}/${profession.id}`);
+      assert.equal(availability.body.currency, 'GEL', `unexpected currency for ${city.id}/${profession.id}`);
+      assert.ok(Number.isInteger(availability.body.freeSlots) && availability.body.freeSlots >= 0 && availability.body.freeSlots <= 15,
+        `invalid Top 15 capacity for ${city.id}/${profession.id}`);
+      categoryAvailabilityChecks++;
+    }
+    check(`category ${profession.id} searches and prices work in every city`,
+      categorySearchChecks >= db.cities.length && categoryAvailabilityChecks >= db.cities.length);
+  }
+  check(`all ${categorySearchChecks} city/category searches isolate results`, categorySearchChecks === db.cities.length * db.professions.length);
+  check(`all ${categoryAvailabilityChecks} city/category prices are available`, categoryAvailabilityChecks === db.cities.length * db.professions.length);
   const health = await request('/health');
   check('health reports an unconfigured local database as not durable', health.status === 200 && health.body.durableStorage === false);
 
@@ -262,6 +321,10 @@ try {
     db.sessions.delete(token);
   }
   db.craftsmen.delete(auditCraftsmanId);
+  for (const id of auditCategoryIds) {
+    db.craftsmen.delete(id);
+    db.craftsmanListings.delete(id);
+  }
   if (createdAdminId) db.users.delete(createdAdminId);
   db.paymentIntents.delete(auditPaymentIntentId);
   for (const [id, ad] of db.advertisements) {
@@ -269,3 +332,4 @@ try {
   }
   await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 }
+

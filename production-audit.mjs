@@ -7,6 +7,9 @@ const db = read('server/db.ts');
 const storage = read('server/storage.ts');
 const server = read('server.ts');
 const seed = read('migrations/002_seed_data.sql');
+const additionalProfessions = read('migrations/010_add_additional_professions.sql');
+const professionOrder = read('server/professionOrder.ts');
+const professionPicker = read('src/components/ProfessionPicker.tsx');
 const cityOrderMigration = read('migrations/006_georgian_alphabetical_city_order.sql');
 const main = read('src/screens/MainScreen.tsx');
 const craftsman = read('src/screens/CraftsmanDashboard.tsx');
@@ -103,6 +106,23 @@ check('development fallback catalog includes the latest cities and professions',
   assert.match(db, /id: 'city-khashuri'/);
   assert.match(db, /id: 'prof-demolition-drill'/);
   assert.match(db, /id: 'prof-waste-removal'/);
+});
+check('all professions stay aligned across database, migration seed, display order, and icons', () => {
+  const databaseBlock = db.match(/professions: Profession\[\] = \[([\s\S]*?)\n  \];/)?.[1] || '';
+  const databaseIds = [...databaseBlock.matchAll(/id: '(prof-[^']+)'/g)].map((match) => match[1]);
+  const sqlIds = [...`${seed}\n${additionalProfessions}`.matchAll(/\('(prof-[^']+)'/g)].map((match) => match[1]);
+  const uniqueSqlIds = [...new Set(sqlIds)];
+  const priorityIds = [...professionOrder.matchAll(/'((?:prof)-[^']+)'/g)].map((match) => match[1]);
+  const iconBlock = professionPicker.match(/const professionIcons: Record<string, LucideIcon> = \{([\s\S]*?)\n\};/)?.[1] || '';
+  const customIconBlock = professionPicker.match(/const customProfessionGlyphs: Record<string, React\.FC<CustomProfessionGlyphProps>> = \{([\s\S]*?)\n\};/)?.[1] || '';
+  const iconIds = [...`${iconBlock}\n${customIconBlock}`.matchAll(/'(prof-[^']+)'\s*:/g)].map((match) => match[1]);
+  const sorted = (values) => [...values].sort();
+  assert.equal(databaseIds.length, 20);
+  assert.equal(new Set(databaseIds).size, databaseIds.length);
+  assert.deepEqual(sorted(uniqueSqlIds), sorted(databaseIds));
+  assert.deepEqual(sorted(priorityIds), sorted(databaseIds));
+  assert.deepEqual(sorted(iconIds), sorted(databaseIds));
+  assert.ok(databaseBlock.match(/id: 'prof-[^']+', name: \{ ka: '[^']+', ru: '[^']+', en: '[^']+' \}/g)?.length === databaseIds.length);
 });
 check('cities keep major centers first, then follow Georgian alphabetical order', () => {
   const expected = ['city-tbilisi', 'city-batumi', 'city-kutaisi', 'city-rustavi', 'city-akhaltsikhe', 'city-borjomi', 'city-gori', 'city-zestafoni', 'city-zugdidi', 'city-telavi', 'city-martvili', 'city-samtredia', 'city-svaneti', 'city-poti', 'city-kobuleti', 'city-tskaltubo', 'city-khashuri'];
@@ -234,4 +254,5 @@ const failed = checks.filter(x => x.startsWith('FAIL:'))
 console.log(checks.join('\n'));
 console.log(`AUDIT_RESULT: ${failed.length ? 'FAILED' : 'PASSED'} (${checks.length - failed.length}/${checks.length})`);
 process.exitCode = failed.length ? 1 : 0;
+
 
