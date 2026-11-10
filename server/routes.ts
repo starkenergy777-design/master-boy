@@ -26,6 +26,12 @@ import {
 
 export const apiRouter = Router();
 
+const TOP15_PAYMENT_ARBITRATION_MS = 10_000;
+type Top15PaymentAttempt = { reservationId: string; requestedAt: number; order: number };
+type Top15PaymentWindow = { closesAt: number; attempts: Top15PaymentAttempt[]; winnerIds?: Set<string>; resolved: boolean };
+const top15PaymentWindows = new Map<string, Top15PaymentWindow>();
+let top15PaymentAttemptOrder = 0;
+
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const OTP_TTL_MS = 5 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
@@ -1811,7 +1817,7 @@ apiRouter.get('/top15/availability', requireCraftsman, (req, res) => {
   });
 });
 
-// POST /top15/reserve (holds slot 3 min; response has ttlSeconds)
+// POST /top15/reserve (creates a 3-minute candidate ticket; it does not occupy a slot)
 apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
   if (!requireRealPaymentIntegration(res)) return;
   if (!db.providerConfig.payment.some(provider => provider.isActive)) {
@@ -1876,7 +1882,7 @@ apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
     amountMinor: price.amountMinor,
     currency: price.currency,
     expiresAt,
-    status: 'HELD' as const,
+    status: 'CANDIDATE' as const,
   };
 
   db.top15Reservations.set(reservationId, reservation);
@@ -1904,8 +1910,8 @@ apiRouter.get('/top15/providers', (req, res) => {
   res.json(activeProviders);
 });
 
-// POST /top15/pay & /top15/purchase (Idempotency-Key support)
-apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, (req: AuthRequest, res) => {
+// POST /top15/pay & /top15/purchase (first click wins after a fixed arbitration window)
+apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: AuthRequest, res) => {
   if (!requireRealPaymentIntegration(res)) return;
   const craftsman = getMyCraftsman(req.user!.id);
   if (!craftsman) {
@@ -1941,9 +1947,57 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, (req: AuthRe
     return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
   }
 
-  if (reservation.status !== 'HELD' || reservation.expiresAt < Date.now()) {
+  if (!['CANDIDATE', 'HELD'].includes(reservation.status) || reservation.expiresAt < Date.now()) {
     reservation.status = 'EXPIRED';
     return res.status(410).json({ code: 'RESERVATION_EXPIRED', message: 'Reservation expired. Try again.' });
+  }
+
+  // Release legacy pre-pay holds too; every payment attempt must enter the same arbitration.
+  if (reservation.status === 'HELD') reservation.status = 'CANDIDATE';
+
+  if (reservation.status === 'CANDIDATE') {
+    const categoryKey = `${reservation.cityId}:${reservation.professionId}`;
+    const now = Date.now();
+    let paymentWindow = top15PaymentWindows.get(categoryKey);
+    if (!paymentWindow || paymentWindow.closesAt <= now || paymentWindow.resolved) {
+      paymentWindow = { closesAt: now + TOP15_PAYMENT_ARBITRATION_MS, attempts: [], resolved: false };
+      top15PaymentWindows.set(categoryKey, paymentWindow);
+    }
+    if (!paymentWindow.attempts.some(attempt => attempt.reservationId === reservationId)) {
+      paymentWindow.attempts.push({ reservationId, requestedAt: now, order: ++top15PaymentAttemptOrder });
+    }
+    const waitMs = Math.max(0, paymentWindow.closesAt - Date.now());
+    if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+
+    // Synchronous resolution makes all requests in this Node process observe one winner.
+    if (!paymentWindow.resolved) {
+      const availableSlots = db.getTop15Availability(reservation.cityId, reservation.professionId).freeSlots;
+      const eligibleAttempts = paymentWindow.attempts
+        .filter(attempt => {
+          const candidate = db.top15Reservations.get(attempt.reservationId);
+          return candidate?.status === 'CANDIDATE' && candidate.expiresAt > Date.now();
+        })
+        .sort((a, b) => a.requestedAt - b.requestedAt || a.order - b.order);
+      const winners = new Set(eligibleAttempts.slice(0, availableSlots).map(attempt => attempt.reservationId));
+      for (const attempt of eligibleAttempts) {
+        const candidate = db.top15Reservations.get(attempt.reservationId)!;
+        if (winners.has(attempt.reservationId)) candidate.status = 'HELD';
+        else candidate.status = 'CANCELLED';
+      }
+      paymentWindow.winnerIds = winners;
+      paymentWindow.resolved = true;
+    }
+
+    if (!paymentWindow.winnerIds?.has(reservationId)) {
+      reservation.status = 'CANCELLED';
+      const { freeSlots } = db.getTop15Availability(reservation.cityId, reservation.professionId);
+      return res.status(409).json({
+        code: freeSlots === 0 ? 'TOP15_FULL' : 'TOP15_PAYMENT_LOST',
+        message: freeSlots === 0
+          ? 'Top 15 სავსეა. თანხა არ ჩამოგეჭრათ.'
+          : 'სხვა ხელოსანმა გადახდაზე უფრო ადრე დააჭირა. თანხა არ ჩამოგეჭრათ.',
+      });
+    }
   }
 
   const paymentIntentId = `pi-${Date.now()}`;
