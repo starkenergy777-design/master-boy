@@ -73,6 +73,7 @@ async function runMigrations() {
     '011_hard_delete_craftsmen_and_reconcile_top15.sql',
     '012_admin_share_percentage.sql',
     '013_remove_unused_indexes.sql',
+    '014_top15_candidate_reservations.sql',
   ];
 
   // Verify all files exist
