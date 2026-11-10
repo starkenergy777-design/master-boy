@@ -83,6 +83,20 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
     }
   }, [cityId, professionId]);
 
+  // Keep the full-state signal fresh while this screen is open.
+  useEffect(() => {
+    if (!cityId || !professionId) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const latest = await api.getTop15Availability(cityId, professionId);
+        setAvailability(latest);
+      } catch {
+        // Preserve the last known availability if a transient refresh fails.
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [cityId, professionId]);
+
   // Hold Countdown Timer (§4.2 step 3)
   useEffect(() => {
     let timer: any;
@@ -126,6 +140,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
       setSelectedProviderId('');
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to reserve slot');
+      if (err.code === 'TOP15_FULL') void checkAvailability();
     } finally {
       setLoading(false);
     }
@@ -146,6 +161,11 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Payment failed');
+      if (err.code === 'TOP15_FULL' || err.code === 'TOP15_PAYMENT_LOST') {
+        setReservation(null);
+        setCountdown(0);
+        void checkAvailability();
+      }
     } finally {
       setLoading(false);
     }
@@ -262,7 +282,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
                     disabled={loading}
                     className="w-full mt-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-3 rounded-xl shadow text-xs transition-all active:scale-95 disabled:opacity-50"
                   >
-                    {loading ? '...' : `${t.reserveSlot} (3 min hold)`}
+                    {loading ? '...' : `${t.reserveSlot} (3 min)`}
                   </button>
                 ) : (
                   <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-center text-rose-300 text-xs space-y-1">
@@ -284,10 +304,10 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
                 <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
                 <div>
                   <span className="text-xs font-bold text-white block">
-                    {t.minutesHold}
+                    {lang === 'ka' ? 'მოთხოვნის ვადა' : lang === 'ru' ? 'Срок заявки' : 'Request expires in'}
                   </span>
                   <span className="text-[10px] text-slate-400 block">
-                    {t.holdCountdown}
+                    {lang === 'ka' ? 'ადგილი გაიცემა გადახდის რიგის შემდეგ' : lang === 'ru' ? 'Место назначается после очереди оплаты' : 'Slot is assigned after payment arbitration'}
                   </span>
                 </div>
               </div>
@@ -336,11 +356,13 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
 
             <button
               onClick={handlePay}
-              disabled={loading || countdown <= 0}
+              disabled={loading || countdown <= 0 || !selectedProviderId || (availability?.freeSlots ?? 0) <= 0}
               className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-400 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-950/40 text-xs transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>{loading ? '...' : `${t.pay} • ${(reservation.amountMinor / 100).toFixed(2)} GEL`}</span>
+              <span>{loading
+                ? lang === 'ka' ? 'მოთხოვნის დამუშავება...' : lang === 'ru' ? 'Обработка запроса...' : 'Processing request...'
+                : `${t.pay} • ${(reservation.amountMinor / 100).toFixed(2)} GEL`}</span>
             </button>
           </div>
         )}
@@ -348,8 +370,8 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
 
       <p className="text-center text-[11px] text-slate-500 pt-4">
         {lang === 'ka'
-          ? '3-წუთიანი დაჯავშნის რეზერვი • უსაფრთხო ონლაინ გადახდა'
-          : '3-minute reservation hold • Secure online payment'}
+          ? 'გადახდის მოთხოვნების 10-წამიანი რიგი • გამარჯვებულს დაეკავება ადგილი'
+          : '10-second payment request window • the first request gets the slot'}
       </p>
     </div>
   ));
