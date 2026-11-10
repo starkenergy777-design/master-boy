@@ -22,6 +22,7 @@ const topBar = read('src/components/TopAppBar.tsx');
 const supportChat = read('src/screens/SupportChatScreen.tsx');
 const adminDashboard = read('src/screens/AdminDashboard.tsx');
 const packageJson = JSON.parse(read('package.json'));
+const indexHtml = read('index.html');
 
 const checks = [];
 function check(name, fn) { try { fn(); checks.push(`PASS: ${name}`); } catch (e) { checks.push(`FAIL: ${name} — ${e.message}`); } }
@@ -170,9 +171,11 @@ check('production cannot mark a payment provider active from stored metadata', (
   assert.match(db, /Credentials alone do not mean a live gateway adapter is integrated/);
 });
 check('production payment toggle is disabled in the superadmin UI', () => assert.match(superAdmin, /disabled=\{loading \|\| configLock\.locked \|\| import\.meta\.env\.PROD\}/));
-check('rate limiting uses Render forwarded client IP and validates it', () => {
-  assert.match(routes, /req\.header\('X-Forwarded-For'\)/);
+check('rate limiting trusts Render edge client IP and restricts XFF fallback to non-production', () => {
+  assert.match(routes, /const cloudflareClientIp = req\.header\('CF-Connecting-IP'\)\?\.trim\(\);/);
+  assert.match(routes, /if \(process\.env\.NODE_ENV !== 'production'\) \{[\s\S]{0,250}req\.header\('X-Forwarded-For'\)/);
   assert.match(routes, /isIP\(value\)/);
+  assert.match(routes, /process\.env\.NODE_ENV !== 'production'[\s\S]{0,140}X-Forwarded-For/);
   assert.doesNotMatch(routes, /req\.ip/);
 });
 check('both health endpoints query durable storage instead of trusting stale state', () => {
@@ -202,6 +205,10 @@ check('AI user interface identifies the selected provider and does not promise c
   assert.match(adminDashboard, /does not continuously audit payments/);
 });
 check('production build runs TypeScript checks before bundling', () => assert.match(packageJson.scripts.build, /typecheck[\s\S]*vite build/));
+check('public metadata does not advertise stale API versions or a native Android client', () => {
+  assert.doesNotMatch(indexHtml, /trusted backend API v1\.2\.0|native Android client experience/i);
+  assert.match(indexHtml, /helps people in Georgia find and contact local craftsmen directly/i);
+});
 
 check('public login uses one non-enumerating failure response and a dummy password hash', () => {
   const loginStart = routes.indexOf("apiRouter.post(['/auth/password/login'");

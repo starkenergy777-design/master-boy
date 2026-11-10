@@ -212,6 +212,43 @@ try {
   });
   check('account-wide OTP limit prevents IP rotation from bypassing throttling', overPhoneLimit.status === 429);
 
+  // In production, caller-controlled X-Forwarded-For values must not create
+  // fresh rate-limit buckets. Render's overwritten CF-Connecting-IP is the
+  // trusted client address; an absent or malformed value falls back to socket.
+  const previousOtpNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    const trustedEdgePhone = '+995555901334';
+    let trustedEdgeLimit;
+    for (let i = 0; i < 6; i++) {
+      trustedEdgeLimit = await request('/auth/otp/request', {
+        method: 'POST', body: { phone: trustedEdgePhone },
+        headers: {
+          'CF-Connecting-IP': '198.51.100.90',
+          'X-Forwarded-For': `198.51.100.${70 + i}, 10.0.0.1`,
+        },
+      });
+    }
+    check('production OTP limit cannot be bypassed with spoofed X-Forwarded-For when the edge IP is present',
+      trustedEdgeLimit.status === 429);
+
+    const malformedEdgePhone = '+995555901335';
+    let malformedEdgeLimit;
+    for (let i = 0; i < 6; i++) {
+      malformedEdgeLimit = await request('/auth/otp/request', {
+        method: 'POST', body: { phone: malformedEdgePhone },
+        headers: {
+          'CF-Connecting-IP': 'not-an-ip',
+          'X-Forwarded-For': `198.51.100.${80 + i}, 10.0.0.1`,
+        },
+      });
+    }
+    check('production OTP limit falls back to the socket when edge IP is missing or malformed',
+      malformedEdgeLimit.status === 429);
+  } finally {
+    process.env.NODE_ENV = previousOtpNodeEnv;
+  }
+
   // Temporarily emulate production to assert payment APIs stay fail-closed even
   // when old provider metadata says a provider is active. No gateway request is made.
   const previousNodeEnv = process.env.NODE_ENV;
