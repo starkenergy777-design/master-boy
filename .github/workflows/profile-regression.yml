@@ -1,0 +1,33 @@
+name: Profile regression
+on:
+  pull_request:
+    branches: [main, codex/master-boy-supabase-render]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Verify profile editor wiring
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          const dashboard = readFileSync('src/screens/CraftsmanDashboard.tsx','utf8');
+          const api = readFileSync('src/api.ts','utf8');
+          const routes = readFileSync('server/routes.ts','utf8');
+          assert.match(dashboard, /openProfileEditor/);
+          assert.match(dashboard, /onSubmit=\{saveProfile\}/);
+          assert.match(dashboard, /await api\.updateMyCraftsman\(/);
+          assert.match(dashboard, /setEditingProfile\(false\)/);
+          assert.match(api, /updateMyCraftsman[\s\S]*?method: 'PUT'/);
+          assert.match(routes, /apiRouter\.put\(\['\/craftsmen\/me'[\s\S]*?requireCraftsman/);
+          JS
