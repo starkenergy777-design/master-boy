@@ -338,7 +338,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-medium text-slate-400 px-1">
                   {t.city} *
