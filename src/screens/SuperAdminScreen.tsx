@@ -147,6 +147,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const t = translations[lang] || translations.ka;
   const adminCopy = ({
     ka: {
+      remove: 'ადმინისტრატორის წაშლა', confirmRemove: 'გაუუქმდეს ადმინისტრატორის წვდომა ამ ნომერს?', removed: 'ადმინისტრატორი წაიშალა.', removeError: 'წაშლა ვერ მოხერხდა.',
       title: 'ადმინისტრატორების მართვა',
       description: 'შექმენი ადმინისტრატორის ანგარიში, მიუთითე უნიკალური ტელეფონის ნომერი და კომპანიის წილში მისი პროცენტი.',
       create: 'ადმინისტრატორის შექმნა', hide: 'ფორმის დახურვა', phone: 'ტელეფონის ნომერი',
@@ -161,6 +162,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       assignedShare: 'კომპანიის შენთვის მინიჭებული წილი', notAssigned: 'წილი მინიჭებული არ არის', admins: 'ადმინისტრატორები',
     },
     ru: {
+      remove: 'Удалить администратора', confirmRemove: 'Отозвать права администратора у этого номера?', removed: 'Администратор удалён.', removeError: 'Не удалось удалить администратора.',
       title: 'Управление администраторами',
       description: 'Создайте учетную запись администратора, укажите уникальный номер телефона и его долю в компании.',
       create: 'Создать администратора', hide: 'Закрыть форму', phone: 'Номер телефона',
@@ -175,6 +177,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       assignedShare: 'Назначенная вам доля компании', notAssigned: 'Доля не назначена', admins: 'Администраторы',
     },
     en: {
+      remove: 'Delete administrator', confirmRemove: 'Remove administrator access for this number?', removed: 'Administrator removed.', removeError: 'Could not remove administrator.',
       title: 'Administrator management',
       description: 'Create an administrator account with a unique phone number and its percentage share of the company.',
       create: 'Create administrator', hide: 'Close form', phone: 'Phone number',
@@ -815,6 +818,22 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     }
   };
 
+  const removeAdmin = async (admin: User) => {
+    if (!window.confirm(adminCopy.confirmRemove + ' ' + admin.phone)) return;
+    setAdminSaving(true);
+    setAdminError('');
+    setAdminNotice('');
+    try {
+      await api.request('/admin/admins/' + encodeURIComponent(admin.id), { method: 'DELETE' });
+      setManagedAdmins(previous => previous.filter(item => item.id !== admin.id));
+      setAdminNotice(adminCopy.removed);
+    } catch {
+      setAdminError(adminCopy.removeError);
+    } finally {
+      setAdminSaving(false);
+    }
+  };
+
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdminError('');
@@ -1009,6 +1028,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                   <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/5 px-2.5 py-1 text-xs font-bold text-cyan-100">
                     {typeof admin.adminSharePercent === 'number' ? String(admin.adminSharePercent) + '%' : adminCopy.notAssigned}
                   </span>
+                  {admin.id !== currentUser.id && !admin.roles.includes('SUPER_ADMIN') && (
+                    <button type="button" disabled={adminSaving || configLock.locked}
+                      onClick={() => removeAdmin(admin)}
+                      className="rounded-lg border border-rose-400/40 px-2 py-2 text-xs font-semibold text-rose-300 disabled:opacity-50">
+                      {adminCopy.remove}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

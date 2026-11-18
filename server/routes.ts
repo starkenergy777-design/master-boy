@@ -3198,7 +3198,7 @@ apiRouter.put('/admin/me/password', requireStaffAdmin, async (req: AuthRequest, 
 });
 
 apiRouter.get('/admin/admins', requireSuperAdmin, (req, res) => {
-  const admins = Array.from(db.users.values()).filter(u => u.roles.includes('ADMIN'));
+  const admins = Array.from(db.users.values()).filter(u => u.roles.includes('ADMIN') && u.status !== 'DELETED');
   res.json(admins.map(safeUser));
 });
 
@@ -3262,26 +3262,28 @@ apiRouter.post('/admin/admins', requireSuperAdmin, checkConfigLock, async (req: 
 });
 
 // DELETE /admin/admins/:id (Protected by config lock!)
-apiRouter.delete('/admin/admins/:id', requireSuperAdmin, checkConfigLock, (req: AuthRequest, res) => {
+apiRouter.delete('/admin/admins/:id', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
   const user = db.users.get(req.params.id);
-  if (!user) {
-    return res.status(404).json({ code: 'NOT_FOUND', message: 'Admin user not found' });
+  if (!user || !user.roles.includes('ADMIN') || user.status === 'DELETED') {
+    return res.status(404).json({ code: 'NOT_FOUND', message: 'Administrator not found.' });
   }
-
-  user.roles = user.roles.filter(r => r !== 'ADMIN');
-
-  db.auditLog.unshift({
-    id: `audit-${Date.now()}`,
-    actorType: 'USER',
-    actorId: req.user!.id,
-    action: 'REMOVE_ADMIN',
-    targetType: 'USER',
-    targetId: user.id,
-    reason: `Revoked ADMIN role from ${user.phone}`,
-    createdAt: new Date().toISOString(),
-  });
-
-  res.json({ success: true, user: safeUser(user) });
+  if (user.id === req.user!.id || user.roles.includes('SUPER_ADMIN')) {
+    return res.status(403).json({ code: 'FORBIDDEN', message: 'Protected account.' });
+  }
+  const otherRoles = user.roles.filter(role => role !== 'ADMIN');
+  const updated: User = otherRoles.length ? { ...user, roles: otherRoles } : { ...user, status: 'DELETED' };
+  db.users.set(user.id, updated);
+  const sessions = Array.from(db.sessions.entries()).filter(([, session]) => session.userId === user.id);
+  revokeUserSessions(user.id);
+  const entry = { id: crypto.randomUUID(), actorType: 'USER' as const, actorId: req.user!.id,
+    action: 'REMOVE_ADMIN', targetType: 'USER', targetId: user.id, reason: 'Removed administrator access', createdAt: new Date().toISOString() };
+  db.auditLog.unshift(entry);
+  if (!await persistAdminMutation(res, () => {
+    db.users.set(user.id, user);
+    for (const [token, session] of sessions) db.sessions.set(token, session);
+    db.auditLog = db.auditLog.filter(item => item !== entry);
+  })) return;
+  res.json({ success: true });
 });
 
 // PUT /admin/config/backend-url (§16.4; Protected by config lock!)
