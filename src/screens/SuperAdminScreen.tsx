@@ -36,6 +36,36 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   onBack,
 }) => {
   const t = translations[lang] || translations.ka;
+  const chatLabels = {
+    ka: { title: 'სუპერადმინის AI ჩატი', hint: 'პასუხობს კითხვებს; პარამეტრებს არ ცვლის. მიმოწერა ინახება მხოლოდ ამ ეკრანის გახსნის განმავლობაში.', placeholder: 'დაწერეთ კითხვა…', send: 'გაგზავნა', waiting: 'პასუხს ველოდებით…', unavailable: 'AI-სთან დაკავშირება ვერ მოხერხდა. სცადეთ ხელახლა.', missing: 'AI-ის გასაღები არ არის მითითებული.', timeout: 'პასუხის მიღების დრო ამოიწურა. სცადეთ ხელახლა.', denied: 'სესია დასრულებულია ან სუპერადმინის უფლება არ გაქვთ. ხელახლა შედით.', limit: 'დაელოდეთ ერთ წუთს და სცადეთ ხელახლა.' },
+    ru: { title: 'AI-чат суперадминистратора', hint: 'Отвечает на вопросы, не меняет настройки. Переписка хранится только пока открыт этот экран.', placeholder: 'Задайте вопрос…', send: 'Отправить', waiting: 'Ожидаем ответ…', unavailable: 'Не удалось связаться с AI. Повторите попытку.', missing: 'Ключ AI не настроен.', timeout: 'Время ожидания истекло. Повторите попытку.', denied: 'Сессия завершена или нет прав суперадминистратора. Войдите снова.', limit: 'Подождите минуту и повторите попытку.' },
+    en: { title: 'Super admin AI chat', hint: 'Answers questions without changing settings. Messages remain only while this screen is open.', placeholder: 'Ask a question…', send: 'Send', waiting: 'Waiting for a reply…', unavailable: 'Could not reach AI. Please try again.', missing: 'The AI key is not configured.', timeout: 'The reply timed out. Please try again.', denied: 'Session expired or super admin access denied. Sign in again.', limit: 'Wait a minute and try again.' },
+  }[lang];
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<{ question: string; reply: string }[]>([]);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState('');
+
+  const sendChat = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const question = chatInput.trim();
+    if (!question || chatBusy) return;
+    setChatBusy(true);
+    setChatError('');
+    try {
+      const result = await api.sendSuperAdminMessage(question);
+      if (!result.reply?.trim()) throw new Error('Empty AI reply');
+      setChatMessages(previous => [...previous, { question, reply: result.reply }]);
+      setChatInput('');
+    } catch (err: any) {
+      setChatError(err.code === 'AI_NOT_CONFIGURED' ? chatLabels.missing
+        : err.code === 'AI_TIMEOUT' ? chatLabels.timeout
+        : err.status === 401 || err.status === 403 ? chatLabels.denied
+        : err.status === 429 ? chatLabels.limit : chatLabels.unavailable);
+    } finally {
+      setChatBusy(false);
+    }
+  };
 
   // Gemini State (§3.8)
   const [geminiKeyInput, setGeminiKeyInput] = useState('');
@@ -381,6 +411,31 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           <span>{successMsg}</span>
         </div>
       )}
+
+      <section className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+        <h3 className="text-sm font-bold text-amber-300">{chatLabels.title}</h3>
+        <p className="text-xs text-slate-400">{chatLabels.hint}</p>
+        <div aria-live="polite" className="space-y-3 max-h-80 overflow-y-auto break-words">
+          {chatMessages.map((message, index) => (
+            <div key={index} className="space-y-2 text-sm whitespace-pre-wrap">
+              <p className="bg-amber-500/10 rounded-xl p-3">{message.question}</p>
+              <p className="bg-slate-950 rounded-xl p-3">{message.reply}</p>
+            </div>
+          ))}
+          {chatBusy && <p className="text-xs text-slate-400">{chatLabels.waiting}</p>}
+        </div>
+        {chatError && <p role="alert" className="text-xs text-rose-300">{chatError}</p>}
+        <form onSubmit={sendChat} className="space-y-2">
+          <textarea aria-label={chatLabels.placeholder} placeholder={chatLabels.placeholder}
+            value={chatInput} onChange={event => setChatInput(event.target.value)}
+            disabled={chatBusy} maxLength={4000} rows={3}
+            className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm disabled:opacity-50" />
+          <button type="submit" disabled={chatBusy || !chatInput.trim()}
+            className="bg-amber-500 text-slate-950 rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50">
+            {chatLabels.send}
+          </button>
+        </form>
+      </section>
 
       {/* 1. Configuration Lock (§3.5 & §3.6) */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">

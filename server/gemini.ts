@@ -57,6 +57,40 @@ interface SupportReplyResult {
   disputeCreated?: boolean;
 }
 
+// Separate read-only assistant: never stores messages in craftsmen's support threads.
+export async function generateSuperAdminReply(userMessage: string, lang: Language): Promise<string> {
+  const client = getAiClient();
+  if (!client) throw new Error('AI_NOT_CONFIGURED');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const response = await Promise.race([
+      client.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: userMessage,
+        config: {
+          systemInstruction: `You are MASTER_BOY's read-only assistant for its SUPER_ADMIN.
+Reply in ${lang} (ka=Georgian, ru=Russian, en=English), using clear natural-language text, not JSON.
+Only the current question and these rules are supplied. You have no live database, logs, tools, or conversation history.
+Never invent measurements, payments, account state, or claim to have performed an action. State when live verification is needed.
+Never request or disclose passwords, API keys, bank card security codes, or other secrets.
+You cannot change settings, users, prices, payments, or data. Explain procedures only.
+Preserve the existing architecture, public search without registration, and one login with role-specific cabinets.
+Top 15 rules: at most 15 slots per city+profession; a 3-minute hold; 30-day activation after server-confirmed payment; ordering refreshed every 30 minutes; category-specific price in GEL; one active membership per craftsman per city+profession; an unlimited regular list, which may be paginated.
+Do not assume payment or SMS providers are operational without verified information.`,
+        },
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('AI_TIMEOUT')), 30000);
+      }),
+    ]);
+    const reply = response.text?.trim();
+    if (!reply) throw new Error('AI_EMPTY_REPLY');
+    return reply;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function generateSupportReply(
   craftsmanId: string,
   userMessage: string,

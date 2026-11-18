@@ -341,6 +341,13 @@ class ApiClient {
   }
 
   // Super Admin
+  sendSuperAdminMessage(message: string) {
+    return this.request<{ reply: string }>('/admin/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+  }
+
   getProviders(type: string) {
     return this.request<any[]>(`/admin/providers/${type}`);
   }

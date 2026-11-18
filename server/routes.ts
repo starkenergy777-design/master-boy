@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { db, verifyPassword, hashPassword } from './db.js';
 import { storage } from './storage.js';
-import { generateSupportReply, generatePeriodicReport, testGeminiKey, resetAiClient } from './gemini.js';
+import { generateSupportReply, generateSuperAdminReply, generatePeriodicReport, testGeminiKey, resetAiClient } from './gemini.js';
 import {
   Language,
   Role,
@@ -1621,6 +1621,27 @@ apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (
 // ==========================================
 // 6.4 & 6.5 ADMIN+ ENDPOINTS
 // ==========================================
+
+// Read-only chat remains available while configuration changes are locked.
+apiRouter.post('/admin/ai/chat', requireSuperAdmin, async (req: AuthRequest, res) => {
+  const message = req.body?.message;
+  if (typeof message !== 'string' || !message.trim() || message.trim().length > 4000) {
+    return res.status(400).json({ code: 'INVALID_MESSAGE', message: 'Message must contain 1–4000 characters.' });
+  }
+  if (!rateLimit(`superadmin-chat:${req.user!.id}`, 10, 60 * 1000)) {
+    return res.status(429).json({ code: 'TOO_MANY_ATTEMPTS', message: 'Please wait a minute before sending another message.' });
+  }
+  try {
+    const reply = await generateSuperAdminReply(message.trim(), getLang(req));
+    return res.json({ reply });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : '';
+    const code = reason === 'AI_NOT_CONFIGURED' ? 'AI_NOT_CONFIGURED'
+      : reason === 'AI_TIMEOUT' ? 'AI_TIMEOUT' : 'AI_UNAVAILABLE';
+    // Do not expose provider errors, credentials, or fabricate an AI reply.
+    return res.status(code === 'AI_TIMEOUT' ? 504 : 503).json({ code, message: code });
+  }
+});
 
 // GET /admin/craftsmen?query=&status=&page= (§6.5)
 apiRouter.get('/admin/craftsmen', requireAdmin, (req, res) => {
