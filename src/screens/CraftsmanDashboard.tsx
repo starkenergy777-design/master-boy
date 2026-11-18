@@ -32,6 +32,40 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const [activeAd, setActiveAd] = useState<AdvertisementPublic | null>(null);
 
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({ name: '', description: '', workingHours: '' });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const profileText = lang === 'ka'
+    ? { title: 'პროფილის რედაქტირება', name: 'სახელი და გვარი', description: 'აღწერა', hours: 'სამუშაო საათები', save: 'შენახვა', cancel: 'გაუქმება', error: 'შენახვა ვერ მოხერხდა', required: 'მიუთითეთ სახელი' }
+    : lang === 'ru'
+    ? { title: 'Редактировать профиль', name: 'Имя и фамилия', description: 'Описание', hours: 'Часы работы', save: 'Сохранить', cancel: 'Отмена', error: 'Не удалось сохранить', required: 'Укажите имя' }
+    : { title: 'Edit profile', name: 'Full name', description: 'Description', hours: 'Working hours', save: 'Save', cancel: 'Cancel', error: 'Could not save', required: 'Enter a name' };
+
+  const openProfileEditor = () => {
+    if (!craftsman) return;
+    setProfileDraft({ name: craftsman.name || '', description: craftsman.description || '', workingHours: craftsman.workingHours || '' });
+    setProfileError('');
+    setEditingProfile(true);
+  };
+
+  const saveProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (profileSaving || !craftsman) return;
+    if (!profileDraft.name.trim()) { setProfileError(profileText.required); return; }
+    setProfileSaving(true);
+    setProfileError('');
+    try {
+      const updated = await api.updateMyCraftsman({ ...profileDraft, name: profileDraft.name.trim() });
+      setCraftsman((previous: any) => ({ ...previous, ...updated }));
+      setEditingProfile(false);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : profileText.error);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   // Renewal / Pay Modal
   const [showRenewalModal, setShowRenewalModal] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState('prov-bog');
@@ -353,7 +387,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       {/* Tabs */}
       <div className="flex rounded-2xl bg-slate-900/80 p-1 border border-slate-800 text-xs font-semibold">
         <button
-          onClick={() => setActiveTab('profile')}
+          onClick={() => { if (activeTab === 'profile') openProfileEditor(); else setActiveTab('profile'); }}
           className={`flex-1 py-2 rounded-xl transition-all ${
             activeTab === 'profile'
               ? 'bg-amber-500 text-slate-950 shadow'
@@ -508,6 +542,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
             <h3 className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
               {t.aboutCraftsman}
             </h3>
+            <button type="button" onClick={openProfileEditor} disabled={!craftsman} className="text-xs font-bold text-amber-400 disabled:opacity-50">{profileText.title}</button>
             <p className="text-slate-300 leading-relaxed whitespace-pre-line bg-slate-950/60 p-3 rounded-xl border border-slate-800">
               {craftsman?.description || 'აღწერა არ არის მითითებული.'}
             </p>
@@ -569,6 +604,25 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {editingProfile && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <form onSubmit={saveProfile} role="dialog" aria-modal="true" aria-label={profileText.title} className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full max-h-[85vh] overflow-y-auto space-y-3">
+            <h3 className="font-bold text-white">{profileText.title}</h3>
+            {(['name', 'description', 'workingHours'] as const).map((field) => (
+              <label key={field} className="block text-xs text-slate-300 space-y-1">
+                <span>{field === 'workingHours' ? profileText.hours : profileText[field]}</span>
+                <textarea rows={field === 'description' ? 4 : 1} required={field === 'name'} disabled={profileSaving} value={profileDraft[field]} onChange={(event) => setProfileDraft(previous => ({ ...previous, [field]: event.target.value }))} className="w-full bg-slate-950 rounded-xl border border-slate-700 p-2 text-white" />
+              </label>
+            ))}
+            {profileError && <p role="alert" className="text-xs text-rose-300">{profileError}</p>}
+            <div className="flex gap-2">
+              <button type="button" disabled={profileSaving} onClick={() => setEditingProfile(false)} className="flex-1 rounded-xl bg-slate-800 p-2 text-xs">{profileText.cancel}</button>
+              <button type="submit" disabled={profileSaving} className="flex-1 rounded-xl bg-amber-500 text-slate-950 font-bold p-2 text-xs">{profileSaving ? '...' : profileText.save}</button>
+            </div>
+          </form>
         </div>
       )}
 
