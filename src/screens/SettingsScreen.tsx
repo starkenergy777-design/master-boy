@@ -1,6 +1,6 @@
 import { localizeTree } from '../i18n.js';
 import React from 'react';
-import { Globe, Shield, LogOut, Check, Copy, Link2, Download } from 'lucide-react';
+import { Globe, Shield, LogOut, Check, Copy, Link2, Download, Phone, Mail, Store } from 'lucide-react';
 import { translations } from '../i18n.js';
 import { Language, User } from '../types.js';
 import { getPwaInstallState, promptPwaInstall, subscribePwaInstallState, PwaInstallState } from '../pwaInstall.js';
@@ -78,7 +78,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   ];
 
   return localizeTree(lang, (
-    <div className="flex-1 flex flex-col p-4 pb-20 space-y-4 animate-fade-in text-slate-100">
+    <div className="flex-1 flex flex-col p-3 pb-20 space-y-3 animate-fade-in text-slate-100">
       <div className="flex items-center gap-2">
         <h2 className="text-base font-bold text-white flex items-center gap-2">
           <Globe className="w-5 h-5 text-amber-400" />
@@ -87,17 +87,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </div>
 
       {/* Language Selector (§8: 3 languages only: ka, ru, en) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3 space-y-2">
         <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
           {t.language}
         </h3>
 
-        <div className="grid grid-cols-1 gap-2">
+        <div className="grid grid-cols-1 gap-1.5">
           {languages.map((l) => (
             <button
               key={l.code}
               onClick={() => onLanguageChange(l.code)}
-              className={`flex items-center justify-between p-3 rounded-2xl border text-xs font-semibold transition-all ${
+              className={`flex items-center justify-between py-2.5 px-3 rounded-2xl border text-xs font-semibold transition-all ${
                 lang === l.code
                   ? 'bg-amber-500/10 border-amber-500 text-white'
                   : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:border-slate-700'
@@ -114,7 +114,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </div>
 
       {/* Share the app */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3 space-y-2">
         <div>
           <h3 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
             <Link2 className="w-3.5 h-3.5" />
@@ -199,7 +199,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </div>
 
       {/* Platform Info */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-2.5 text-xs">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3 space-y-2 text-xs">
         <h3 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
           <Shield className="w-3.5 h-3.5 text-amber-400" />
           <span>
@@ -228,8 +228,28 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
 
 
+      {/* Public business contact information */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3 space-y-2 text-xs">
+        <h3 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+          <Phone className="w-3.5 h-3.5" />
+          <span>{lang === 'ka' ? 'საკონტაქტო ინფორმაცია' : lang === 'ru' ? 'Контактная информация' : 'Contact information'}</span>
+        </h3>
+        <div className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2.5 text-slate-100">
+          <Store className="w-4 h-4 shrink-0 text-amber-400" />
+          <span className="font-semibold">{lang === 'ka' ? 'მასტერ ბოი' : 'Master Boy'}</span>
+        </div>
+        <a href="tel:+995574777060" className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2.5 text-sky-400 hover:bg-slate-800">
+          <Phone className="w-4 h-4 shrink-0 text-amber-400" />
+          <span className="font-semibold">+995 574 777 060</span>
+        </a>
+        <a href="mailto:starkenergy777@gmail.com" className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2.5 text-sky-400 hover:bg-slate-800 break-all">
+          <Mail className="w-4 h-4 shrink-0 text-amber-400" />
+          <span className="font-semibold">starkenergy777@gmail.com</span>
+        </a>
+      </div>
+
       {currentUser && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3 text-xs">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3 space-y-2 text-xs">
           <h3 className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
             Active Session
           </h3>
