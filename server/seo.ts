@@ -47,8 +47,12 @@ export function seoRouter(templatePath: string) {
         .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escapeHtml(description)}" />`)
         .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${escapeHtml(canonical)}" />`)
         .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeHtml(title)}" />`)
-        .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeHtml(description)}" />`)
-        .replace(/<div id="root">[\s\S]*?<script src="\/app-bootstrap.js"><\/script>/, `<div id="root">${content}</div><script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
+        .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeHtml(description)}" />`);
+      if (req.path === '/') {
+        html = html.replace('<script src="/app-bootstrap.js"></script>', `<script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
+      } else {
+        html = html.replace(/<div id="root">[\s\S]*?<script src="\/app-bootstrap.js"><\/script>/, `<div id="root">${content}</div><script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
+      }
       res.set('Cache-Control', 'no-cache').type('html').send(html);
     } catch (error) { next(error); }
   });

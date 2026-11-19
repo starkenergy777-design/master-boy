@@ -17,9 +17,9 @@ try {
   assert.equal(home.status, 200);
   assert.match(html, /google-site-verification/);
   assert.match(html, /id="mb-public-page"/);
-  assert.match(html, /<main/);
+  assert.match(html, /mb-initial-loader/);
   assert.match(html, /<script[^>]+src="\/assets\//);
-  assert.doesNotMatch(html, /mb-initial-loader/);
+  assert.doesNotMatch(html, /<main style="max-width:512px/);
   assert.equal((html.match(/id="root"/g) || []).length, 1);
   const sitemap = await (await get('/sitemap.xml')).text();
   assert.equal((sitemap.match(/<loc>/g) || []).length, 1);
