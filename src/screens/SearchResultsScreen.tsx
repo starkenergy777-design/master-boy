@@ -121,9 +121,12 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
           : 'bg-slate-900/90 border-slate-800 hover:border-slate-700 shadow-sm'
       }`}
     >
-      <button
-        type="button"
-        onClick={() => onSelectCraftsman(c)}
+      <a
+        href={`/xelosani/${encodeURIComponent(c.id)}`}
+        onClick={(event) => {
+          if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          event.preventDefault(); onSelectCraftsman(c);
+        }}
         aria-label={lang === 'ka' ? `პროფილი: ${c.name}` : lang === 'ru' ? `Профиль: ${c.name}` : `Profile: ${c.name}`}
         className="w-full text-left rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
       >
@@ -156,7 +159,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
             </span>
           </span>
         </span>
-      </button>
+      </a>
 
       <div className="flex items-center justify-end pt-2 border-t border-slate-800/80 mt-1">
         {c.phoneVisible && c.phone ? (

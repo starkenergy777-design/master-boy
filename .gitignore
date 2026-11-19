@@ -16,6 +16,7 @@ work_make_patch.py
 build/
 dist/
 .audit-build/
+.seo-build/
 coverage/
 .DS_Store
 *.log

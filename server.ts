@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { apiRouter } from './server/routes.js';
 import { db } from './server/db.js';
 import { storage } from './server/storage.js';
+import { seoRouter } from './server/seo.js';
 
 dotenv.config();
 
@@ -121,12 +122,13 @@ async function startServer() {
   } else {
     // Serve static files from dist in production
     const distPath = path.resolve(__dirname, 'dist');
+    app.use(seoRouter(path.resolve(distPath, 'index.html')));
     app.use(express.static(distPath, { maxAge: '1h', index: false }));
     app.use('/api/v1', (req, res, next) => {
       res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found' });
     });
     app.get('*', (req, res) => {
-      res.sendFile(path.resolve(distPath, 'index.html'));
+      res.status(404).set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html lang="ka"><meta charset="utf-8"><title>გვერდი ვერ მოიძებნა</title><h1>გვერდი ვერ მოიძებნა</h1><a href="/">მასტერ ბოი</a></html>');
     });
   }
 

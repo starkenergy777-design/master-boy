@@ -40,19 +40,38 @@ interface HistoryItem {
 }
 
 export default function App() {
+  const [publicPage] = useState(() => {
+    try { return JSON.parse(document.getElementById('mb-public-page')?.textContent || '{}'); }
+    catch { return {}; }
+  });
   const [lang, setLang] = useState<Language>(api.getLanguage());
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentTab, setCurrentTab] = useState<NavTab>('search');
-  const [activeScreen, setActiveScreen] = useState<ScreenName>('main');
+  const [activeScreen, setActiveScreen] = useState<ScreenName>(publicPage.screen || 'main');
 
   // Navigation History Stack (§Universal Back Navigation)
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [wizardStep, setWizardStep] = useState<number>(1);
 
   // Contextual Data
-  const [selectedCityId, setSelectedCityId] = useState<string | undefined>();
-  const [selectedProfessionId, setSelectedProfessionId] = useState<string | undefined>();
-  const [selectedCraftsman, setSelectedCraftsman] = useState<CraftsmanPublic | null>(null);
+  const [selectedCityId, setSelectedCityId] = useState<string | undefined>(publicPage.cityId);
+  const [selectedProfessionId, setSelectedProfessionId] = useState<string | undefined>(publicPage.professionId);
+  const [selectedCraftsman, setSelectedCraftsman] = useState<CraftsmanPublic | null>(publicPage.craftsman || null);
+
+  useEffect(() => {
+    const publicPath = activeScreen === 'detail' && selectedCraftsman
+      ? `/xelosani/${encodeURIComponent(selectedCraftsman.id)}`
+      : activeScreen === 'results' && selectedCityId && selectedProfessionId
+        ? `/xelosnebi/${encodeURIComponent(selectedCityId)}/${encodeURIComponent(selectedProfessionId)}` : '/';
+    window.history.replaceState(window.history.state, '', publicPath);
+    const title = activeScreen === 'detail' && selectedCraftsman
+      ? `${selectedCraftsman.name} — ${selectedCraftsman.professionName}, ${selectedCraftsman.cityName} | მასტერ ბოი`
+      : activeScreen === 'results' && publicPage.screen === 'results' && selectedCityId === publicPage.cityId && selectedProfessionId === publicPage.professionId
+        ? publicPage.title : 'Master Boy | მასტერ ბოი — მოძებნე ხელოსანი საქართველოში';
+    document.title = title;
+    const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (canonical) canonical.href = new URL(publicPath, canonical.href).href;
+  }, [activeScreen, selectedCraftsman, selectedCityId, selectedProfessionId, publicPage]);
 
   // Push new screen to history stack
   const pushScreen = (

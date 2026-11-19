@@ -207,7 +207,7 @@ check('AI user interface identifies the selected provider and does not promise c
 check('production build runs TypeScript checks before bundling', () => assert.match(packageJson.scripts.build, /typecheck[\s\S]*vite build/));
 check('public metadata does not advertise stale API versions or a native Android client', () => {
   assert.doesNotMatch(indexHtml, /trusted backend API v1\.2\.0|native Android client experience/i);
-  assert.match(indexHtml, /helps people in Georgia find and contact local craftsmen directly/i);
+  assert.match(indexHtml, /<meta name="description" content="[^"]*მოძებნე ხელოსანი/);
 });
 
 check('public login uses one non-enumerating failure response and a dummy password hash', () => {
