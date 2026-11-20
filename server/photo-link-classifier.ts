@@ -32,6 +32,18 @@ export function classifyPhotoLink(input: string): PhotoLink {
     return { kind: 'invalid', reason: 'UNSUPPORTED_PROTOCOL' };
   }
   const hostname = url.hostname.toLowerCase();
+  // Block obvious loopback and local-network destinations. This is only
+  // preliminary validation; a downloader must also resolve DNS and validate
+  // every resolved address and redirect target against private IP ranges.
+  const blockedHost = hostname === 'localhost' || hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') || hostname.endsWith('.internal') ||
+    hostname === '0.0.0.0' || hostname === '[::1]' ||
+    /^127(?:\\.\\d{1,3}){3}$/.test(hostname) ||
+    /^10(?:\\.\\d{1,3}){3}$/.test(hostname) ||
+    /^192\\.168(?:\\.\\d{1,3}){2}$/.test(hostname) ||
+    /^172\\.(?:1[6-9]|2\\d|3[01])(?:\\.\\d{1,3}){2}$/.test(hostname) ||
+    /^169\\.254(?:\\.\\d{1,3}){2}$/.test(hostname);
+  if (blockedHost) return { kind: 'invalid', reason: 'INVALID_URL' };
   const driveHosts = new Set(['drive.google.com', 'www.drive.google.com']);
   if (driveHosts.has(hostname)) {
     const match = url.pathname.match(/^\/file\/d\/([A-Za-z0-9_-]+)(?:\/|$)/);
