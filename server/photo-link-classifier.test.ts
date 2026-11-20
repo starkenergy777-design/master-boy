@@ -29,6 +29,7 @@ test('accepts an ordinary HTTPS image URL without fetching it', () => {
 test('rejects unsupported and credential-bearing URLs', () => {
   assert.deepEqual(classifyPhotoLink('javascript:alert(1)'), { kind: 'invalid', reason: 'UNSUPPORTED_PROTOCOL' });
   assert.deepEqual(classifyPhotoLink('http://example.org/photo.jpg'), { kind: 'invalid', reason: 'UNSUPPORTED_PROTOCOL' });
+  assert.deepEqual(classifyPhotoLink('https://example.org:8443/photo.jpg'), { kind: 'invalid', reason: 'UNSUPPORTED_PROTOCOL' });
   assert.deepEqual(classifyPhotoLink('https://user:pass@example.org/photo.jpg'), { kind: 'invalid', reason: 'CREDENTIALS_NOT_ALLOWED' });
   assert.deepEqual(classifyPhotoLink('https://drive.google.com/drive/folders/abc'), { kind: 'invalid', reason: 'UNSUPPORTED_DRIVE_LINK' });
   assert.deepEqual(classifyPhotoLink(''), { kind: 'invalid', reason: 'INVALID_URL' });
