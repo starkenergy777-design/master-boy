@@ -424,6 +424,33 @@ export class StorageService {
     throw new Error('Use transactional saveRuntimeState.');
   }
 
+  // Persist a single craftsman photo without synchronizing unrelated accounts.
+  // Use the same queue as runtime snapshots to prevent concurrent photo writes.
+  async saveCraftsmanPhoto(photo: { id: string; craftsmanId: string; url: string; isPrimary: boolean; displayOrder: number; createdAt: string; updatedAt: string }): Promise<void> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') return;
+    const next = this.saveQueue.then(async () => {
+      await this.db().query(
+        'INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7)',
+        [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.createdAt, photo.updatedAt]
+      );
+    });
+    this.saveQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  async deleteCraftsmanPhoto(photoId: string, craftsmanId: string): Promise<boolean> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') return true;
+    const next = this.saveQueue.then(async () => {
+      const result = await this.db().query(
+        'DELETE FROM public.craftsman_photos WHERE id=$1 AND craftsman_id=$2 RETURNING id',
+        [photoId, craftsmanId]
+      );
+      return (result.rowCount ?? 0) === 1;
+    });
+    this.saveQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
   async saveRuntimeState(state:RuntimeState):Promise<void> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return;
     const next=this.saveQueue.then(()=>this.persist(state)); this.saveQueue=next.catch(()=>undefined); return next;
