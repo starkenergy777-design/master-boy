@@ -50,3 +50,11 @@ test('recognizes the supplied Google Drive photo sharing URL', () => {
     kind: 'google_drive', fileId: '1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU',
   });
 });
+
+test('does not confuse lookalike hosts with trusted Google Drive or Facebook', () => {
+  assert.equal(classifyPhotoLink('https://drive.google.com.attacker.example/file/d/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU/view').kind, 'direct_https');
+  assert.equal(classifyPhotoLink('https://facebook.com.attacker.example/photo.php').kind, 'direct_https');
+  assert.deepEqual(classifyPhotoLink('https://drive.google.com/drive/folders/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU'), {
+    kind: 'invalid', reason: 'UNSUPPORTED_DRIVE_LINK',
+  });
+});
