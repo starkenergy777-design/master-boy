@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { classifyPhotoLink } from './photo-link-classifier.ts';
+import { classifyPhotoLink } from './photo-link-classifier.js';
 
 test('recognizes public Google Drive file link shapes without downloading', () => {
   const fileId = '1AbCdEfGhIjKlMnOpQrStUv';
