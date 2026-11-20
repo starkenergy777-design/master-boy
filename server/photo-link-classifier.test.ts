@@ -37,7 +37,7 @@ test('rejects unsupported and credential-bearing URLs', () => {
 });
 
 test('rejects obvious loopback and private-network hosts', () => {
-  for (const host of ['localhost', 'api.localhost', 'device.local', 'service.internal', '127.0.0.1', '10.0.0.5', '192.168.1.2', '172.16.0.1', '169.254.169.254', '[::1]']) {
+  for (const host of ['localhost', 'api.localhost', 'device.local', 'service.internal', '127.0.0.1', '10.0.0.5', '192.168.1.2', '172.16.0.1', '169.254.169.254', '[::1]', '[fc00::1]', '[fe80::1]', '[::ffff:127.0.0.1]', '127.1', '2130706433', '0x7f000001', '8.8.8.8']) {
     assert.deepEqual(classifyPhotoLink(`https://${host}/photo.jpg`), { kind: 'invalid', reason: 'INVALID_URL' });
   }
 });
