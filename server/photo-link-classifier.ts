@@ -34,12 +34,14 @@ export function classifyPhotoLink(input: string): PhotoLink {
     return { kind: 'invalid', reason: 'UNSUPPORTED_PROTOCOL' };
   }
   const hostname = url.hostname.toLowerCase();
+  // DNS treats a trailing dot as the same host; reject local aliases as well.
+  const normalizedHost = hostname.endsWith('.') ? hostname.slice(0, -1) : hostname;
   // Block obvious loopback and local-network destinations. This is only
   // preliminary validation; a downloader must also resolve DNS and validate
   // every resolved address and redirect target against private IP ranges.
-  const ipLiteral = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
-  const blockedHost = isIP(ipLiteral) !== 0 || hostname === 'localhost' || hostname.endsWith('.localhost') ||
-    hostname.endsWith('.local') || hostname.endsWith('.internal') ||
+  const ipLiteral = normalizedHost.startsWith('[') && normalizedHost.endsWith(']') ? normalizedHost.slice(1, -1) : normalizedHost;
+  const blockedHost = isIP(ipLiteral) !== 0 || normalizedHost === 'localhost' || normalizedHost.endsWith('.localhost') ||
+    normalizedHost.endsWith('.local') || normalizedHost.endsWith('.internal') ||
     hostname === '0.0.0.0' || hostname === '[::1]' ||
     /^127(?:\.\d{1,3}){3}$/.test(hostname) ||
     /^10(?:\.\d{1,3}){3}$/.test(hostname) ||
