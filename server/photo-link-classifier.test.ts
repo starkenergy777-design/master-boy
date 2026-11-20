@@ -41,3 +41,12 @@ test('rejects obvious loopback and private-network hosts', () => {
     assert.deepEqual(classifyPhotoLink(`https://${host}/photo.jpg`), { kind: 'invalid', reason: 'INVALID_URL' });
   }
 });
+
+// Real user-supplied Drive sharing URL. This test validates parsing only;
+// it deliberately does not fetch the remote photo or assume public access.
+test('recognizes the supplied Google Drive photo sharing URL', () => {
+  const link = 'https://drive.google.com/file/d/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU/view?usp=drivesdk';
+  assert.deepEqual(classifyPhotoLink(link), {
+    kind: 'google_drive', fileId: '1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU',
+  });
+});
