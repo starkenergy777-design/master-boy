@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 /**
  * Classifies craftsman photo links without downloading remote content.
  * This module is deliberately side-effect free. It does not grant access to
@@ -35,7 +37,8 @@ export function classifyPhotoLink(input: string): PhotoLink {
   // Block obvious loopback and local-network destinations. This is only
   // preliminary validation; a downloader must also resolve DNS and validate
   // every resolved address and redirect target against private IP ranges.
-  const blockedHost = hostname === 'localhost' || hostname.endsWith('.localhost') ||
+  const ipLiteral = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
+  const blockedHost = isIP(ipLiteral) !== 0 || hostname === 'localhost' || hostname.endsWith('.localhost') ||
     hostname.endsWith('.local') || hostname.endsWith('.internal') ||
     hostname === '0.0.0.0' || hostname === '[::1]' ||
     /^127(?:\.\d{1,3}){3}$/.test(hostname) ||
