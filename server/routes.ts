@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { isIP } from 'node:net';
 import { db, verifyPassword, hashPassword } from './db.js';
 import { storage } from './storage.js';
+import { classifyPhotoLink } from './photo-link-classifier.js';
 import {
   AIProviderError,
   aiProviderFailureCode,
@@ -1522,10 +1523,15 @@ apiRouter.post('/craftsmen/me/photos', requireCraftsman, (req: AuthRequest, res)
     });
   }
 
-  const { url, isPrimary } = req.body;
-  if (!url) {
+  const { url, isPrimary } = req.body && typeof req.body === 'object' ? req.body : {};
+  if (typeof url !== 'string' || !url.trim()) {
     return res.status(400).json({ code: 'INVALID_URL', message: 'Photo URL is required' });
   }
+  // Validate before mutating the profile. This does not download remote media.
+  if (classifyPhotoLink(url).kind === 'invalid') {
+    return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'A valid HTTPS photo link is required.' });
+  }
+  const normalizedPhotoUrl = new URL(url.trim()).toString();
 
   const photoId = `ph-${Date.now()}-${Math.floor(Math.random() * 100)}`;
   const shouldBePrimary = isPrimary || c.photos.length === 0;
@@ -1537,7 +1543,7 @@ apiRouter.post('/craftsmen/me/photos', requireCraftsman, (req: AuthRequest, res)
   const newPhoto: CraftsmanPhoto = {
     id: photoId,
     craftsmanId: c.id,
-    url,
+    url: normalizedPhotoUrl,
     displayOrder: c.photos.length,
     isPrimary: shouldBePrimary,
     createdAt: new Date().toISOString(),
