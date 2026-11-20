@@ -5,7 +5,7 @@ import { translations } from '../i18n.js';
 import { Language, CraftsmanPublic, City, Profession } from '../types.js';
 import { api } from '../api.js';
 import { getProfessionDisplayNumber, ProfessionPicker } from '../components/ProfessionPicker.js';
-import { professionSeo } from '../professionSeo.js';
+import { professionSeo } from '../../server/professionSeo.js';
 
 interface SearchResultsScreenProps {
   lang: Language;

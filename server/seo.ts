@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { readFileSync } from 'node:fs';
 import { db } from './db.js';
-import { professionSeo } from '../src/professionSeo.js';
+import { professionSeo } from './professionSeo.js';
 
 export const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const json = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
