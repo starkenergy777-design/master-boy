@@ -272,6 +272,7 @@ export default function App() {
         <TopAppBar
           currentScreen={activeScreen}
           lang={lang}
+          onLanguageChange={handleLanguageChange}
           onBack={goBack}
           onHome={goHome}
           currentUser={currentUser}
