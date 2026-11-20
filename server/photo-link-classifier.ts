@@ -24,8 +24,12 @@ export function classifyPhotoLink(input: string): PhotoLink {
   if (url.protocol !== 'https:') {
     return { kind: 'invalid', reason: 'UNSUPPORTED_PROTOCOL' };
   }
+  // Reject credentials and non-standard ports before any future download integration.
   if (url.username || url.password) {
     return { kind: 'invalid', reason: 'CREDENTIALS_NOT_ALLOWED' };
+  }
+  if (url.port && url.port !== '443') {
+    return { kind: 'invalid', reason: 'UNSUPPORTED_PROTOCOL' };
   }
   const hostname = url.hostname.toLowerCase();
   const driveHosts = new Set(['drive.google.com', 'www.drive.google.com']);
