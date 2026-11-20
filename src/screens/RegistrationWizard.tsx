@@ -5,6 +5,7 @@ import { translations } from '../i18n.js';
 import { Language, City, Profession, PaymentProvider } from '../types.js';
 import { api } from '../api.js';
 import { ProfessionPicker } from '../components/ProfessionPicker.js';
+import { photoPreviewUrl } from '../photo-url.js';
 
 interface RegistrationWizardProps {
   lang: Language;
@@ -58,7 +59,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
     cityId: '',
     professionId: '',
     phoneVisible: true,
-    photoUrl: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=800&auto=format&fit=crop&q=80',
+    photoUrl: '',
     workingHours: {
       monday: '09:00-18:00',
       tuesday: '09:00-18:00',
@@ -184,16 +185,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
         ...formData,
         paid: !isFreeRegistration,
         ...(isFreeRegistration ? {} : { providerId: selectedProviderId }),
-        photos: [
-          {
-            id: `ph-${Date.now()}`,
-            url: formData.photoUrl,
-            displayOrder: 0,
-            isPrimary: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
+        photos: formData.photoUrl.trim() ? [{ url: formData.photoUrl.trim() }] : [],
       };
 
       if (api.getToken()) {
@@ -418,9 +410,11 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
                 onChange={(e) => setFormData({ ...formData, photoUrl: e.target.value })}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
               />
-              <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-700 mt-2">
-                <img src={formData.photoUrl} alt="Preview" className="w-full h-full object-cover" />
-              </div>
+              {formData.photoUrl.trim() && (
+                <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-700 mt-2">
+                  <img src={photoPreviewUrl(formData.photoUrl)} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -15,6 +15,7 @@ const [{ default: express }, { apiRouter }, { db }] = await Promise.all([
 ]);
 
 const { hashPassword } = await import('./.audit-build/db.js');
+const { storage } = await import('./.audit-build/storage.js');
 const app = express();
 app.use(express.json());
 app.use('/api/v1', apiRouter);
@@ -89,6 +90,103 @@ try {
     AD_PARTNER: addSession('AD_PARTNER'),
   };
   roles.CRAFTSMAN.user.password = hashPassword('Audit-only-password-123');
+
+  // Isolated photo persistence simulation: no Supabase connection or real rows.
+  const originalPool = storage.pool;
+  const originalFetch = globalThis.fetch;
+  const persistedPhotos = new Map();
+  let failPhotoWrite = false;
+  storage.pool = {
+    query: async (sql, args) => {
+      if (failPhotoWrite) throw new Error('Simulated database outage');
+      if (sql.startsWith('SELECT c.*,COALESCE(jsonb_agg') && sql.includes('public.craftsmen')) {
+        const c = db.craftsmen.get(auditCraftsmanId);
+        return { rows: [{ id: c.id, user_id: c.userId, name: c.name, description: c.description,
+          phone: c.phone, phone_visible: c.phoneVisible, city_id: c.cityId, profession_id: c.professionId,
+          status: c.status, working_hours: c.workingHours, created_at: new Date(), updated_at: new Date(),
+          photos: [...persistedPhotos.values()].filter((row) => row.craftsmanId === c.id) }] };
+      }
+      if (sql.startsWith('INSERT INTO public.craftsman_photos')) {
+        persistedPhotos.set(args[0], { id: args[0], craftsmanId: args[1], url: args[2] });
+        return { rowCount: 1, rows: [] };
+      }
+      if (sql.startsWith('UPDATE public.craftsman_photos')) {
+        const row = persistedPhotos.get(args[0]);
+        if (!row || row.craftsmanId !== args[1]) return { rowCount: 0, rows: [] };
+        row.url = args[2];
+        return { rowCount: 1, rows: [{ id: args[0] }] };
+      }
+      if (sql.startsWith('DELETE FROM public.craftsman_photos')) {
+        const row = persistedPhotos.get(args[0]);
+        if (!row || row.craftsmanId !== args[1]) return { rowCount: 0, rows: [] };
+        persistedPhotos.delete(args[0]);
+        return { rowCount: 1, rows: [{ id: args[0] }] };
+      }
+      throw new Error(`Unexpected photo test query: ${sql}`);
+    },
+  };
+  globalThis.fetch = (input, init) => String(input).startsWith('https://drive.google.com/thumbnail?')
+    ? Promise.resolve(new Response(null, String(input).includes('00000000000000000000000000000000')
+      ? { status: 404, headers: { 'content-type': 'text/html' } }
+      : { status: 200, headers: { 'content-type': 'image/jpeg' } }))
+    : originalFetch(input, init);
+
+  // Photo URL safety regression: isolated HTTP requests and fake persistence.
+  const photoPath = '/craftsmen/me/photos';
+  const craftsmanToken = roles.CRAFTSMAN.token;
+  for (const badUrl of ['http://example.com/photo.jpg', 'https://localhost./photo.jpg', 'https://127.1/photo.jpg', 'javascript:alert(1)', 'https://www.facebook.com/photo.php?fbid=123', 'https://example.org/page']) {
+    const rejected = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: badUrl } });
+    check('invalid photo URL rejected without changing profile', rejected.status === 422 && db.craftsmen.get(auditCraftsmanId).photos.length === 0);
+  }
+  const privateDrive = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://drive.google.com/file/d/00000000000000000000000000000000/view' } });
+  check('unavailable Drive photo is rejected', privateDrive.status === 422 && persistedPhotos.size === 0);
+  const photoUrl = 'https://drive.google.com/file/d/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU/view?usp=drivesdk';
+  const acceptedPhoto = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: photoUrl } });
+  check('Google Drive photo is persisted as a renderable URL', acceptedPhoto.status === 200 &&
+    acceptedPhoto.body.url === 'https://drive.google.com/thumbnail?id=1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU&sz=w1000' &&
+    persistedPhotos.get(acceptedPhoto.body.id)?.url === acceptedPhoto.body.url && db.craftsmen.get(auditCraftsmanId).photos.length === 1);
+  check('stored photo is loaded after simulated restart', (await storage.loadRuntimeCollection('craftsmen'))[auditCraftsmanId]?.photos[0]?.url === acceptedPhoto.body.url);
+  const secondPhoto = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://example.com/second.jpg' } });
+  check('one-photo limit remains enforced', secondPhoto.status === 422 && db.craftsmen.get(auditCraftsmanId).photos.length === 1);
+  const failedReplace = await request(photoPath + '/' + encodeURIComponent(acceptedPhoto.body.id), { token: craftsmanToken, method: 'PUT', body: { url: 'https://www.facebook.com/photo.php?fbid=123' } });
+  check('rejected replacement preserves old photo', failedReplace.status === 422 && persistedPhotos.get(acceptedPhoto.body.id)?.url === acceptedPhoto.body.url);
+  failPhotoWrite = true;
+  const unavailableReplace = await request(photoPath + '/' + encodeURIComponent(acceptedPhoto.body.id), { token: craftsmanToken, method: 'PUT', body: { url: 'https://example.com/new.jpg' } });
+  check('database failure preserves old photo', unavailableReplace.status === 503 && persistedPhotos.get(acceptedPhoto.body.id)?.url === acceptedPhoto.body.url);
+  failPhotoWrite = false;
+  const replacedPhoto = await request(photoPath + '/' + encodeURIComponent(acceptedPhoto.body.id), { token: craftsmanToken, method: 'PUT', body: { url: 'https://example.com/new.jpg' } });
+  check('replacement updates one database row', replacedPhoto.status === 200 && persistedPhotos.size === 1 && persistedPhotos.get(acceptedPhoto.body.id)?.url === replacedPhoto.body.url);
+  failPhotoWrite = true;
+  const unavailableDelete = await request(photoPath + '/' + encodeURIComponent(acceptedPhoto.body.id), { token: craftsmanToken, method: 'DELETE' });
+  check('database failure preserves photo during deletion', unavailableDelete.status === 503 && db.craftsmen.get(auditCraftsmanId).photos.length === 1);
+  failPhotoWrite = false;
+  const deletedPhoto = await request(photoPath + '/' + encodeURIComponent(acceptedPhoto.body.id), { token: craftsmanToken, method: 'DELETE' });
+  check('photo removal clears memory and database row', deletedPhoto.status === 200 && db.craftsmen.get(auditCraftsmanId).photos.length === 0 && persistedPhotos.size === 0);
+  check('deleted photo stays absent after simulated restart', (await storage.loadRuntimeCollection('craftsmen'))[auditCraftsmanId]?.photos.length === 0);
+  const legacyPhoto = { ...acceptedPhoto.body, id: 'ph-legacy-audit' };
+  db.craftsmen.get(auditCraftsmanId).photos.push(legacyPhoto);
+  const repairedPhoto = await request(photoPath + '/' + legacyPhoto.id, { token: craftsmanToken, method: 'PUT', body: { url: 'https://example.com/repaired.jpg' } });
+  check('replacement repairs a missing legacy database row', repairedPhoto.status === 200 && persistedPhotos.get(legacyPhoto.id)?.url === repairedPhoto.body.url);
+  await request(photoPath + '/' + legacyPhoto.id, { token: craftsmanToken, method: 'DELETE' });
+  db.craftsmen.get(auditCraftsmanId).photos.push(legacyPhoto);
+  const missingRowDelete = await request(photoPath + '/' + legacyPhoto.id, { token: craftsmanToken, method: 'DELETE' });
+  check('legacy photo without a database row can be removed', missingRowDelete.status === 200 && db.craftsmen.get(auditCraftsmanId).photos.length === 0);
+  const [firstAdd, concurrentAdd] = await Promise.all([
+    request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://example.com/first.jpg' } }),
+    request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://example.com/second.jpg' } }),
+  ]);
+  check('concurrent requests create only one photo', [firstAdd.status, concurrentAdd.status].sort().join(',') === '200,422' && persistedPhotos.size === 1);
+  await request(photoPath + '/' + encodeURIComponent(db.craftsmen.get(auditCraftsmanId).photos[0].id), { token: craftsmanToken, method: 'DELETE' });
+  failPhotoWrite = true;
+  const unavailableAdd = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://example.com/new.jpg' } });
+  check('failed insert does not publish a photo', unavailableAdd.status === 503 && db.craftsmen.get(auditCraftsmanId).photos.length === 0);
+  failPhotoWrite = false;
+  const facebookImage = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://scontent.xx.fbcdn.net/v/t1/photo.jpg?token=1' } });
+  check('direct Facebook CDN image is accepted', facebookImage.status === 200 && persistedPhotos.get(facebookImage.body.id)?.url === facebookImage.body.url);
+  await request(photoPath + '/' + encodeURIComponent(facebookImage.body.id), { token: craftsmanToken, method: 'DELETE' });
+  storage.pool = originalPool;
+  globalThis.fetch = originalFetch;
+
   const gates = [
     { role: 'CRAFTSMAN', path: '/craftsmen/me/listing', allowed: 200 },
     { role: 'ADMIN', path: '/admin/analytics', allowed: 200 },
@@ -280,14 +378,22 @@ try {
   }
 
   db.listingPrice.amountMinor = 0;
+  const fetchBeforeRegistration = globalThis.fetch;
+  globalThis.fetch = (input, init) => String(input).startsWith('https://drive.google.com/thumbnail?')
+    ? Promise.resolve(new Response(null, { status: 200, headers: { 'content-type': 'image/jpeg' } }))
+    : fetchBeforeRegistration(input, init);
   const freeRegistration = await request('/auth/craftsman/register', {
     method: 'POST',
     body: {
       phone: '+995555901236', password: 'Audit-passphrase-124', name: 'Audit Free Registration',
       cityId: 'city-tbilisi', professionId: 'prof-plumber', bankAccount: 'GE00TEST', paid: false,
+      photos: [{ url: 'https://drive.google.com/file/d/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU/view?usp=drivesdk' }],
     },
   });
+  globalThis.fetch = fetchBeforeRegistration;
   check('zero-price craftsman registration succeeds without payment', freeRegistration.status === 201 && freeRegistration.body.isNewUser === true);
+  check('registration stores one renderable Drive photo', freeRegistration.body.craftsman?.photos?.length === 1 &&
+    freeRegistration.body.craftsman.photos[0].url === 'https://drive.google.com/thumbnail?id=1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU&sz=w1000');
   check('zero-price registration creates no payment intent', db.paymentIntents.size === paymentIntentCount);
   check('craftsman can register without SMS OTP', freeRegistration.body.user?.roles?.includes('CRAFTSMAN') === true);
 

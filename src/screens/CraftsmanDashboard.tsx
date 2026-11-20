@@ -4,6 +4,7 @@ import { UserCheck, Star, MessageSquare, Settings, Eye, EyeOff, Plus, Clock, Log
 import { translations } from '../i18n.js';
 import { Language, User, Top15Membership, CraftsmanListingInfo, AdvertisementPublic } from '../types.js';
 import { api } from '../api.js';
+import { photoPreviewUrl } from '../photo-url.js';
 
 interface CraftsmanDashboardProps {
   lang: Language;
@@ -200,11 +201,11 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
     setPhotoError('');
     setPhotoSaving(true);
     try {
-      // Remove existing photo if any (strictly 1 photo rule)
-      if (craftsman?.photos && craftsman.photos.length > 0) {
-        await api.deletePhoto(craftsman.photos[0].id);
-      }
-      const added = await api.addPhoto(photoInputUrl.trim(), true);
+      // Updating the existing row leaves the old photo intact if validation
+      // or database persistence fails.
+      const added = craftsman?.photos?.[0]
+        ? await api.updatePhoto(craftsman.photos[0].id, photoInputUrl.trim())
+        : await api.addPhoto(photoInputUrl.trim(), true);
       setCraftsman({ ...craftsman, photos: [added] });
       setPhotoModalOpen(false);
     } catch (e: any) {
@@ -845,7 +846,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
             {photoInputUrl && (
               <div className="w-20 h-20 rounded-xl overflow-hidden border border-slate-700 mx-auto">
                 <img
-                  src={photoInputUrl}
+                  src={photoPreviewUrl(photoInputUrl)}
                   alt="Preview"
                   className="w-full h-full object-cover"
                   onError={() => setPhotoError(lang === 'ka' ? 'ფოტოს ჩატვირთვა ვერ მოხერხდა' : 'Failed to load preview')}
