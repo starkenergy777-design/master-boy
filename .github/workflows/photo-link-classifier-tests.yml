@@ -1,0 +1,22 @@
+name: Photo URL classifier tests (isolated)
+
+on:
+  push:
+    branches:
+      - codex/safe-photo-lifecycle-cleanup
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  photo-link-classifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run isolated classifier tests (no production credentials)
+        run: node --experimental-strip-types --test server/photo-link-classifier.test.ts
