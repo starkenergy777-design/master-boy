@@ -18,5 +18,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install pinned project dependencies
+        run: npm ci --ignore-scripts
       - name: Run isolated classifier tests (no production credentials)
-        run: node --experimental-strip-types --test server/photo-link-classifier.test.ts
+        run: npx --no-install tsx --test server/photo-link-classifier.test.ts
