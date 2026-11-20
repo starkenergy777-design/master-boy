@@ -22,13 +22,27 @@ try {
   assert.doesNotMatch(html, /<main style="max-width:512px/);
   assert.equal((html.match(/id="root"/g) || []).length, 1);
   const sitemap = await (await get('/sitemap.xml')).text();
-  assert.equal((sitemap.match(/<loc>/g) || []).length, 1);
+  assert.equal((sitemap.match(/<loc>/g) || []).length, 21);
   assert.match(sitemap, /https:\/\/master-boy.onrender.com\//);
+  for (const id of ['prof-electrician', 'prof-tiler', 'prof-sewer-cleaning']) {
+    assert.match(sitemap, new RegExp(`/profesiebi/${id}`));
+    const page = await get(`/profesiebi/${id}`);
+    const body = await page.text();
+    assert.equal(page.status, 200);
+    assert.match(body, new RegExp(`<link rel="canonical" href="https://master-boy.onrender.com/profesiebi/${id}"`));
+    assert.match(body, /id="mb-public-page"/);
+    assert.match(body, /<h1>/);
+    assert.doesNotMatch(body, /<li><a href="\/xelosani\//);
+  }
+  assert.match(await (await get('/profesiebi/prof-electrician')).text(), /ელექტრიკი/);
+  assert.match(await (await get('/profesiebi/prof-tiler')).text(), /კაფელშიკი/);
+  assert.match(await (await get('/profesiebi/prof-sewer-cleaning')).text(), /კანალიზაცია/);
+  assert.equal((await get('/profesiebi/unknown')).status, 404);
   const missing = await get('/xelosani/nonexistent');
   assert.equal(missing.status, 404);
   assert.equal(missing.headers.get('x-robots-tag'), 'noindex');
   assert.equal((await get('/xelosnebi/city-tbilisi/prof-plumber')).status, 404);
   assert.match(await (await get('/robots.txt')).text(), /Sitemap:/);
   assert.equal(escapeHtml('<script>"&'), '&lt;script&gt;&quot;&amp;');
-  console.log('SEO HTTP checks passed: server HTML, bootstrap, assets, verification, sitemap, no invented profiles, empty categories, 404, escaping.');
+  console.log('SEO HTTP checks passed: server HTML, bootstrap, assets, verification, 20 profession pages and aliases, sitemap, no invented profiles, empty categories, 404, escaping.');
 } finally { listener.close(); }

@@ -5,6 +5,7 @@ import { translations } from '../i18n.js';
 import { Language, CraftsmanPublic, City, Profession } from '../types.js';
 import { api } from '../api.js';
 import { getProfessionDisplayNumber, ProfessionPicker } from '../components/ProfessionPicker.js';
+import { professionSeo } from '../professionSeo.js';
 
 interface SearchResultsScreenProps {
   lang: Language;
@@ -182,6 +183,14 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   );
   return localizeTree(lang, (
     <div className="flex-1 min-w-0 w-full max-w-full flex flex-col p-4 pb-20 space-y-4 animate-fade-in text-slate-100">
+      {!cityId && professionId && professionSeo[professionId] && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 text-sm leading-relaxed text-slate-300">
+          <h1 className="mb-1 text-base font-bold text-white">{professions.find(p => p.id === professionId)?.name}</h1>
+          <p>{professionSeo[professionId].service}</p>
+          <p className="mt-2">{professionSeo[professionId].ask}</p>
+          <p className="mt-2 text-xs text-slate-400">აირჩიეთ ქალაქი და შეამოწმეთ ხელმისაწვდომი ხელოსნები.</p>
+        </section>
+      )}
       {/* Top Filter Bar */}
       <div className="w-full min-w-0">
         <div className="grid w-full min-w-0 gap-2" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>

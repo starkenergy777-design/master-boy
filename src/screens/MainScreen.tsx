@@ -187,6 +187,19 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                 : 'You do not need an account to find a craftsman — choose a city and profession.'}
         </p>
 
+        {professions.length > 0 && (
+          <details className="px-3 pb-2 text-xs text-slate-400">
+            <summary className="cursor-pointer text-amber-300">{lang === 'ka' ? 'ყველა პროფესიის ნახვა' : lang === 'ru' ? 'Все профессии' : 'Browse all professions'}</summary>
+            <nav aria-label={lang === 'ka' ? 'ხელოსნების პროფესიები' : 'Craftsman professions'} className="mt-2 flex flex-wrap gap-x-3 gap-y-2 leading-relaxed">
+              {professions.map((profession) => (
+                <a key={profession.id} href={`/profesiebi/${encodeURIComponent(profession.id)}`} className="text-slate-300 underline hover:text-amber-300">
+                  {profession.name}
+                </a>
+              ))}
+            </nav>
+          </details>
+        )}
+
       </div>
 
       {/* Commercial Advertisement Banner Container */}

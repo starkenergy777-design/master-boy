@@ -62,7 +62,9 @@ export default function App() {
     const publicPath = activeScreen === 'detail' && selectedCraftsman
       ? `/xelosani/${encodeURIComponent(selectedCraftsman.id)}`
       : activeScreen === 'results' && selectedCityId && selectedProfessionId
-        ? `/xelosnebi/${encodeURIComponent(selectedCityId)}/${encodeURIComponent(selectedProfessionId)}` : '/';
+        ? `/xelosnebi/${encodeURIComponent(selectedCityId)}/${encodeURIComponent(selectedProfessionId)}`
+        : activeScreen === 'results' && !selectedCityId && selectedProfessionId
+          ? `/profesiebi/${encodeURIComponent(selectedProfessionId)}` : '/';
     window.history.replaceState(window.history.state, '', publicPath);
     const title = activeScreen === 'detail' && selectedCraftsman
       ? `${selectedCraftsman.name} — ${selectedCraftsman.professionName}, ${selectedCraftsman.cityName} | მასტერ ბოი`
