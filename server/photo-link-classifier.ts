@@ -38,11 +38,11 @@ export function classifyPhotoLink(input: string): PhotoLink {
   const blockedHost = hostname === 'localhost' || hostname.endsWith('.localhost') ||
     hostname.endsWith('.local') || hostname.endsWith('.internal') ||
     hostname === '0.0.0.0' || hostname === '[::1]' ||
-    /^127(?:\\.\\d{1,3}){3}$/.test(hostname) ||
-    /^10(?:\\.\\d{1,3}){3}$/.test(hostname) ||
-    /^192\\.168(?:\\.\\d{1,3}){2}$/.test(hostname) ||
-    /^172\\.(?:1[6-9]|2\\d|3[01])(?:\\.\\d{1,3}){2}$/.test(hostname) ||
-    /^169\\.254(?:\\.\\d{1,3}){2}$/.test(hostname);
+    /^127(?:\.\\d{1,3}){3}$/.test(hostname) ||
+    /^10(?:\.\\d{1,3}){3}$/.test(hostname) ||
+    /^192\.168(?:\.\\d{1,3}){2}$/.test(hostname) ||
+    /^172\.(?:1[6-9]|2\\d|3[01])(?:\.\\d{1,3}){2}$/.test(hostname) ||
+    /^169\.254(?:\.\\d{1,3}){2}$/.test(hostname);
   if (blockedHost) return { kind: 'invalid', reason: 'INVALID_URL' };
   const driveHosts = new Set(['drive.google.com', 'www.drive.google.com']);
   if (driveHosts.has(hostname)) {
