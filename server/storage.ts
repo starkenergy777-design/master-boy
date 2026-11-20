@@ -425,26 +425,43 @@ export class StorageService {
   }
 
   // Persist a single craftsman photo without synchronizing unrelated accounts.
-  // Use the same queue as runtime snapshots to prevent concurrent photo writes.
-  async saveCraftsmanPhoto(photo: { id: string; craftsmanId: string; url: string; isPrimary: boolean; displayOrder: number; createdAt: string; updatedAt: string }): Promise<void> {
-    if (!this.pool && process.env.NODE_ENV !== 'production') return;
+  // Use the same queue as runtime snapshots. Apply the in-memory change inside
+  // the queued step, so a snapshot cannot revive a just-deleted photo.
+  async saveCraftsmanPhoto(photo: { id: string; craftsmanId: string; url: string; isPrimary: boolean; displayOrder: number; createdAt: string; updatedAt: string }, onSaved?: () => void): Promise<void> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') { onSaved?.(); return; }
     const next = this.saveQueue.then(async () => {
       await this.db().query(
         'INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7)',
         [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.createdAt, photo.updatedAt]
       );
+      onSaved?.();
     });
     this.saveQueue = next.catch(() => undefined);
     return next;
   }
 
-  async deleteCraftsmanPhoto(photoId: string, craftsmanId: string): Promise<boolean> {
-    if (!this.pool && process.env.NODE_ENV !== 'production') return true;
+  async deleteCraftsmanPhoto(photoId: string, craftsmanId: string, onDeleted?: () => void): Promise<boolean> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') { onDeleted?.(); return true; }
     const next = this.saveQueue.then(async () => {
       const result = await this.db().query(
         'DELETE FROM public.craftsman_photos WHERE id=$1 AND craftsman_id=$2 RETURNING id',
         [photoId, craftsmanId]
       );
+      onDeleted?.();
+      return (result.rowCount ?? 0) === 1;
+    });
+    this.saveQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  async updateCraftsmanPhoto(photo: { id: string; craftsmanId: string; url: string; isPrimary: boolean; displayOrder: number; updatedAt: string }, onUpdated?: () => void): Promise<boolean> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') { onUpdated?.(); return true; }
+    const next = this.saveQueue.then(async () => {
+      const result = await this.db().query(
+        'UPDATE public.craftsman_photos SET url=$3,is_primary=$4,display_order=$5,updated_at=$6 WHERE id=$1 AND craftsman_id=$2 RETURNING id',
+        [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.updatedAt]
+      );
+      if ((result.rowCount ?? 0) === 1) onUpdated?.();
       return (result.rowCount ?? 0) === 1;
     });
     this.saveQueue = next.then(() => undefined, () => undefined);

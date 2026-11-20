@@ -259,6 +259,13 @@ class ApiClient {
     });
   }
 
+  updatePhoto(photoId: string, url: string) {
+    return this.request(`/craftsmen/me/photos/${encodeURIComponent(photoId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ url }),
+    });
+  }
+
   deletePhoto(photoId: string) {
     return this.request(`/craftsmen/me/photos/${photoId}`, {
       method: 'DELETE',

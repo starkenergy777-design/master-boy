@@ -52,7 +52,7 @@ export function classifyPhotoLink(input: string): PhotoLink {
   const driveHosts = new Set(['drive.google.com', 'www.drive.google.com']);
   if (driveHosts.has(hostname)) {
     const match = url.pathname.match(/^\/file\/d\/([A-Za-z0-9_-]+)(?:\/|$)/);
-    const id = match?.[1] ?? (['/open', '/uc'].includes(url.pathname) ? url.searchParams.get('id') : null);
+    const id = match?.[1] ?? (['/open', '/uc', '/thumbnail'].includes(url.pathname) ? url.searchParams.get('id') : null);
     return id && /^[A-Za-z0-9_-]{10,}$/.test(id)
       ? { kind: 'google_drive', fileId: id }
       : { kind: 'invalid', reason: 'UNSUPPORTED_DRIVE_LINK' };
@@ -62,4 +62,46 @@ export function classifyPhotoLink(input: string): PhotoLink {
     return { kind: 'facebook_page', url: url.toString() };
   }
   return { kind: 'direct_https', url: url.toString() };
+}
+
+// A Drive sharing page is HTML. The thumbnail endpoint serves the public
+// image itself and keeps the original file in the owner's Drive account.
+export function photoDisplayUrl(link: PhotoLink): string | null {
+  if (link.kind === 'google_drive') {
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(link.fileId)}&sz=w1000`;
+  }
+  if (link.kind !== 'direct_https') return null;
+  const url = new URL(link.url);
+  const imagePath = /\.(?:jpe?g|png|webp|gif|avif)$/i.test(url.pathname);
+  const imageHost = url.hostname === 'images.unsplash.com' || url.hostname === 'lh3.googleusercontent.com' ||
+    url.hostname === 'res.cloudinary.com' || url.hostname.endsWith('.fbcdn.net');
+  return imagePath || imageHost ? link.url : null;
+}
+
+// Only the fixed Google thumbnail endpoint is fetched by the server. Never
+// follow an arbitrary user-supplied URL or an unverified redirect.
+export async function isPublicDriveImage(fileId: string): Promise<boolean> {
+  let url = photoDisplayUrl({ kind: 'google_drive', fileId })!;
+  try {
+    for (let redirect = 0; redirect < 3; redirect += 1) {
+      const response = await fetch(url, {
+        method: 'HEAD',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(8000),
+      });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) return false;
+        const next = new URL(location, url);
+        if (next.protocol !== 'https:' || !['drive.google.com', 'lh3.googleusercontent.com'].includes(next.hostname)) return false;
+        url = next.toString();
+        continue;
+      }
+      return response.ok && /^image\/(?:jpeg|png|webp|gif|avif)(?:;|$)/i.test(response.headers.get('content-type') || '');
+    }
+  } catch {
+    // Private, missing, or temporarily unreachable files must not become a
+    // broken public profile image.
+  }
+  return false;
 }

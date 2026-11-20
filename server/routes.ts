@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { isIP } from 'node:net';
 import { db, verifyPassword, hashPassword } from './db.js';
 import { storage } from './storage.js';
-import { classifyPhotoLink } from './photo-link-classifier.js';
+import { classifyPhotoLink, isPublicDriveImage, photoDisplayUrl } from './photo-link-classifier.js';
 import {
   AIProviderError,
   aiProviderFailureCode,
@@ -1074,7 +1074,7 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
 });
 
 // POST /auth/craftsman/register (also /auth/register and /craftsmen/register)
-apiRouter.post(['/auth/craftsman/register', '/auth/register'], (req, res) => {
+apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) => {
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const {
     phone,
@@ -1138,16 +1138,20 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], (req, res) => {
   if (!Array.isArray(incomingPhotos)) {
     return res.status(400).json({ code: 'INVALID_PHOTOS', message: 'Photos must be a list.' });
   }
+  if (incomingPhotos.length > 1) {
+    return res.status(422).json({ code: 'MAX_PHOTOS_EXCEEDED', message: 'Only one photo is allowed.' });
+  }
   const photoUrls: string[] = [];
-  for (const photo of incomingPhotos.slice(0, 1)) {
+  for (const photo of incomingPhotos) {
     const photoUrlValue = typeof photo === 'string'
       ? photo
       : photo && typeof photo === 'object' && typeof photo.url === 'string' ? photo.url : '';
-    const validatedPhotoUrl = validateHttpUrl(photoUrlValue, 'photo_url', false);
-    if (!validatedPhotoUrl) {
-      return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'Photo URL must use HTTP or HTTPS.' });
+    const link = classifyPhotoLink(photoUrlValue);
+    const displayUrl = photoDisplayUrl(link);
+    if (!displayUrl || (link.kind === 'google_drive' && !await isPublicDriveImage(link.fileId))) {
+      return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'A publicly visible HTTPS image is required.' });
     }
-    photoUrls.push(validatedPhotoUrl);
+    photoUrls.push(displayUrl);
   }
 
   const isFree = db.listingPrice.amountMinor === 0;
@@ -1343,7 +1347,7 @@ apiRouter.put('/craftsmen/me/draft', requireCraftsman, (req: AuthRequest, res) =
 });
 
 // POST /craftsmen/register (draft -> ACTIVE)
-apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res) => {
+apiRouter.post('/craftsmen/register', requireCraftsman, async (req: AuthRequest, res) => {
   const existing = getMyCraftsman(req.user!.id);
   if (existing) {
     return res.status(409).json({ code: 'ALREADY_REGISTERED', message: 'Craftsman profile already exists' });
@@ -1360,6 +1364,24 @@ apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res) 
   const bankAccount = typeof data.bankAccount === 'string' ? data.bankAccount.trim() : '';
   if (!bankAccount) {
     return res.status(422).json({ code: 'BANK_ACCOUNT_REQUIRED', message: 'საბანკო ანგარიში სავალდებულოა.' });
+  }
+
+  const incomingPhotos = data.photos === undefined ? (data.photoUrl ? [data.photoUrl] : []) : data.photos;
+  if (!Array.isArray(incomingPhotos)) {
+    return res.status(400).json({ code: 'INVALID_PHOTOS', message: 'Photos must be a list.' });
+  }
+  if (incomingPhotos.length > 1) {
+    return res.status(422).json({ code: 'MAX_PHOTOS_EXCEEDED', message: 'Only one photo is allowed.' });
+  }
+  const photoUrls: string[] = [];
+  for (const photo of incomingPhotos) {
+    const input = typeof photo === 'string' ? photo : photo && typeof photo.url === 'string' ? photo.url : '';
+    const link = classifyPhotoLink(input);
+    const displayUrl = photoDisplayUrl(link);
+    if (!displayUrl || (link.kind === 'google_drive' && !await isPublicDriveImage(link.fileId))) {
+      return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'A publicly visible HTTPS image is required.' });
+    }
+    photoUrls.push(displayUrl);
   }
 
   const isFree = db.listingPrice.amountMinor === 0;
@@ -1401,20 +1423,15 @@ apiRouter.post('/craftsmen/register', requireCraftsman, (req: AuthRequest, res) 
     cityId: data.cityId,
     professionId: data.professionId,
     bankAccount,
-    photos: (data.photos || []).slice(0, 1).map((p: any, idx: number) => {
-      if (typeof p === 'string') {
-        return {
-          id: `ph-${craftsmanId}-${idx}`,
-          craftsmanId,
-          url: p,
-          displayOrder: idx,
-          isPrimary: true,
-          createdAt: startsAt,
-          updatedAt: startsAt,
-        };
-      }
-      return p;
-    }),
+    photos: photoUrls.map((url, idx) => ({
+      id: `ph-${craftsmanId}-${idx}`,
+      craftsmanId,
+      url,
+      displayOrder: idx,
+      isPrimary: true,
+      createdAt: startsAt,
+      updatedAt: startsAt,
+    })),
     createdAt: startsAt,
     updatedAt: startsAt,
   };
@@ -1509,74 +1526,113 @@ apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibili
   });
 });
 
+// Serialize photo mutations for one profile so simultaneous requests cannot
+// both pass the one-photo check while database writes are in flight.
+const photoMutationLocks = new Map<string, Promise<void>>();
+async function withPhotoMutationLock<T>(craftsmanId: string, action: () => Promise<T>): Promise<T> {
+  const previous = photoMutationLocks.get(craftsmanId) || Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  photoMutationLocks.set(craftsmanId, current);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (photoMutationLocks.get(craftsmanId) === current) photoMutationLocks.delete(craftsmanId);
+  }
+}
+
 // POST /craftsmen/me/photos
 apiRouter.post('/craftsmen/me/photos', requireCraftsman, async (req: AuthRequest, res) => {
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
   }
+  return withPhotoMutationLock(c.id, async () => {
+    if (c.photos.length >= 1) {
+      return res.status(422).json({
+        code: 'MAX_PHOTOS_EXCEEDED',
+        message: 'ხელოსანს აქვს მაქსიმუმ 1 ფოტოს ატვირთვის უფლება. წაშალეთ არსებული ფოტო მის შესაცვლელად. (Maximum 1 photo allowed)',
+      });
+    }
 
-  if (c.photos.length >= 1) {
-    return res.status(422).json({
-      code: 'MAX_PHOTOS_EXCEEDED',
-      message: 'ხელოსანს აქვს მაქსიმუმ 1 ფოტოს ატვირთვის უფლება. წაშალეთ არსებული ფოტო მის შესაცვლელად. (Maximum 1 photo allowed)',
-    });
-  }
+    const { url, isPrimary } = req.body && typeof req.body === 'object' ? req.body : {};
+    if (typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({ code: 'INVALID_URL', message: 'Photo URL is required' });
+    }
+    const link = classifyPhotoLink(url);
+    const normalizedPhotoUrl = photoDisplayUrl(link);
+    if (!normalizedPhotoUrl || (link.kind === 'google_drive' && !await isPublicDriveImage(link.fileId))) {
+      return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'A publicly visible HTTPS image is required.' });
+    }
 
-  const { url, isPrimary } = req.body && typeof req.body === 'object' ? req.body : {};
-  if (typeof url !== 'string' || !url.trim()) {
-    return res.status(400).json({ code: 'INVALID_URL', message: 'Photo URL is required' });
-  }
-  // Validate before mutating the profile. This does not download remote media.
-  if (classifyPhotoLink(url).kind === 'invalid') {
-    return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'A valid HTTPS photo link is required.' });
-  }
-  const normalizedPhotoUrl = new URL(url.trim()).toString();
+    const photoId = `ph-${crypto.randomUUID()}`;
+    const shouldBePrimary = isPrimary || c.photos.length === 0;
 
-  const photoId = `ph-${Date.now()}-${Math.floor(Math.random() * 100)}`;
-  const shouldBePrimary = isPrimary || c.photos.length === 0;
+    if (shouldBePrimary) {
+      c.photos.forEach(p => (p.isPrimary = false));
+    }
 
-  if (shouldBePrimary) {
-    c.photos.forEach(p => (p.isPrimary = false));
-  }
+    const newPhoto: CraftsmanPhoto = {
+      id: photoId,
+      craftsmanId: c.id,
+      url: normalizedPhotoUrl,
+      displayOrder: c.photos.length,
+      isPrimary: shouldBePrimary,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-  const newPhoto: CraftsmanPhoto = {
-    id: photoId,
-    craftsmanId: c.id,
-    url: normalizedPhotoUrl,
-    displayOrder: c.photos.length,
-    isPrimary: shouldBePrimary,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  c.photos.push(newPhoto);
-  res.json(newPhoto);
+    try {
+      await storage.saveCraftsmanPhoto(newPhoto, () => { c.photos.push(newPhoto); });
+    } catch {
+      return res.status(503).json({ code: 'PHOTO_SAVE_FAILED', message: 'Photo could not be saved to the database.' });
+    }
+    res.json(newPhoto);
+  });
 });
 
 // PUT /craftsmen/me/photos/:id
-apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, (req: AuthRequest, res) => {
+apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequest, res) => {
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
   }
+  return withPhotoMutationLock(c.id, async () => {
+    const photo = c.photos.find(p => p.id === req.params.id);
+    if (!photo) {
+      return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
+    }
 
-  const photo = c.photos.find(p => p.id === req.params.id);
-  if (!photo) {
-    return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
-  }
-
-  const { isPrimary, displayOrder } = req.body;
-  if (isPrimary) {
-    c.photos.forEach(p => (p.isPrimary = false));
-    photo.isPrimary = true;
-  }
-  if (typeof displayOrder === 'number') {
-    photo.displayOrder = displayOrder;
-  }
-  photo.updatedAt = new Date().toISOString();
-
-  res.json(photo);
+    const { url, isPrimary, displayOrder } = req.body && typeof req.body === 'object' ? req.body : {};
+    let nextUrl = photo.url;
+    if (url !== undefined) {
+      const link = classifyPhotoLink(url);
+      const displayUrl = photoDisplayUrl(link);
+      if (!displayUrl || (link.kind === 'google_drive' && !await isPublicDriveImage(link.fileId))) {
+        return res.status(422).json({ code: 'INVALID_PHOTO_URL', message: 'A publicly visible HTTPS image is required.' });
+      }
+      nextUrl = displayUrl;
+    }
+    const updated: CraftsmanPhoto = {
+      ...photo,
+      url: nextUrl,
+      isPrimary: isPrimary === true || photo.isPrimary,
+      displayOrder: typeof displayOrder === 'number' && Number.isInteger(displayOrder) && displayOrder >= 0 ? displayOrder : photo.displayOrder,
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      if (!await storage.updateCraftsmanPhoto(updated, () => { Object.assign(photo, updated); })) {
+        // Repair a legacy in-memory photo whose earlier snapshot never reached
+        // Supabase, then publish the replacement only after the insert succeeds.
+        await storage.saveCraftsmanPhoto(updated, () => { Object.assign(photo, updated); });
+      }
+    } catch {
+      return res.status(503).json({ code: 'PHOTO_SAVE_FAILED', message: 'Photo could not be saved to the database.' });
+    }
+    res.json(photo);
+  });
 });
 
 // DELETE /craftsmen/me/photos/:id
@@ -1586,26 +1642,23 @@ apiRouter.delete('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthR
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
   }
 
-  const idx = c.photos.findIndex(p => p.id === req.params.id);
-  if (idx === -1) {
-    return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
-  }
+  return withPhotoMutationLock(c.id, async () => {
+    const idx = c.photos.findIndex(p => p.id === req.params.id);
+    if (idx === -1) {
+      return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
+    }
 
-  let deletedFromDatabase: boolean;
-  try {
-    deletedFromDatabase = await storage.deleteCraftsmanPhoto(c.photos[idx].id, c.id);
-  } catch {
-    return res.status(503).json({ code: 'PHOTO_DELETE_FAILED', message: 'Photo could not be deleted from the database.' });
-  }
-  if (!deletedFromDatabase) {
-    return res.status(409).json({ code: 'PHOTO_NOT_IN_DATABASE', message: 'Photo record was not found in the database.' });
-  }
-  const deleted = c.photos.splice(idx, 1)[0];
-  if (deleted.isPrimary && c.photos.length > 0) {
-    c.photos[0].isPrimary = true;
-  }
-
-  res.json({ success: true });
+    try {
+      await storage.deleteCraftsmanPhoto(c.photos[idx].id, c.id, () => {
+        c.photos.splice(idx, 1);
+      });
+    } catch {
+      return res.status(503).json({ code: 'PHOTO_DELETE_FAILED', message: 'Photo could not be deleted from the database.' });
+    }
+    // An older photo can exist in memory after an earlier failed snapshot. In
+    // that case there is no database row to remove, and clearing memory is safe.
+    res.json({ success: true });
+  });
 });
 
 // ==========================================

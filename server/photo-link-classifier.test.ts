@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { classifyPhotoLink } from './photo-link-classifier.js';
+import { classifyPhotoLink, isPublicDriveImage, photoDisplayUrl } from './photo-link-classifier.js';
 
 test('recognizes public Google Drive file link shapes without downloading', () => {
   const fileId = '1AbCdEfGhIjKlMnOpQrStUv';
@@ -11,6 +11,9 @@ test('recognizes public Google Drive file link shapes without downloading', () =
     kind: 'google_drive', fileId,
   });
   assert.deepEqual(classifyPhotoLink(`https://drive.google.com/uc?id=${fileId}&export=download`), {
+    kind: 'google_drive', fileId,
+  });
+  assert.deepEqual(classifyPhotoLink(`https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`), {
     kind: 'google_drive', fileId,
   });
 });
@@ -57,4 +60,35 @@ test('does not confuse lookalike hosts with trusted Google Drive or Facebook', (
   assert.deepEqual(classifyPhotoLink('https://drive.google.com/drive/folders/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU'), {
     kind: 'invalid', reason: 'UNSUPPORTED_DRIVE_LINK',
   });
+});
+
+test('turns Drive sharing links into browser image URLs and rejects Facebook pages', () => {
+  const drive = classifyPhotoLink('https://drive.google.com/file/d/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU/view?usp=drivesdk');
+  assert.equal(photoDisplayUrl(drive), 'https://drive.google.com/thumbnail?id=1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU&sz=w1000');
+  assert.equal(photoDisplayUrl(classifyPhotoLink('https://www.facebook.com/photo.php?fbid=123')), null);
+  assert.equal(photoDisplayUrl(classifyPhotoLink('https://example.org/page')), null);
+  assert.equal(photoDisplayUrl(classifyPhotoLink('https://scontent.xx.fbcdn.net/v/t1/photo.jpg?token=1')),
+    'https://scontent.xx.fbcdn.net/v/t1/photo.jpg?token=1');
+});
+
+test('checks Drive image MIME and only follows trusted HTTPS redirects', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (_input, init) => {
+      assert.equal(init?.method, 'HEAD');
+      assert.equal(init?.redirect, 'manual');
+      return new Response(null, { status: 302, headers: { location: 'https://lh3.googleusercontent.com/d/test=w1000' } });
+    };
+    assert.equal(await isPublicDriveImage('1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU'), false);
+    globalThis.fetch = async (input) => String(input).includes('lh3.googleusercontent.com')
+      ? new Response(null, { status: 200, headers: { 'content-type': 'image/jpeg' } })
+      : new Response(null, { status: 302, headers: { location: 'https://lh3.googleusercontent.com/d/test=w1000' } });
+    assert.equal(await isPublicDriveImage('1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU'), true);
+    globalThis.fetch = async () => new Response(null, { status: 302, headers: { location: 'https://localhost/private' } });
+    assert.equal(await isPublicDriveImage('1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU'), false);
+    globalThis.fetch = async () => new Response(null, { status: 200, headers: { 'content-type': 'text/html' } });
+    assert.equal(await isPublicDriveImage('1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
