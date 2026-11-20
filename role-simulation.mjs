@@ -89,6 +89,22 @@ try {
     AD_PARTNER: addSession('AD_PARTNER'),
   };
   roles.CRAFTSMAN.user.password = hashPassword('Audit-only-password-123');
+
+  // Photo URL safety regression: isolated in-memory HTTP requests only.
+  const photoPath = '/craftsmen/me/photos';
+  const craftsmanToken = roles.CRAFTSMAN.token;
+  for (const badUrl of ['http://example.com/photo.jpg', 'https://localhost./photo.jpg', 'https://127.1/photo.jpg', 'javascript:alert(1)']) {
+    const rejected = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: badUrl } });
+    check('invalid photo URL rejected without changing profile', rejected.status === 422 && db.craftsmen.get(auditCraftsmanId).photos.length === 0);
+  }
+  const photoUrl = 'https://drive.google.com/file/d/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU/view?usp=drivesdk';
+  const acceptedPhoto = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: photoUrl } });
+  check('Google Drive photo URL accepted once', acceptedPhoto.status === 200 && db.craftsmen.get(auditCraftsmanId).photos.length === 1);
+  const secondPhoto = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://example.com/second.jpg' } });
+  check('one-photo limit remains enforced', secondPhoto.status === 422 && db.craftsmen.get(auditCraftsmanId).photos.length === 1);
+  const deletedPhoto = await request(photoPath + '/' + encodeURIComponent(acceptedPhoto.body.id), { token: craftsmanToken, method: 'DELETE' });
+  check('photo removal clears in-memory profile reference', deletedPhoto.status === 200 && db.craftsmen.get(auditCraftsmanId).photos.length === 0);
+
   const gates = [
     { role: 'CRAFTSMAN', path: '/craftsmen/me/listing', allowed: 200 },
     { role: 'ADMIN', path: '/admin/analytics', allowed: 200 },
