@@ -35,3 +35,9 @@ test('rejects unsupported and credential-bearing URLs', () => {
   assert.deepEqual(classifyPhotoLink(''), { kind: 'invalid', reason: 'INVALID_URL' });
   assert.deepEqual(classifyPhotoLink('not a url'), { kind: 'invalid', reason: 'INVALID_URL' });
 });
+
+test('rejects obvious loopback and private-network hosts', () => {
+  for (const host of ['localhost', 'api.localhost', 'device.local', 'service.internal', '127.0.0.1', '10.0.0.5', '192.168.1.2', '172.16.0.1', '169.254.169.254', '[::1]']) {
+    assert.deepEqual(classifyPhotoLink(`https://${host}/photo.jpg`), { kind: 'invalid', reason: 'INVALID_URL' });
+  }
+});
