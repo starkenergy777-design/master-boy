@@ -1510,7 +1510,7 @@ apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibili
 });
 
 // POST /craftsmen/me/photos
-apiRouter.post('/craftsmen/me/photos', requireCraftsman, (req: AuthRequest, res) => {
+apiRouter.post('/craftsmen/me/photos', requireCraftsman, async (req: AuthRequest, res) => {
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
@@ -1580,7 +1580,7 @@ apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, (req: AuthRequest, r
 });
 
 // DELETE /craftsmen/me/photos/:id
-apiRouter.delete('/craftsmen/me/photos/:id', requireCraftsman, (req: AuthRequest, res) => {
+apiRouter.delete('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequest, res) => {
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
@@ -1591,6 +1591,15 @@ apiRouter.delete('/craftsmen/me/photos/:id', requireCraftsman, (req: AuthRequest
     return res.status(404).json({ code: 'PHOTO_NOT_FOUND', message: 'Photo not found' });
   }
 
+  let deletedFromDatabase: boolean;
+  try {
+    deletedFromDatabase = await storage.deleteCraftsmanPhoto(c.photos[idx].id, c.id);
+  } catch {
+    return res.status(503).json({ code: 'PHOTO_DELETE_FAILED', message: 'Photo could not be deleted from the database.' });
+  }
+  if (!deletedFromDatabase) {
+    return res.status(409).json({ code: 'PHOTO_NOT_IN_DATABASE', message: 'Photo record was not found in the database.' });
+  }
   const deleted = c.photos.splice(idx, 1)[0];
   if (deleted.isPrimary && c.photos.length > 0) {
     c.photos[0].isPrimary = true;
