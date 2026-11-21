@@ -7,6 +7,7 @@ import { getPwaInstallState, promptPwaInstall, subscribePwaInstallState, PwaInst
 
 interface SettingsScreenProps {
   lang: Language;
+  onOpenFinancialTerms: () => void;
   onLanguageChange: (lang: Language) => void;
   currentUser: User | null;
   onLogout: () => void;
@@ -15,6 +16,7 @@ interface SettingsScreenProps {
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   lang,
+  onOpenFinancialTerms,
   onLanguageChange,
   currentUser,
   onLogout,
@@ -197,6 +199,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         )}
       </div>
+
+      <button type="button" onClick={onOpenFinancialTerms} className="w-full rounded-2xl border border-amber-500/30 bg-slate-900 p-3 text-left text-xs font-semibold text-amber-300">
+        {lang === 'ka' ? 'ხელოსნის გადახდის, დაბრუნებისა და დავის წესები' : lang === 'ru' ? 'Правила оплаты, возврата и жалоб для мастеров' : 'Craftsman payment, refund and complaint terms'} →
+      </button>
 
       {/* Platform Info */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3 space-y-2 text-xs">

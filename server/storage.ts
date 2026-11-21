@@ -119,6 +119,34 @@ export class StorageService {
     return this.pool;
   }
 
+  async listFinancialCases(craftsmanId?: string): Promise<any[]> {
+    const result = craftsmanId
+      ? await this.db().query('SELECT * FROM public.financial_cases WHERE craftsman_id=$1 ORDER BY created_at DESC LIMIT 100', [craftsmanId])
+      : await this.db().query("SELECT * FROM public.financial_cases ORDER BY CASE WHEN status IN ('OPEN','REVIEWING','AWAITING_PROVIDER','APPROVED') THEN 0 ELSE 1 END, created_at DESC LIMIT 200");
+    return result.rows;
+  }
+
+  async getFinancialCase(id: string): Promise<any | null> {
+    const result = await this.db().query('SELECT * FROM public.financial_cases WHERE id=$1', [id]);
+    return result.rows[0] || null;
+  }
+
+  async createFinancialCase(input: { id: string; craftsmanId: string; paymentIntentId: string; reason: string; description: string }): Promise<any> {
+    const result = await this.db().query(
+      'INSERT INTO public.financial_cases(id,craftsman_id,payment_intent_id,reason,description) VALUES($1,$2,$3,$4,$5) RETURNING *',
+      [input.id, input.craftsmanId, input.paymentIntentId, input.reason, input.description],
+    );
+    return result.rows[0];
+  }
+
+  async reviewFinancialCase(id: string, status: 'REVIEWING' | 'AWAITING_PROVIDER' | 'APPROVED' | 'DECLINED' | 'CLOSED', reason: string, approvedRefundMinor: number | null, providerRefundReference: string | null): Promise<any | null> {
+    const result = await this.db().query(
+      'UPDATE public.financial_cases SET status=$2, decision_reason=$3, approved_refund_minor=$4, provider_refund_reference=$5, updated_at=NOW() WHERE id=$1 RETURNING *',
+      [id, status, reason, approvedRefundMinor, providerRefundReference],
+    );
+    return result.rows[0] || null;
+  }
+
   async connect(): Promise<void> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return;
     try {
@@ -405,7 +433,7 @@ export class StorageService {
       else if(name==='top15Prices') v={cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,updatedAt:date(r.updated_at),updatedBy:r.updated_by||'system'};
       else if(name==='top15Reservations') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,expiresAt:new Date(r.expires_at).getTime(),status:r.status==='CONFIRMED'?'PAID':r.status==='EXPIRED'?'EXPIRED':r.status==='CANCELLED'?'CANCELLED':r.status==='CANDIDATE'?'CANDIDATE':'HELD'};
       else if(name==='top15Memberships') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,cityName:r.city_name,professionId:r.profession_id,professionName:r.profession_name,startsAt:date(r.starts_at),expiresAt:date(r.expires_at),status:r.status==='ACTIVE'?'ACTIVE':'EXPIRED'};
-      else if(name==='paymentIntents') v={id:r.id,reservationId:r.reservation_id,craftsmanId:r.craftsman_id||'',providerId:r.provider,amountMinor:Number(r.amount_minor),currency:r.currency,idempotencyKey:r.idempotency_key,status:r.status,createdAt:date(r.created_at)};
+      else if(name==='paymentIntents') v={id:r.id,reservationId:r.reservation_id,craftsmanId:r.craftsman_id||'',providerId:r.provider,amountMinor:Number(r.amount_minor),currency:r.currency,idempotencyKey:r.idempotency_key,status:r.status,createdAt:date(r.created_at),financialTermsVersion:r.financial_terms_version,financialTermsAcceptedAt:r.financial_terms_accepted_at?date(r.financial_terms_accepted_at):null,productType:r.product_type,serviceStartsAt:r.service_starts_at?date(r.service_starts_at):null,serviceEndsAt:r.service_ends_at?date(r.service_ends_at):null};
       else if(name==='craftsmanListings') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,status:r.status,startsAt:r.starts_at?date(r.starts_at):null,expiresAt:r.expires_at?date(r.expires_at):null,graceEndsAt:r.grace_ends_at?date(r.grace_ends_at):null,lastPaymentId:r.last_payment_id,createdAt:date(r.created_at),updatedAt:date(r.updated_at)};
       else v={id:r.id,company_name:r.company_name,phone_number:r.phone_number,password:r.password,expires_at:date(r.expires_at),image_url:r.image_url||'',target_url:r.target_url||'',is_active:r.is_active,payment_status:r.payment_status,terms_accepted:r.terms_accepted,price_gel:Number(r.price_gel),days_duration:r.days_duration,created_at:date(r.created_at),updated_at:date(r.updated_at)};
       out[k]=v;
@@ -500,7 +528,7 @@ export class StorageService {
       await sync('top15_reservations','id',[...s.top15Reservations.keys()]);
       for(const x of s.top15Memberships.values()) await up("INSERT INTO public.top15_memberships(id,city_id,profession_id,craftsman_id,status,starts_at,expires_at,created_at) VALUES($1,$2,$3,$4,$5::membership_status,$6,$7,$6) ON CONFLICT(id) DO UPDATE SET city_id=EXCLUDED.city_id,profession_id=EXCLUDED.profession_id,craftsman_id=EXCLUDED.craftsman_id,status=EXCLUDED.status,starts_at=EXCLUDED.starts_at,expires_at=EXCLUDED.expires_at",[x.id,x.cityId,x.professionId,x.craftsmanId,x.status,x.startsAt,x.expiresAt]);
       await sync('top15_memberships','id',[...s.top15Memberships.keys()]);
-      for(const x of s.paymentIntents.values()) await up("INSERT INTO public.payment_intents(id,reservation_id,craftsman_id,provider,amount_minor,currency,idempotency_key,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8::payment_status,$9,$9) ON CONFLICT(id) DO UPDATE SET reservation_id=EXCLUDED.reservation_id,craftsman_id=EXCLUDED.craftsman_id,provider=EXCLUDED.provider,amount_minor=EXCLUDED.amount_minor,currency=EXCLUDED.currency,idempotency_key=EXCLUDED.idempotency_key,status=EXCLUDED.status,updated_at=NOW()",[x.id,x.reservationId||null,x.craftsmanId||null,x.providerId,x.amountMinor,x.currency,x.idempotencyKey,x.status,x.createdAt]);
+      for(const x of s.paymentIntents.values()) await up("INSERT INTO public.payment_intents(id,reservation_id,craftsman_id,provider,amount_minor,currency,idempotency_key,status,created_at,updated_at,financial_terms_version,financial_terms_accepted_at,product_type,service_starts_at,service_ends_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8::payment_status,$9,$9,$10,$11,$12,$13,$14) ON CONFLICT(id) DO UPDATE SET reservation_id=EXCLUDED.reservation_id,craftsman_id=EXCLUDED.craftsman_id,provider=EXCLUDED.provider,amount_minor=EXCLUDED.amount_minor,currency=EXCLUDED.currency,idempotency_key=EXCLUDED.idempotency_key,status=EXCLUDED.status,updated_at=NOW(),financial_terms_version=EXCLUDED.financial_terms_version,financial_terms_accepted_at=EXCLUDED.financial_terms_accepted_at,product_type=EXCLUDED.product_type,service_starts_at=EXCLUDED.service_starts_at,service_ends_at=EXCLUDED.service_ends_at",[x.id,x.reservationId||null,x.craftsmanId||null,x.providerId,x.amountMinor,x.currency,x.idempotencyKey,x.status,x.createdAt,x.financialTermsVersion||null,x.financialTermsAcceptedAt||null,x.productType||null,x.serviceStartsAt||null,x.serviceEndsAt||null]);
       await sync('payment_intents','id',[...s.paymentIntents.keys()]);
       for(const x of s.advertisements.values()) await up("INSERT INTO public.advertisements(id,company_name,phone_number,password,expires_at,image_url,target_url,is_active,payment_status,terms_accepted,price_gel,days_duration,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(id) DO UPDATE SET company_name=EXCLUDED.company_name,phone_number=EXCLUDED.phone_number,password=EXCLUDED.password,expires_at=EXCLUDED.expires_at,image_url=EXCLUDED.image_url,target_url=EXCLUDED.target_url,is_active=EXCLUDED.is_active,payment_status=EXCLUDED.payment_status,terms_accepted=EXCLUDED.terms_accepted,price_gel=EXCLUDED.price_gel,days_duration=EXCLUDED.days_duration,updated_at=EXCLUDED.updated_at",[x.id,x.company_name,x.phone_number,x.password||'',x.expires_at,x.image_url||'',x.target_url||'',x.is_active,x.payment_status,x.terms_accepted,x.price_gel||0,x.days_duration||30,x.created_at,x.updated_at]);
       await sync('advertisements','id',[...s.advertisements.keys()]);

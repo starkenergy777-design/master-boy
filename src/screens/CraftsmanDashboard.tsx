@@ -11,6 +11,7 @@ interface CraftsmanDashboardProps {
   currentUser: User;
   onOpenTop15Purchase: () => void;
   onOpenSupportChat: () => void;
+  onOpenFinancialTerms: () => void;
   onLogout: () => void;
   onBack?: () => void;
 }
@@ -20,6 +21,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   currentUser,
   onOpenTop15Purchase,
   onOpenSupportChat,
+  onOpenFinancialTerms,
   onLogout,
   onBack,
 }) => {
@@ -72,6 +74,38 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [paying, setPaying] = useState(false);
   const [renewalError, setRenewalError] = useState('');
+  const [financialTermsAccepted, setFinancialTermsAccepted] = useState(false);
+  const [financialCaseOpen, setFinancialCaseOpen] = useState(false);
+  const [financialPayments, setFinancialPayments] = useState<Array<{id:string;amountMinor:number;currency:string;createdAt:string}>>([]);
+  const [financialCases, setFinancialCases] = useState<Array<{id:string;status:string;payment_intent_id:string;created_at:string}>>([]);
+  const [casePaymentId, setCasePaymentId] = useState('');
+  const [caseReason, setCaseReason] = useState('NOT_ACTIVATED');
+  const [caseDescription, setCaseDescription] = useState('');
+  const [caseBusy, setCaseBusy] = useState(false);
+  const [caseError, setCaseError] = useState('');
+
+  const openFinancialCases = async () => {
+    setFinancialCaseOpen(true);
+    setCaseError('');
+    try {
+      const [payments, cases] = await Promise.all([api.getMyFinancialPayments(), api.getMyFinancialCases()]);
+      setFinancialPayments(payments);
+      setFinancialCases(cases);
+      setCasePaymentId(payments[0]?.id || '');
+    } catch (error: any) { setCaseError(error.message || 'Could not load payment cases.'); }
+  };
+
+  const submitFinancialCase = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setCaseError('');
+    setCaseBusy(true);
+    try {
+      const created = await api.createFinancialCase(casePaymentId, caseReason, caseDescription);
+      setFinancialCases(previous => [created, ...previous]);
+      setCaseDescription('');
+    } catch (error: any) { setCaseError(error.message || 'Could not save the case.'); }
+    finally { setCaseBusy(false); }
+  };
 
   // Photo Management Modal & Delete Confirm (Replaces window.prompt/alert/confirm)
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
@@ -165,6 +199,10 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   const handlePayOrRenew = async () => {
     setRenewalError('');
+    if (!financialTermsAccepted) {
+      setRenewalError(lang === 'ka' ? 'გაეცანით და დაეთანხმეთ გადახდის წესებს.' : lang === 'ru' ? 'Примите правила оплаты.' : 'Accept the payment terms.');
+      return;
+    }
     if (!selectedPaymentProviderAvailable) {
       setRenewalError(paymentUnavailableMessage);
       return;
@@ -172,19 +210,20 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
     try {
       setPaying(true);
       if (listing?.status === 'UNPAID_DRAFT') {
-        const res = await api.payCraftsmanListing(selectedProviderId);
+        const res = await api.payCraftsmanListing(selectedProviderId, financialTermsAccepted);
         if (res.listing) {
           setListing(res.listing);
           setRemainingSeconds(res.listing.secondsRemaining || 0);
         }
       } else {
-        const res = await api.renewCraftsmanListing(selectedProviderId);
+        const res = await api.renewCraftsmanListing(selectedProviderId, financialTermsAccepted);
         if (res.listing) {
           setListing(res.listing);
           setRemainingSeconds(res.listing.secondsRemaining || 0);
         }
       }
       setShowRenewalModal(false);
+      setFinancialTermsAccepted(false);
       loadProfile();
     } catch (err: any) {
       setRenewalError(err.message || 'Payment failed');
@@ -240,6 +279,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       <div className="craftsman-dashboard flex-1 flex items-center justify-center text-slate-400">
         <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
       </div>
+
     ));
   }
 
@@ -293,6 +333,8 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
           <LogOut className="w-4 h-4" />
         </button>
       </div>
+
+      <button type="button" onClick={openFinancialCases} className="self-start text-xs text-amber-400 underline">{lang === 'ka' ? 'გადახდის დავა და დაბრუნების მოთხოვნა' : lang === 'ru' ? 'Спор по оплате и запрос возврата' : 'Payment dispute or refund request'}</button>
 
       {activeAd && activeAd.company_name && activeAd.image_url && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
@@ -702,6 +744,25 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
         </div>
       )}
 
+      {financialCaseOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full max-h-[85vh] overflow-y-auto space-y-4 text-xs">
+            <div className="flex justify-between items-center"><h3 className="font-bold text-white">{lang === 'ka' ? 'ფინანსური მოთხოვნები' : lang === 'ru' ? 'Финансовые запросы' : 'Financial cases'}</h3><button type="button" onClick={() => setFinancialCaseOpen(false)}>✕</button></div>
+            <button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline">{lang === 'ka' ? 'გადახდისა და დაბრუნების წესები' : lang === 'ru' ? 'Правила оплаты и возврата' : 'Payment and refund terms'}</button>
+            {caseError && <p role="alert" className="text-rose-300">{caseError}</p>}
+            {financialPayments.length > 0 && <form onSubmit={submitFinancialCase} className="space-y-3">
+              <label className="block space-y-1"><span>{lang === 'ka' ? 'გადახდა' : 'Payment'}</span><select required value={casePaymentId} onChange={event => setCasePaymentId(event.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2">{financialPayments.map(payment => <option key={payment.id} value={payment.id}>{payment.id} · {(payment.amountMinor / 100).toFixed(2)} {payment.currency}</option>)}</select></label>
+              <label className="block space-y-1"><span>{lang === 'ka' ? 'მიზეზი' : 'Reason'}</span><select value={caseReason} onChange={event => setCaseReason(event.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2"><option value="NOT_ACTIVATED">{lang === 'ka' ? 'არ გააქტიურდა' : 'Not activated'}</option><option value="DUPLICATE_CHARGE">{lang === 'ka' ? 'ორმაგი ჩამოჭრა' : 'Duplicate charge'}</option><option value="EARLY_STOP">{lang === 'ka' ? 'ვადამდე შეწყდა' : 'Ended early'}</option><option value="OTHER">{lang === 'ka' ? 'სხვა' : 'Other'}</option></select></label>
+              <label className="block space-y-1"><span>{lang === 'ka' ? 'აღწერეთ პრობლემა' : 'Describe the issue'}</span><textarea required minLength={10} maxLength={2000} value={caseDescription} onChange={event => setCaseDescription(event.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2" rows={4} /></label>
+              <p className="text-slate-400">{lang === 'ka' ? 'არ მოგვწეროთ სრული საბარათე ნომერი ან CVV.' : 'Do not send a full card number or CVV.'}</p>
+              <button disabled={caseBusy} className="bg-amber-500 text-slate-950 font-bold rounded-xl p-2 disabled:opacity-50">{lang === 'ka' ? 'მოთხოვნის გაგზავნა' : 'Submit request'}</button>
+            </form>}
+            {financialPayments.length === 0 && <p className="text-slate-400">{lang === 'ka' ? 'გადახდა ჯერ არ ჩანს.' : 'No payment found.'}</p>}
+            {financialCases.map(item => <div key={item.id} className="border border-slate-700 rounded-xl p-2"><p>{item.id} · {item.status}</p><p className="text-slate-400">{item.payment_intent_id}</p></div>)}
+          </div>
+        </div>
+      )}
+
       {/* Payment / Renewal Modal (§3.11, §6.3, §24) */}
       {showRenewalModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -767,6 +828,11 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               </div>
             )}
 
+            <div className="space-y-2 text-xs text-slate-300">
+              <button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline text-left">{lang === 'ka' ? 'გადახდისა და დაბრუნების წესები' : lang === 'ru' ? 'Условия оплаты и возврата' : 'Payment and refund terms'}</button>
+              <label className="flex items-start gap-2"><input type="checkbox" checked={financialTermsAccepted} onChange={event => setFinancialTermsAccepted(event.target.checked)} className="mt-0.5" /><span>{lang === 'ka' ? 'გავეცანი და ვეთანხმები ფინანსურ წესებს.' : lang === 'ru' ? 'Я прочитал и принимаю условия.' : 'I have read and accept the terms.'}</span></label>
+            </div>
+
             <div className="pt-2 flex gap-2">
               <button
                 type="button"
@@ -778,7 +844,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               <button
                 type="button"
                 onClick={handlePayOrRenew}
-                disabled={paying || !selectedPaymentProviderAvailable}
+                disabled={paying || !selectedPaymentProviderAvailable || !financialTermsAccepted}
                 className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {paying

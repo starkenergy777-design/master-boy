@@ -22,8 +22,15 @@ try {
   assert.doesNotMatch(html, /<main style="max-width:512px/);
   assert.equal((html.match(/id="root"/g) || []).length, 1);
   const sitemap = await (await get('/sitemap.xml')).text();
-  assert.equal((sitemap.match(/<loc>/g) || []).length, 21);
+  assert.equal((sitemap.match(/<loc>/g) || []).length, 22);
   assert.match(sitemap, /https:\/\/master-boy.onrender.com\//);
+  assert.match(sitemap, /https:\/\/master-boy.onrender.com\/financial-terms/);
+  const financialTerms = await get('/financial-terms');
+  const financialTermsHtml = await financialTerms.text();
+  assert.equal(financialTerms.status, 200);
+  assert.match(financialTermsHtml, /<h1>ხელოსნის გადახდისა და დაბრუნების წესები<\/h1>/);
+  assert.match(financialTermsHtml, /<link rel="canonical" href="https:\/\/master-boy.onrender.com\/financial-terms"/);
+  assert.match(financialTermsHtml, /id="mb-public-page"/);
   for (const id of ['prof-electrician', 'prof-tiler', 'prof-sewer-cleaning']) {
     assert.match(sitemap, new RegExp(`/profesiebi/${id}`));
     const page = await get(`/profesiebi/${id}`);
@@ -44,5 +51,5 @@ try {
   assert.equal((await get('/xelosnebi/city-tbilisi/prof-plumber')).status, 404);
   assert.match(await (await get('/robots.txt')).text(), /Sitemap:/);
   assert.equal(escapeHtml('<script>"&'), '&lt;script&gt;&quot;&amp;');
-  console.log('SEO HTTP checks passed: server HTML, bootstrap, assets, verification, 20 profession pages and aliases, sitemap, no invented profiles, empty categories, 404, escaping.');
+  console.log('SEO HTTP checks passed: server HTML, bootstrap, assets, verification, financial terms, 20 profession pages and aliases, sitemap, no invented profiles, empty categories, 404, escaping.');
 } finally { listener.close(); }

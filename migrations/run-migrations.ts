@@ -74,6 +74,7 @@ async function runMigrations() {
     '012_admin_share_percentage.sql',
     '013_remove_unused_indexes.sql',
     '014_top15_candidate_reservations.sql',
+    '015_financial_terms_and_cases.sql',
   ];
 
   // Verify all files exist

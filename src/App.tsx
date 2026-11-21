@@ -14,6 +14,7 @@ import { AdminDashboard } from './screens/AdminDashboard.js';
 import { SuperAdminScreen } from './screens/SuperAdminScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { AdPartnerScreen } from './screens/AdPartnerScreen.js';
+import { FinancialTermsScreen } from './screens/FinancialTermsScreen.js';
 import { Language, User, CraftsmanPublic } from './types.js';
 import { api } from './api.js';
 
@@ -29,7 +30,8 @@ type ScreenName =
   | 'admin'
   | 'superadmin'
   | 'adpartner'
-  | 'settings';
+  | 'settings'
+  | 'financial-terms';
 
 interface HistoryItem {
   screen: ScreenName;
@@ -64,7 +66,7 @@ export default function App() {
       : activeScreen === 'results' && selectedCityId && selectedProfessionId
         ? `/xelosnebi/${encodeURIComponent(selectedCityId)}/${encodeURIComponent(selectedProfessionId)}`
         : activeScreen === 'results' && !selectedCityId && selectedProfessionId
-          ? `/profesiebi/${encodeURIComponent(selectedProfessionId)}` : '/';
+          ? `/profesiebi/${encodeURIComponent(selectedProfessionId)}` : activeScreen === 'financial-terms' ? '/financial-terms' : '/';
     window.history.replaceState(window.history.state, '', publicPath);
     const title = activeScreen === 'detail' && selectedCraftsman
       ? `${selectedCraftsman.name} — ${selectedCraftsman.professionName}, ${selectedCraftsman.cityName} | მასტერ ბოი`
@@ -334,6 +336,7 @@ export default function App() {
           {activeScreen === 'wizard' && (
             <RegistrationWizard
               lang={lang}
+              onOpenFinancialTerms={() => pushScreen('financial-terms', 'craftsman')}
               step={wizardStep}
               onStepChange={setWizardStep}
               onCancel={goBack}
@@ -348,6 +351,7 @@ export default function App() {
               onBack={goBack}
               onOpenTop15Purchase={() => pushScreen('top15', 'craftsman')}
               onOpenSupportChat={() => pushScreen('chat', 'craftsman')}
+              onOpenFinancialTerms={() => pushScreen('financial-terms', 'craftsman')}
               onLogout={handleLogout}
             />
           )}
@@ -355,6 +359,7 @@ export default function App() {
           {activeScreen === 'top15' && (
             <Top15Screen
               lang={lang}
+              onOpenFinancialTerms={() => pushScreen('financial-terms', 'craftsman')}
               onBack={goBack}
               onSuccess={() => pushScreen('dashboard', 'craftsman')}
             />
@@ -398,12 +403,14 @@ export default function App() {
           {activeScreen === 'settings' && (
             <SettingsScreen
               lang={lang}
+              onOpenFinancialTerms={() => pushScreen('financial-terms', 'settings')}
               onLanguageChange={handleLanguageChange}
               currentUser={currentUser}
               onLogout={handleLogout}
               onBack={goBack}
             />
           )}
+          {activeScreen === 'financial-terms' && <FinancialTermsScreen lang={lang} onBack={goBack} />}
         </div>
 
         {/* Global Bottom Navigation Bar */}

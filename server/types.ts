@@ -201,6 +201,11 @@ export interface PaymentIntent {
   idempotencyKey: string;
   status: 'SUCCEEDED' | 'FAILED' | 'PENDING';
   createdAt: string;
+  financialTermsVersion?: string | null;
+  financialTermsAcceptedAt?: string | null;
+  productType?: 'LISTING' | 'TOP15' | null;
+  serviceStartsAt?: string | null;
+  serviceEndsAt?: string | null;
 }
 
 export interface ChatMessage {

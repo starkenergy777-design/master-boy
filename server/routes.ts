@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { isIP } from 'node:net';
 import { db, verifyPassword, hashPassword } from './db.js';
 import { storage } from './storage.js';
+import { coversTop15Term, FINANCIAL_TERMS_VERSION, unusedTimeRefundMinor } from './financial.js';
 import { classifyPhotoLink, isPublicDriveImage, photoDisplayUrl } from './photo-link-classifier.js';
 import {
   AIProviderError,
@@ -157,6 +158,12 @@ function requireRealPaymentIntegration(res: Response): boolean {
     return false;
   }
   return true;
+}
+
+function requireFinancialTerms(req: Request, res: Response): boolean {
+  if (req.body?.financialTermsVersion === FINANCIAL_TERMS_VERSION && req.body?.financialTermsAccepted === true) return true;
+  res.status(428).json({ code: 'FINANCIAL_TERMS_REQUIRED', message: 'Read and accept the current craftsman payment terms before payment.' });
+  return false;
 }
 
 // Helper to extract language from Accept-Language header
@@ -1161,6 +1168,7 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
   }
   if (!isFree) {
     if (!requireRealPaymentIntegration(res)) return;
+    if (!requireFinancialTerms(req, res)) return;
     const provider = db.providerConfig.payment.find(p => p.id === providerId);
     if (!provider || !provider.isActive) {
       return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
@@ -1261,6 +1269,11 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
       idempotencyKey: `init-${craftsmanId}`,
       status: 'SUCCEEDED',
       createdAt: startsAt,
+      financialTermsVersion: FINANCIAL_TERMS_VERSION,
+      financialTermsAcceptedAt: startsAt,
+      productType: 'LISTING',
+      serviceStartsAt: startsAt,
+      serviceEndsAt: listExpiresAt,
     });
   }
 
@@ -1391,6 +1404,7 @@ apiRouter.post('/craftsmen/register', requireCraftsman, async (req: AuthRequest,
   }
   if (!isFree) {
     if (!requireRealPaymentIntegration(res)) return;
+    if (!requireFinancialTerms(req, res)) return;
     const provider = db.providerConfig.payment.find(p => p.id === data.providerId);
     if (!provider || !provider.isActive) {
       return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
@@ -1465,6 +1479,11 @@ apiRouter.post('/craftsmen/register', requireCraftsman, async (req: AuthRequest,
       idempotencyKey: (req.headers['idempotency-key'] as string) || `idem-reg-${Date.now()}`,
       status: 'SUCCEEDED',
       createdAt: startsAt,
+      financialTermsVersion: FINANCIAL_TERMS_VERSION,
+      financialTermsAcceptedAt: startsAt,
+      productType: 'LISTING',
+      serviceStartsAt: startsAt,
+      serviceEndsAt: expiresAt,
     });
   }
 
@@ -1709,6 +1728,7 @@ apiRouter.get('/craftsmen/me/listing', requireCraftsman, (req: AuthRequest, res)
 // POST /craftsmen/me/listing/pay
 apiRouter.post('/craftsmen/me/listing/pay', requireCraftsman, (req: AuthRequest, res) => {
   if (!requireRealPaymentIntegration(res)) return;
+  if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
@@ -1769,6 +1789,11 @@ apiRouter.post('/craftsmen/me/listing/pay', requireCraftsman, (req: AuthRequest,
     idempotencyKey,
     status: 'SUCCEEDED',
     createdAt: startsAt,
+    financialTermsVersion: FINANCIAL_TERMS_VERSION,
+    financialTermsAcceptedAt: startsAt,
+    productType: 'LISTING',
+    serviceStartsAt: startsAt,
+    serviceEndsAt: expiresAt,
   });
 
   listing.lastPaymentId = paymentIntentId;
@@ -1789,6 +1814,7 @@ apiRouter.post('/craftsmen/me/listing/pay', requireCraftsman, (req: AuthRequest,
 // POST /craftsmen/me/listing/renew
 apiRouter.post('/craftsmen/me/listing/renew', requireCraftsman, (req: AuthRequest, res) => {
   if (!requireRealPaymentIntegration(res)) return;
+  if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
@@ -1848,6 +1874,11 @@ apiRouter.post('/craftsmen/me/listing/renew', requireCraftsman, (req: AuthReques
     idempotencyKey,
     status: 'SUCCEEDED',
     createdAt: now.toISOString(),
+    financialTermsVersion: FINANCIAL_TERMS_VERSION,
+    financialTermsAcceptedAt: now.toISOString(),
+    productType: 'LISTING',
+    serviceStartsAt: new Date(newExpiresAt.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString(),
+    serviceEndsAt: newExpiresAt.toISOString(),
   });
 
   listing.lastPaymentId = paymentIntentId;
@@ -1904,6 +1935,9 @@ apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
       code: 'LISTING_ACTIVE_REQUIRED',
       message: 'Top 15-ის შესაძენად აუცილებელია აქტიური გამოწერა. განაახლეთ გამოწერა კაბინეტიდან.',
     });
+  }
+  if (!coversTop15Term(listing.expiresAt, Date.now())) {
+    return res.status(403).json({ code: 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის 30 დღის დასაფარად განაახლეთ ხელოსნის განთავსება.' });
   }
 
   const { cityId, professionId } = req.body;
@@ -1981,6 +2015,7 @@ apiRouter.get('/top15/providers', (req, res) => {
 // POST /top15/pay & /top15/purchase (first click wins after a fixed arbitration window)
 apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: AuthRequest, res) => {
   if (!requireRealPaymentIntegration(res)) return;
+  if (!requireFinancialTerms(req, res)) return;
   const craftsman = getMyCraftsman(req.user!.id);
   if (!craftsman) {
     return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'A registered craftsman profile is required.' });
@@ -2009,6 +2044,10 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
   const reservation = db.top15Reservations.get(reservationId);
   if (!reservation || reservation.craftsmanId !== craftsman.id) {
     return res.status(404).json({ code: 'RESERVATION_NOT_FOUND', message: 'Reservation not found' });
+  }
+  const currentListing = db.getCraftsmanListing(craftsman.id);
+  if (!currentListing || currentListing.status !== 'ACTIVE' || !coversTop15Term(currentListing.expiresAt, Date.now())) {
+    return res.status(403).json({ code: 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის 30 დღის დასაფარად განაახლეთ ხელოსნის განთავსება.' });
   }
   const paymentProvider = db.providerConfig.payment.find(provider => provider.id === providerId && provider.isActive);
   if (!paymentProvider) {
@@ -2068,7 +2107,14 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
     }
   }
 
+  const listingAtCharge = db.getCraftsmanListing(craftsman.id);
+  if (!listingAtCharge || listingAtCharge.status !== 'ACTIVE' || !coversTop15Term(listingAtCharge.expiresAt, Date.now())) {
+    reservation.status = 'CANCELLED';
+    return res.status(403).json({ code: 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის 30 დღის დასაფარად განაახლეთ ხელოსნის განთავსება. თანხა არ ჩამოგეჭრათ.' });
+  }
   const paymentIntentId = `pi-${Date.now()}`;
+  const startsAt = new Date();
+  const expiresAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000);
   const paymentIntent = {
     id: paymentIntentId,
     reservationId,
@@ -2079,6 +2125,11 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
     idempotencyKey,
     status: 'SUCCEEDED' as const,
     createdAt: new Date().toISOString(),
+    financialTermsVersion: FINANCIAL_TERMS_VERSION,
+    financialTermsAcceptedAt: new Date().toISOString(),
+    productType: 'TOP15' as const,
+    serviceStartsAt: startsAt.toISOString(),
+    serviceEndsAt: expiresAt.toISOString(),
   };
 
   db.paymentIntents.set(paymentIntentId, paymentIntent);
@@ -2088,8 +2139,6 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
   const city = db.cities.find(c => c.id === reservation.cityId)!;
   const prof = db.professions.find(p => p.id === reservation.professionId)!;
   const memId = `mem-${Date.now()}`;
-  const startsAt = new Date();
-  const expiresAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   db.top15Memberships.set(memId, {
     id: memId,
@@ -2134,6 +2183,87 @@ apiRouter.get('/top15/me/memberships', requireCraftsman, (req: AuthRequest, res)
   }
   const memberships = Array.from(db.top15Memberships.values()).filter(m => m.craftsmanId === c.id);
   res.json(memberships);
+});
+
+// Dedicated payment cases are separate from the limited general support chat.
+apiRouter.get('/financial/payments', requireCraftsman, (req: AuthRequest, res) => {
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
+  return res.json([...db.paymentIntents.values()]
+    .filter(payment => payment.craftsmanId === craftsman.id)
+    .map(payment => ({ id: payment.id, amountMinor: payment.amountMinor, currency: payment.currency, status: payment.status, createdAt: payment.createdAt }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+});
+
+apiRouter.get('/financial/cases', requireCraftsman, async (req: AuthRequest, res) => {
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
+  try { return res.json(await storage.listFinancialCases(craftsman.id)); }
+  catch { return res.status(503).json({ code: 'FINANCIAL_CASE_STORAGE_UNAVAILABLE' }); }
+});
+
+apiRouter.post('/financial/cases', requireCraftsman, async (req: AuthRequest, res) => {
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
+  const { paymentIntentId, reason, description } = req.body || {};
+  if (typeof paymentIntentId !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(paymentIntentId) ||
+      !['NOT_ACTIVATED', 'DUPLICATE_CHARGE', 'EARLY_STOP', 'OTHER'].includes(reason) ||
+      typeof description !== 'string' || description.trim().length < 10 || description.trim().length > 2000) {
+    return res.status(422).json({ code: 'INVALID_FINANCIAL_CASE' });
+  }
+  if (/(?:\d[ -]?){13,19}/.test(description)) return res.status(422).json({ code: 'CARD_DATA_NOT_ALLOWED' });
+  if (!rateLimit(`financial-case:${craftsman.id}`, 10, 24 * 60 * 60 * 1000)) return res.status(429).json({ code: 'TOO_MANY_FINANCIAL_CASES' });
+  const payment = db.paymentIntents.get(paymentIntentId);
+  if (!payment || payment.craftsmanId !== craftsman.id) return res.status(404).json({ code: 'PAYMENT_NOT_FOUND' });
+  try {
+    const item = await storage.createFinancialCase({ id: `fc-${crypto.randomUUID()}`, craftsmanId: craftsman.id, paymentIntentId, reason, description: description.trim() });
+    return res.status(201).json(item);
+  } catch { return res.status(503).json({ code: 'FINANCIAL_CASE_STORAGE_UNAVAILABLE' }); }
+});
+
+apiRouter.get('/admin/financial/cases', requireAdmin, async (_req, res) => {
+  try {
+    const cases = await storage.listFinancialCases();
+    return res.json(cases.map(item => {
+      const payment = db.paymentIntents.get(item.payment_intent_id);
+      let refundEstimateMinor: number | null = null;
+      if (payment && payment.status === 'SUCCEEDED') {
+        if (item.reason === 'NOT_ACTIVATED' || item.reason === 'DUPLICATE_CHARGE') refundEstimateMinor = payment.amountMinor;
+        else if (item.reason === 'EARLY_STOP' && payment.serviceStartsAt && payment.serviceEndsAt) {
+          refundEstimateMinor = unusedTimeRefundMinor(payment.amountMinor, Date.parse(payment.serviceStartsAt), Date.parse(payment.serviceEndsAt), Date.now());
+        }
+      }
+      return { ...item, refund_estimate_minor: refundEstimateMinor };
+    }));
+  }
+  catch { return res.status(503).json({ code: 'FINANCIAL_CASE_STORAGE_UNAVAILABLE' }); }
+});
+
+apiRouter.patch('/admin/financial/cases/:id', requireAdmin, async (req: AuthRequest, res) => {
+  const { status, decisionReason, approvedRefundMinor, providerRefundReference } = req.body || {};
+  if (!['REVIEWING', 'AWAITING_PROVIDER', 'APPROVED', 'DECLINED', 'CLOSED'].includes(status) ||
+      typeof decisionReason !== 'string' || decisionReason.trim().length < 10 || decisionReason.trim().length > 2000 ||
+      (approvedRefundMinor !== null && approvedRefundMinor !== undefined && (!Number.isSafeInteger(approvedRefundMinor) || approvedRefundMinor < 0)) ||
+      (status === 'APPROVED' && approvedRefundMinor == null) ||
+      (providerRefundReference !== undefined && (typeof providerRefundReference !== 'string' || providerRefundReference.length > 128))) {
+    return res.status(422).json({ code: 'INVALID_FINANCIAL_CASE_DECISION' });
+  }
+  try {
+    const selectedCase = await storage.getFinancialCase(req.params.id);
+    if (!selectedCase) return res.status(404).json({ code: 'FINANCIAL_CASE_NOT_FOUND' });
+    if (status === 'CLOSED' && (approvedRefundMinor ?? selectedCase.approved_refund_minor ?? 0) > 0 &&
+        !(typeof providerRefundReference === 'string' && providerRefundReference.trim().length >= 5)) {
+      return res.status(422).json({ code: 'PROVIDER_REFUND_REFERENCE_REQUIRED' });
+    }
+    const payment = db.paymentIntents.get(selectedCase.payment_intent_id);
+    if (approvedRefundMinor != null && (!payment || approvedRefundMinor > payment.amountMinor)) {
+      return res.status(422).json({ code: 'REFUND_EXCEEDS_PAYMENT' });
+    }
+    const approvedAmount = status === 'CLOSED' ? (approvedRefundMinor ?? selectedCase.approved_refund_minor ?? null) : (approvedRefundMinor ?? null);
+    const item = await storage.reviewFinancialCase(req.params.id, status, decisionReason.trim(), approvedAmount, typeof providerRefundReference === 'string' ? providerRefundReference.trim() : null);
+    if (!item) return res.status(404).json({ code: 'FINANCIAL_CASE_NOT_FOUND' });
+    return res.json(item);
+  } catch { return res.status(503).json({ code: 'FINANCIAL_CASE_STORAGE_UNAVAILABLE' }); }
 });
 
 // GET /support/messages?after=&size=

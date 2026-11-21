@@ -1,5 +1,6 @@
 import { formatLocalizedDate, formatLocalizedDateTime, localizeTree } from '../i18n.js';
 import React, { useState, useEffect } from 'react';
+import { FinancialCasesAdmin } from './FinancialCasesAdmin.js';
 import { Shield, Users, DollarSign, BarChart3, FileText, AlertOctagon, Lock, Unlock, Trash2, Ban, CheckCircle, RefreshCw, X, PhoneCall, Search } from 'lucide-react';
 import { translations } from '../i18n.js';
 import { Language, User, Analytics, AiReport, AdminTop15Member } from '../types.js';
@@ -396,6 +397,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
         </div>
       </header>
+
+      <FinancialCasesAdmin lang={lang} />
 
       {isStaffAdmin && (
         <section className="admin-console-panel rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4 sm:p-5 space-y-4" aria-labelledby="admin-account-security-title">
