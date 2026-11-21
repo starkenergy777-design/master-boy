@@ -11,6 +11,7 @@ on:
       - 'public/sw.js'
       - 'public/icons/pwa-*.png'
       - 'scripts/verify-pwa.mjs'
+      - 'scripts/test-pwa-install.mjs'
       - '.github/workflows/verify-pwa.yml'
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - 'public/sw.js'
       - 'public/icons/pwa-*.png'
       - 'scripts/verify-pwa.mjs'
+      - 'scripts/test-pwa-install.mjs'
       - '.github/workflows/verify-pwa.yml'
 
 permissions:
@@ -34,3 +36,4 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/verify-pwa.mjs
+      - run: node scripts/test-pwa-install.mjs
