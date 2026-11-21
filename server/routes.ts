@@ -142,6 +142,22 @@ function isProviderType(value: string): value is 'payment' | 'sms' | 'email' {
   return value === 'payment' || value === 'sms' || value === 'email';
 }
 
+function paymentProviderActivationError(provider: any): string | null {
+  if (!provider.isActive) return null;
+  if (provider.id !== 'prov-bog' && provider.id !== 'prov-tbc') {
+    return 'Only Bank of Georgia and TBC Checkout can be activated.';
+  }
+  const required = provider.id === 'prov-tbc'
+    ? [provider.clientId, provider.secretKey, provider.apiKey]
+    : [provider.clientId, provider.secretKey];
+  if (required.some(value => typeof value !== 'string' || !value.trim())) {
+    return provider.id === 'prov-tbc'
+      ? 'TBC requires Client ID, Client Secret and developer API key.'
+      : 'Bank of Georgia requires Client ID and Client Secret.';
+  }
+  return null;
+}
+
 function requireRealPaymentIntegration(res: Response): boolean {
   if (process.env.NODE_ENV === 'production') {
     res.status(503).json({
@@ -717,6 +733,13 @@ function checkConfigLock(req: Request, res: Response, next: NextFunction) {
     }
   }
   next();
+}
+
+// Bank credentials and emergency on/off controls remain available to the
+// super admin while prices and other commercial settings are locked.
+function checkProviderConfigLock(req: Request, res: Response, next: NextFunction) {
+  if (req.params.type === 'payment') return next();
+  return checkConfigLock(req, res, next);
 }
 
 // ==========================================
@@ -2977,16 +3000,13 @@ apiRouter.get('/admin/providers/:type', requireSuperAdmin, (req, res) => {
 });
 
 // POST /admin/providers/:type (Protected by config lock!)
-apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkProviderConfigLock, async (req: AuthRequest, res) => {
   const type = req.params.type as 'payment' | 'sms' | 'email';
   if (!isProviderType(type)) {
     return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
   }
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = body;
-  if (type === 'payment' && isActive === true && process.env.NODE_ENV === 'production') {
-    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'Online payment is disabled until a verified production gateway is integrated.' });
-  }
   if (typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ code: 'INVALID_PROVIDER', message: 'Provider name is required.' });
   }
@@ -3003,6 +3023,10 @@ apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkConfigLock, asy
     ...(webhookSecret?.trim() ? { webhookSecret: webhookSecret.trim() } : {}),
     isActive: isActive === true,
   };
+  if (type === 'payment') {
+    const activationError = paymentProviderActivationError(newItem);
+    if (activationError) return res.status(422).json({ code: 'PAYMENT_CREDENTIALS_REQUIRED', message: activationError });
+  }
   if (newItem.apiKey) newItem.apiKeyMasked = newItem.apiKey.length > 8 ? `${newItem.apiKey.slice(0, 4)}****${newItem.apiKey.slice(-4)}` : '****';
   (db.providerConfig[type] as any[]).push(newItem);
 
@@ -3029,7 +3053,7 @@ apiRouter.post('/admin/providers/:type', requireSuperAdmin, checkConfigLock, asy
 });
 
 // PUT /admin/providers/:type/:id (Update provider credentials and active status)
-apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkProviderConfigLock, async (req: AuthRequest, res) => {
   const type = req.params.type as 'payment' | 'sms' | 'email';
   if (!isProviderType(type)) {
     return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
@@ -3041,10 +3065,8 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
   }
   const previousItem = { ...item };
 
-  const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = req.body;
-  if (type === 'payment' && isActive === true && process.env.NODE_ENV === 'production') {
-    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'Online payment is disabled until a verified production gateway is integrated.' });
-  }
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = body;
   if ((name !== undefined && (typeof name !== 'string' || !name.trim())) ||
       [apiKey, secretKey, clientId, webhookSecret].some(value => value !== undefined && typeof value !== 'string') ||
       (isActive !== undefined && typeof isActive !== 'boolean')) {
@@ -3058,7 +3080,15 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkConfigLock, 
   }
   if (secretKey !== undefined && secretKey.trim()) item.secretKey = secretKey.trim();
   if (clientId !== undefined && clientId.trim()) item.clientId = clientId.trim();
-  if (webhookSecret !== undefined) item.webhookSecret = webhookSecret.trim();
+  if (webhookSecret !== undefined && webhookSecret.trim()) item.webhookSecret = webhookSecret.trim();
+
+  if (type === 'payment') {
+    const activationError = paymentProviderActivationError(item);
+    if (activationError) {
+      Object.assign(item, previousItem);
+      return res.status(422).json({ code: 'PAYMENT_CREDENTIALS_REQUIRED', message: activationError });
+    }
+  }
 
   const auditId = `audit-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   db.auditLog.unshift({

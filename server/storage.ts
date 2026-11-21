@@ -204,7 +204,6 @@ export class StorageService {
       ...provider,
       ...(credentials[provider.id] || {}),
       ...(provider.id === 'prov-bog' ? { name: 'საქართველოს ბანკი (Bank of Georgia Payment Manager)' } : {}),
-      ...(process.env.NODE_ENV === 'production' ? { isActive: false } : {}),
     }));
     const sms = Array.isArray(savedProviders.sms) ? savedProviders.sms : [
       { id:'sms-magti', provider:'Magti SMS Gateway', senderId:'MASTER_BOY', isActive:Boolean(env.SMS_WEBHOOK_URL) },

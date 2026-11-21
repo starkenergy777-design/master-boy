@@ -432,6 +432,76 @@ try {
     db.providerConfig.payment.forEach((provider, index) => { provider.isActive = previousProviderStates[index]; });
   }
 
+  // Provider configuration is an administrator preference, not a payment receipt.
+  // The isolated persistence stub avoids touching Supabase or a real bank.
+  const originalPersistConfig = db.persistSuperAdminConfig;
+  const bogProvider = db.providerConfig.payment.find(provider => provider.id === 'prov-bog');
+  const originalBogProvider = { ...bogProvider };
+  const tbcProvider = db.providerConfig.payment.find(provider => provider.id === 'prov-tbc');
+  const originalTbcProvider = { ...tbcProvider };
+  db.persistSuperAdminConfig = async () => ({ success: true, database: true, snapshot: false });
+  process.env.NODE_ENV = 'production';
+  try {
+    const incomplete = await request('/admin/providers/payment/prov-bog', {
+      method: 'PUT', token: roles.SUPER_ADMIN.token, body: { isActive: true },
+    });
+    check('superadmin cannot activate a bank with missing credentials',
+      incomplete.status === 422 && bogProvider.isActive === false);
+    const enabled = await request('/admin/providers/payment/prov-bog', {
+      method: 'PUT', token: roles.SUPER_ADMIN.token,
+      body: { clientId: 'audit-merchant', secretKey: 'audit-secret', isActive: true },
+    });
+    check('superadmin can turn on configured BOG in production without leaking its secret',
+      enabled.status === 200 && bogProvider.isActive === true &&
+      enabled.body.provider?.secretKey === undefined && enabled.body.provider?.secretKeyConfigured === true);
+    const stillBlocked = await request('/craftsmen/me/listing/pay', {
+      method: 'POST', token: roles.CRAFTSMAN.token, body: { providerId: 'prov-bog' },
+    });
+    check('admin toggle cannot turn a simulated payment into a real charge',
+      stillBlocked.status === 503 && stillBlocked.body.code === 'PAYMENT_PROVIDER_NOT_READY');
+    const disabled = await request('/admin/providers/payment/prov-bog', {
+      method: 'PUT', token: roles.SUPER_ADMIN.token, body: { isActive: false },
+    });
+    check('superadmin can turn the bank off in production', disabled.status === 200 && bogProvider.isActive === false);
+    const tbcIncomplete = await request('/admin/providers/payment/prov-tbc', {
+      method: 'PUT', token: roles.SUPER_ADMIN.token,
+      body: { clientId: 'audit-client', secretKey: 'audit-secret', isActive: true },
+    });
+    check('TBC activation requires its developer API key', tbcIncomplete.status === 422 && tbcProvider.isActive === false);
+    const tbcEnabled = await request('/admin/providers/payment/prov-tbc', {
+      method: 'PUT', token: roles.SUPER_ADMIN.token,
+      body: { clientId: 'audit-client', secretKey: 'audit-secret', apiKey: 'audit-api-key', isActive: true },
+    });
+    check('TBC can be configured without exposing its API key',
+      tbcEnabled.status === 200 && tbcProvider.isActive === true &&
+      tbcEnabled.body.provider?.apiKey === undefined && tbcEnabled.body.provider?.apiKeyConfigured === true);
+    const originalLock = { ...db.configLock };
+    db.configLock.locked = true;
+    db.configLock.lockedUntil = new Date(Date.now() + 86_400_000).toISOString();
+    try {
+      const emergencyOff = await request('/admin/providers/payment/prov-tbc', {
+        method: 'PUT', token: roles.SUPER_ADMIN.token, body: { isActive: false },
+      });
+      const nonSuperAdmin = await request('/admin/providers/payment/prov-tbc', {
+        method: 'PUT', token: roles.ADMIN.token, body: { isActive: true },
+      });
+      const lockedSms = await request('/admin/providers/sms/sms-magti', {
+        method: 'PUT', token: roles.SUPER_ADMIN.token, body: { isActive: false },
+      });
+      check('superadmin can turn off a bank during the configuration lock',
+        emergencyOff.status === 200 && tbcProvider.isActive === false);
+      check('payment control remains superadmin-only while other provider settings stay locked',
+        nonSuperAdmin.status === 403 && lockedSms.status === 423);
+    } finally {
+      Object.assign(db.configLock, originalLock);
+    }
+  } finally {
+    Object.assign(bogProvider, originalBogProvider);
+    Object.assign(tbcProvider, originalTbcProvider);
+    db.persistSuperAdminConfig = originalPersistConfig;
+    process.env.NODE_ENV = previousNodeEnv;
+  }
+
   const previousSimulation = process.env.PAYMENTS_SIMULATION;
   process.env.PAYMENTS_SIMULATION = 'true';
   try {
