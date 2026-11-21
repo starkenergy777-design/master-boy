@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 import { join } from 'node:path';
-import { runInNewContext } from 'node:vm';
 
 const root = process.cwd();
 const read = (path) => readFileSync(join(root, path));
