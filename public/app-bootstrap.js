@@ -25,7 +25,7 @@
   };
 
   const showInstallInvitation = () => {
-    if (installedMode() || installInvitation || sessionStorage.getItem('mb-install-dismissed') === '1') return;
+    if (installedMode() || installInvitation) return;
     const lang = localStorage.getItem('mb_lang') || 'ka';
     const labels = lang === 'ru'
       ? ['Установить Master Boy', 'Закрыть']
@@ -61,7 +61,6 @@
     dismiss.setAttribute('aria-label', labels[1]);
     dismiss.style.cssText = 'border:0;background:transparent;color:#cbd5e1;font:24px system-ui,sans-serif;cursor:pointer;padding:5px';
     dismiss.addEventListener('click', () => {
-      sessionStorage.setItem('mb-install-dismissed', '1');
       removeInstallInvitation();
     });
 

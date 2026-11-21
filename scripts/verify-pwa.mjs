@@ -31,7 +31,7 @@ assert.ok(manifest.icons.some((icon) => icon.purpose === 'maskable'));
 assert.match(bootstrap, /serviceWorker\.register\('\/sw\.js'\)/);
 assert.match(bootstrap, /beforeinstallprompt/);
 assert.match(bootstrap, /appinstalled/);
-assert.match(bootstrap, /sessionStorage\.setItem\('mb-install-dismissed'/);
+assert.doesNotMatch(bootstrap, /mb-install-dismissed/);
 new Function(bootstrap);
 new Function(worker);
 console.log('PWA static checks passed: manifest, PNG dimensions, service worker and install prompt.');
