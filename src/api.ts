@@ -1,5 +1,6 @@
 import { Language, User, Advertisement, AdvertisementPublic, AdminTop15Member } from './types.js';
 import { localizeApiError } from './i18n.js';
+import { FINANCIAL_TERMS_VERSION } from './financialTerms.js';
 
 class ApiClient {
   private baseUrl = '/api/v1';
@@ -221,23 +222,23 @@ class ApiClient {
     return this.request('/craftsmen/me/listing');
   }
 
-  payCraftsmanListing(providerId: string) {
+  payCraftsmanListing(providerId: string, financialTermsAccepted: boolean) {
     return this.request('/craftsmen/me/listing/pay', {
       method: 'POST',
       headers: {
         'Idempotency-Key': `idem-list-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       },
-      body: JSON.stringify({ providerId }),
+      body: JSON.stringify({ providerId, financialTermsAccepted, financialTermsVersion: FINANCIAL_TERMS_VERSION }),
     });
   }
 
-  renewCraftsmanListing(providerId: string) {
+  renewCraftsmanListing(providerId: string, financialTermsAccepted: boolean) {
     return this.request('/craftsmen/me/listing/renew', {
       method: 'POST',
       headers: {
         'Idempotency-Key': `idem-renew-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       },
-      body: JSON.stringify({ providerId }),
+      body: JSON.stringify({ providerId, financialTermsAccepted, financialTermsVersion: FINANCIAL_TERMS_VERSION }),
     });
   }
 
@@ -287,11 +288,11 @@ class ApiClient {
     return this.request('/top15/providers');
   }
 
-  payTop15(reservationId: string, providerId: string, idempotencyKey: string) {
+  payTop15(reservationId: string, providerId: string, idempotencyKey: string, financialTermsAccepted: boolean) {
     return this.request('/top15/pay', {
       method: 'POST',
       idempotencyKey,
-      body: JSON.stringify({ reservationId, providerId }),
+      body: JSON.stringify({ reservationId, providerId, financialTermsAccepted, financialTermsVersion: FINANCIAL_TERMS_VERSION }),
     });
   }
 
@@ -301,6 +302,26 @@ class ApiClient {
 
   getSupportMessages(after?: string) {
     return this.request(`/support/messages${after ? `?after=${after}` : ''}`);
+  }
+
+  getMyFinancialPayments() {
+    return this.request('/financial/payments');
+  }
+
+  getMyFinancialCases() {
+    return this.request('/financial/cases');
+  }
+
+  createFinancialCase(paymentIntentId: string, reason: string, description: string) {
+    return this.request('/financial/cases', { method: 'POST', body: JSON.stringify({ paymentIntentId, reason, description }) });
+  }
+
+  getAdminFinancialCases() {
+    return this.request('/admin/financial/cases');
+  }
+
+  reviewFinancialCase(id: string, status: string, decisionReason: string, approvedRefundMinor: number | null, providerRefundReference: string) {
+    return this.request(`/admin/financial/cases/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status, decisionReason, approvedRefundMinor, providerRefundReference }) });
   }
 
   sendSupportMessage(text: string) {

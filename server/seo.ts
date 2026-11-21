@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { financialTerms, FINANCIAL_TERMS_VERSION } from '../src/financialTerms.js';
 import { readFileSync } from 'node:fs';
 import { db } from './db.js';
 import { professionSeo } from './professionSeo.js';
@@ -26,8 +27,18 @@ export function seoRouter(templatePath: string) {
   router.get('/index.html', (_req, res) => res.redirect(301, '/'));
   router.get('/robots.txt', (_req, res) => res.type('text/plain').send(`User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n`));
   router.get('/sitemap.xml', (_req, res) => {
-    const paths = ['/', ...db.professions.filter(p => professionSeo[p.id]).map(p => professionPath(p.id)), ...categories(), ...profiles().map(c => profilePath(c.id))];
+    const paths = ['/', '/financial-terms', ...db.professions.filter(p => professionSeo[p.id]).map(p => professionPath(p.id)), ...categories(), ...profiles().map(c => profilePath(c.id))];
     res.set('Cache-Control', 'no-cache').type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(p => `<url><loc>${escapeHtml(origin + p)}</loc></url>`).join('')}</urlset>`);
+  });
+  router.get('/financial-terms', (_req, res) => {
+    const terms = financialTerms.ka;
+    const title = `${terms.title} | მასტერ ბოი`;
+    const content = `<main style="max-width:720px;margin:auto;padding:24px"><a href="/">მასტერ ბოი</a><h1>${escapeHtml(terms.title)}</h1><p>${escapeHtml(terms.introduction)}</p>${terms.sections.map(([heading, body]) => `<section><h2>${escapeHtml(heading)}</h2><p>${escapeHtml(body)}</p></section>`).join('')}<small>${FINANCIAL_TERMS_VERSION}</small></main>`;
+    const bootstrap = { screen: 'financial-terms', title };
+    const html = template.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
+      .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${origin}/financial-terms" />`)
+      .replace(/<div id="root">[\s\S]*?<script src="\/app-bootstrap.js"><\/script>/, `<div id="root">${content}</div><script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
+    res.set('Cache-Control', 'no-cache').type('html').send(html);
   });
   router.get(['/', '/xelosani/:id', '/xelosnebi/:city/:profession', '/profesiebi/:profession'], (req, res, next) => {
     try {

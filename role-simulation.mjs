@@ -377,6 +377,20 @@ try {
     db.providerConfig.payment.forEach((provider, index) => { provider.isActive = previousProviderStates[index]; });
   }
 
+  const previousSimulation = process.env.PAYMENTS_SIMULATION;
+  process.env.PAYMENTS_SIMULATION = 'true';
+  try {
+    const beforeTermsGuard = db.paymentIntents.size;
+    const missingTerms = await request('/craftsmen/me/listing/pay', {
+      method: 'POST', token: roles.CRAFTSMAN.token, body: { providerId: 'prov-bog' },
+    });
+    check('paid listing rejects missing financial terms before creating a payment',
+      missingTerms.status === 428 && missingTerms.body.code === 'FINANCIAL_TERMS_REQUIRED' && db.paymentIntents.size === beforeTermsGuard);
+  } finally {
+    if (previousSimulation === undefined) delete process.env.PAYMENTS_SIMULATION;
+    else process.env.PAYMENTS_SIMULATION = previousSimulation;
+  }
+
   db.listingPrice.amountMinor = 0;
   const fetchBeforeRegistration = globalThis.fetch;
   globalThis.fetch = (input, init) => String(input).startsWith('https://drive.google.com/thumbnail?')

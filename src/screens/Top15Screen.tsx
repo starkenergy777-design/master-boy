@@ -8,12 +8,14 @@ import { getProfessionDisplayNumber, ProfessionIcon } from '../components/Profes
 
 interface Top15ScreenProps {
   lang: Language;
+  onOpenFinancialTerms: () => void;
   onBack: () => void;
   onSuccess: () => void;
 }
 
 export const Top15Screen: React.FC<Top15ScreenProps> = ({
   lang,
+  onOpenFinancialTerms,
   onBack,
   onSuccess,
 }) => {
@@ -32,6 +34,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   const [countdown, setCountdown] = useState<number>(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [financialTermsAccepted, setFinancialTermsAccepted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const [craftsmanProfile, setCraftsmanProfile] = useState<any>(null);
@@ -148,12 +151,12 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
 
   // Pay Slot with Idempotency Key (§4.2 step 5)
   const handlePay = async () => {
-    if (!reservation || !selectedProviderId) return;
+    if (!reservation || !selectedProviderId || !financialTermsAccepted) return;
     setErrorMsg('');
     try {
       setLoading(true);
       const idempotencyKey = `idem-${reservation.reservationId}-${Date.now()}`;
-      const payRes = await api.payTop15(reservation.reservationId, selectedProviderId, idempotencyKey);
+      const payRes = await api.payTop15(reservation.reservationId, selectedProviderId, idempotencyKey, financialTermsAccepted);
       if (payRes.status === 'SUCCEEDED') {
         setIsSuccess(true);
       } else {
@@ -354,9 +357,13 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
               </span>
             </div>
 
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-300 space-y-2">
+              <button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline text-left">{lang === 'ka' ? 'Top 15-ის გადახდისა და დაბრუნების წესები' : lang === 'ru' ? 'Правила оплаты и возврата Top 15' : 'Top 15 payment and refund terms'}</button>
+              <label className="flex items-start gap-2"><input type="checkbox" checked={financialTermsAccepted} onChange={e => setFinancialTermsAccepted(e.target.checked)} className="mt-0.5" /><span>{lang === 'ka' ? 'გავეცანი და ვეთანხმები ფინანსურ წესებს.' : lang === 'ru' ? 'Я ознакомился и согласен с финансовыми условиями.' : 'I have read and accept the financial terms.'}</span></label>
+            </div>
             <button
               onClick={handlePay}
-              disabled={loading || countdown <= 0 || !selectedProviderId || (availability?.freeSlots ?? 0) <= 0}
+              disabled={loading || countdown <= 0 || !selectedProviderId || !financialTermsAccepted || (availability?.freeSlots ?? 0) <= 0}
               className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-400 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-950/40 text-xs transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <ShieldCheck className="w-4 h-4" />

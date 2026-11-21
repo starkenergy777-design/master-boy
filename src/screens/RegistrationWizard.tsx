@@ -6,9 +6,11 @@ import { Language, City, Profession, PaymentProvider } from '../types.js';
 import { api } from '../api.js';
 import { ProfessionPicker } from '../components/ProfessionPicker.js';
 import { photoPreviewUrl } from '../photo-url.js';
+import { FINANCIAL_TERMS_VERSION } from '../financialTerms.js';
 
 interface RegistrationWizardProps {
   lang: Language;
+  onOpenFinancialTerms: () => void;
   onCancel: () => void;
   onComplete: () => void;
   step?: number;
@@ -17,6 +19,7 @@ interface RegistrationWizardProps {
 
 export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
   lang,
+  onOpenFinancialTerms,
   onCancel,
   onComplete,
   step: controlledStep,
@@ -39,6 +42,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [financialTermsAccepted, setFinancialTermsAccepted] = useState(false);
   const [registrationPrice, setRegistrationPrice] = useState<{ amountMinor: number; currency: string } | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
   const [priceError, setPriceError] = useState('');
@@ -179,11 +183,16 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
           : 'Online payment is not available yet. The account will not be created until payment is confirmed.');
       return;
     }
+    if (!isFreeRegistration && !financialTermsAccepted) {
+      setErrorMsg(lang === 'ka' ? 'გადახდამდე გაეცანით და დაეთანხმეთ ფინანსურ წესებს.' : lang === 'ru' ? 'Перед оплатой ознакомьтесь с финансовыми условиями.' : 'Read and accept the financial terms before payment.');
+      return;
+    }
     try {
       setLoading(true);
       const payload = {
         ...formData,
         paid: !isFreeRegistration,
+        ...(!isFreeRegistration ? { financialTermsAccepted: true, financialTermsVersion: FINANCIAL_TERMS_VERSION } : {}),
         ...(isFreeRegistration ? {} : { providerId: selectedProviderId }),
         photos: formData.photoUrl.trim() ? [{ url: formData.photoUrl.trim() }] : [],
       };
@@ -544,6 +553,10 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
                 </div>
               </div>
             )}
+            {!isFreeRegistration && <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-300 space-y-2">
+              <button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline text-left">{lang === 'ka' ? 'გადახდისა და დაბრუნების სრული წესები' : lang === 'ru' ? 'Полные правила оплаты и возврата' : 'Full payment and refund terms'}</button>
+              <label className="flex items-start gap-2"><input type="checkbox" checked={financialTermsAccepted} onChange={e => setFinancialTermsAccepted(e.target.checked)} className="mt-0.5" /><span>{lang === 'ka' ? 'გავეცანი და ვეთანხმები ხელოსნის ფინანსურ წესებს.' : lang === 'ru' ? 'Я ознакомился и согласен с финансовыми условиями.' : 'I have read and accept the craftsman financial terms.'}</span></label>
+            </div>}
           </div>
         )}
       </div>
@@ -563,7 +576,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={loading || priceLoading || !registrationPrice || (!isFreeRegistration && !selectedProviderId)}
+              disabled={loading || priceLoading || !registrationPrice || (!isFreeRegistration && (!selectedProviderId || !financialTermsAccepted))}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {loading ? (
