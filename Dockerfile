@@ -27,4 +27,3 @@ COPY --from=builder /app/migrations ./migrations
 EXPOSE 10000
 
 CMD ["./node_modules/.bin/tsx", "server.ts"]
-
