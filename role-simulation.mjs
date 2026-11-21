@@ -206,6 +206,61 @@ try {
     }
   }
 
+  // Financial cases use disposable in-memory persistence; no live database or bank is touched.
+  const financialPaymentId = 'audit-financial-payment';
+  const financialPayment = { id: financialPaymentId, craftsmanId: auditCraftsmanId, amountMinor: 10000,
+    currency: 'GEL', status: 'SUCCEEDED', createdAt: new Date().toISOString(),
+    serviceStartsAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+    serviceEndsAt: new Date(Date.now() + 25 * 86400000).toISOString() };
+  db.paymentIntents.set(financialPaymentId, financialPayment);
+  const financialCaseRows = new Map();
+  const originalFinancialStorage = {
+    list: storage.listFinancialCases, create: storage.createFinancialCase,
+    get: storage.getFinancialCase, review: storage.reviewFinancialCase,
+  };
+  storage.listFinancialCases = async craftsmanId => [...financialCaseRows.values()].filter(item => !craftsmanId || item.craftsman_id === craftsmanId);
+  storage.createFinancialCase = async input => {
+    const item = { id: input.id, craftsman_id: input.craftsmanId, payment_intent_id: input.paymentIntentId,
+      reason: input.reason, description: input.description, status: 'OPEN', approved_refund_minor: null,
+      created_at: new Date().toISOString() };
+    financialCaseRows.set(item.id, item);
+    return item;
+  };
+  storage.getFinancialCase = async id => financialCaseRows.get(id) || null;
+  storage.reviewFinancialCase = async (id, status, decisionReason, approvedRefundMinor, providerRefundReference) => {
+    const item = financialCaseRows.get(id);
+    if (!item) return null;
+    Object.assign(item, { status, decision_reason: decisionReason, approved_refund_minor: approvedRefundMinor, provider_refund_reference: providerRefundReference });
+    return item;
+  };
+  try {
+    const missingPayment = await request('/financial/cases', { token: roles.CRAFTSMAN.token, method: 'POST',
+      body: { paymentIntentId: 'another-users-payment', reason: 'NOT_ACTIVATED', description: 'The paid slot did not activate.' } });
+    check('financial case cannot reference another payment', missingPayment.status === 404 && financialCaseRows.size === 0);
+    const created = await request('/financial/cases', { token: roles.CRAFTSMAN.token, method: 'POST',
+      body: { paymentIntentId: financialPaymentId, reason: 'EARLY_STOP', description: 'The service stopped before its paid end date.' } });
+    check('craftsman case is stored and linked to own payment', created.status === 201 && financialCaseRows.has(created.body.id));
+    const ownCases = await request('/financial/cases', { token: roles.CRAFTSMAN.token });
+    check('craftsman sees own financial case', ownCases.status === 200 && ownCases.body[0]?.id === created.body.id);
+    const adminCases = await request('/admin/financial/cases', { token: roles.ADMIN.token });
+    check('admin receives bounded unused-time refund estimate', adminCases.status === 200 && adminCases.body[0]?.refund_estimate_minor > 0 && adminCases.body[0]?.refund_estimate_minor < financialPayment.amountMinor);
+    const tooLarge = await request(`/admin/financial/cases/${created.body.id}`, { token: roles.ADMIN.token, method: 'PATCH',
+      body: { status: 'APPROVED', decisionReason: 'Verified the early interruption.', approvedRefundMinor: 10001 } });
+    check('admin cannot approve more than paid amount', tooLarge.status === 422);
+    const approved = await request(`/admin/financial/cases/${created.body.id}`, { token: roles.ADMIN.token, method: 'PATCH',
+      body: { status: 'APPROVED', decisionReason: 'Verified the early interruption.', approvedRefundMinor: 5000 } });
+    check('admin records approval without sending a bank refund', approved.status === 200 && approved.body.status === 'APPROVED');
+    const unverifiedClose = await request(`/admin/financial/cases/${created.body.id}`, { token: roles.ADMIN.token, method: 'PATCH',
+      body: { status: 'CLOSED', decisionReason: 'Refund completed by provider.' } });
+    check('positive refund case cannot close without provider reference', unverifiedClose.status === 422);
+  } finally {
+    storage.listFinancialCases = originalFinancialStorage.list;
+    storage.createFinancialCase = originalFinancialStorage.create;
+    storage.getFinancialCase = originalFinancialStorage.get;
+    storage.reviewFinancialCase = originalFinancialStorage.review;
+    db.paymentIntents.delete(financialPaymentId);
+  }
+
   for (const path of ['/cities', '/professions', '/search']) {
     check(`public endpoint ${path} responds without login`, (await request(path)).status === 200);
   }
