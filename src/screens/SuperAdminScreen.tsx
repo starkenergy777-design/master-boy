@@ -761,7 +761,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
       setLoading(true);
       const newActive = !prov.isActive;
       await api.updatePaymentProvider(prov.id, { isActive: newActive });
-      setSuccessMsg(`${prov.name} ${newActive ? 'გააქტიურდა' : 'დეაქტივირდა'}!`);
+      setSuccessMsg(`${prov.name} ${newActive ? 'ჩართულია კონფიგურაციაში' : 'გამორთულია'}!`);
       const updated = await api.getProviders('payment');
       setPaymentProviders(updated);
     } catch (err: any) {
@@ -1546,10 +1546,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         </div>
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-100">
           {lang === 'ka'
-            ? 'ონლაინ გადახდების სერვერული ინტეგრაცია ჯერ დასრულებული არ არის. მონაცემების შენახვა თანხის მიღებას არ ააქტიურებს; წარმოებაში გადახდები უსაფრთხოდ დაბლოკილია.'
+            ? 'აქ შეგიძლიათ ბანკის მონაცემების შეყვანა და პროვაიდერის ჩართვა ან გამორთვა. გადახდის შესრულება ხელმისაწვდომი გახდება მხოლოდ ბანკის რეალური გადახდის გზისა და დადასტურების დასრულების შემდეგ.'
             : lang === 'ru'
-              ? 'Серверная интеграция онлайн-оплаты ещё не завершена. Сохранение данных не включает приём платежей; в рабочей версии платежи безопасно заблокированы.'
-              : 'The server-side online payment integration is not complete. Saving credentials does not enable charges; production payments remain safely disabled.'}
+              ? 'Здесь можно сохранить банковские данные и включить или выключить провайдера. Приём платежей станет доступен после завершения и проверки реального банковского процесса.'
+              : 'Save bank credentials and turn a provider on or off here. Payment processing becomes available after the real bank checkout and confirmation flow is completed and verified.'}
         </div>
 
         <div className="space-y-2.5 pt-1">
@@ -1578,20 +1578,20 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => handleToggleProviderActive(prov)}
-                    disabled={loading || configLock.locked || import.meta.env.PROD}
+                    disabled={loading || prov.id === 'prov-stripe'}
                     className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors ${
                       prov.isActive
                         ? 'bg-rose-950/40 text-rose-300 border-rose-800 hover:bg-rose-900'
                         : 'bg-emerald-950/40 text-emerald-300 border-emerald-800 hover:bg-emerald-900'
                     }`}
                   >
-                    {import.meta.env.PROD ? 'ინტეგრაცია მზად არ არის' : prov.isActive ? 'გათიშვა' : 'ჩართვა'}
+                    {prov.id === 'prov-stripe' ? 'მიუწვდომელია' : prov.isActive ? 'გათიშვა' : 'ჩართვა'}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleOpenEditProvider(prov)}
-                    disabled={loading || configLock.locked}
+                    disabled={loading}
                     className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg border border-slate-700 transition-colors"
                     title="მონაცემების შეყვანა / რედაქტირება"
                   >
@@ -1825,15 +1825,15 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                 />
               </div>
 
-              {editingProvider.id === 'prov-stripe' && (
+              {(editingProvider.id === 'prov-stripe' || editingProvider.id === 'prov-tbc') && (
                 <>
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400">Publishable Key (pk_test_... / pk_live_...)</label>
+                    <label className="text-[10px] text-slate-400">{editingProvider.id === 'prov-tbc' ? 'TBC Developer API Key' : 'Publishable Key (pk_test_... / pk_live_...)'}</label>
                     <input
                       type="text"
                       value={providerForm.apiKey}
                       onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
-                      placeholder={editingProvider.apiKeyConfigured ? 'შეავსეთ მხოლოდ გასაახლებლად' : 'pk_live_...'}
+                      placeholder={editingProvider.apiKeyConfigured ? 'შეავსეთ მხოლოდ გასაახლებლად' : editingProvider.id === 'prov-tbc' ? 'TBC API Key' : 'pk_live_...'}
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
                     />
                   </div>
@@ -1859,6 +1859,9 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setProviderForm({ ...providerForm, isActive: !providerForm.isActive })}
+                  disabled={editingProvider.id === 'prov-stripe'}
+                  aria-label={providerForm.isActive ? 'პროვაიდერის გამორთვა' : 'პროვაიდერის ჩართვა'}
+                  aria-pressed={providerForm.isActive}
                   className={`w-11 h-6 rounded-full transition-colors relative p-0.5 ${
                     providerForm.isActive ? 'bg-emerald-500' : 'bg-slate-700'
                   }`}
@@ -1957,6 +1960,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
                   />
                 </div>
+                  {editingProvider.id === 'prov-stripe' && (
                 <div className="space-y-1">
                   <label className="text-[10px] text-slate-400">თანხა (GEL)</label>
                   <input
@@ -1968,6 +1972,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
                   />
                 </div>
+                  )}
               </div>
 
               <div className="pt-2 flex gap-2">

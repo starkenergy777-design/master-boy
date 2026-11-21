@@ -163,14 +163,18 @@ check('Top15 payment verifies reservation ownership and payment-status ownership
 check('ad payment records do not misuse the craftsman foreign key', () => {
   assert.match(routes, /reservationId: ad\.id,[\s\S]{0,100}craftsmanId: null,[\s\S]{0,100}providerId: paymentProvider\.id/);
 });
-check('super admin is told that saving payment credentials does not enable charges', () => {
-  assert.match(superAdmin, /saving credentials does not enable charges/i);
+check('super admin is told that provider activation alone does not complete checkout', () => {
+  assert.match(superAdmin, /Payment processing becomes available after the real bank checkout and confirmation flow is completed and verified/i);
 });
-check('production cannot mark a payment provider active from stored metadata', () => {
-  assert.match(storage, /process\.env\.NODE_ENV === 'production' \? \{ isActive: false \}/);
+check('payment provider preference survives production startup while unsafe checkout stays blocked', () => {
+  assert.doesNotMatch(storage, /process\.env\.NODE_ENV === 'production' \? \{ isActive: false \}/);
   assert.match(db, /Credentials alone do not mean a live gateway adapter is integrated/);
+  assert.match(routes, /function requireRealPaymentIntegration\(res: Response\): boolean \{[\s\S]{0,120}process\.env\.NODE_ENV === 'production'/);
 });
-check('production payment toggle is disabled in the superadmin UI', () => assert.match(superAdmin, /disabled=\{loading \|\| configLock\.locked \|\| import\.meta\.env\.PROD\}/));
+check('superadmin can manage BOG and TBC configuration in production', () => {
+  assert.match(superAdmin, /disabled=\{loading \|\| prov\.id === 'prov-stripe'\}/);
+  assert.match(superAdmin, /TBC Developer API Key/);
+});
 check('rate limiting trusts Render edge client IP and restricts XFF fallback to non-production', () => {
   assert.match(routes, /const cloudflareClientIp = req\.header\('CF-Connecting-IP'\)\?\.trim\(\);/);
   assert.match(routes, /if \(process\.env\.NODE_ENV !== 'production'\) \{[\s\S]{0,250}req\.header\('X-Forwarded-For'\)/);
