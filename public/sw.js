@@ -1,5 +1,5 @@
 // MASTER_BOY Service Worker v2.1.0
-const CACHE_NAME = 'master-boy-v3';
+const CACHE_NAME = 'master-boy-v4';
 
 const STATIC_ASSETS = [
   '/',
@@ -7,7 +7,10 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/icons/icon-192.jpg',
   '/icons/icon-512.jpg',
-  '/icons/icon-maskable.jpg'
+  '/icons/icon-maskable.jpg',
+  '/icons/pwa-192.png',
+  '/icons/pwa-512.png',
+  '/icons/pwa-maskable-512.png'
 ];
 
 self.addEventListener('install', (event) => {

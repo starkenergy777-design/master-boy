@@ -1,0 +1,39 @@
+name: Verify PWA installability
+
+on:
+  push:
+    branches:
+      - codex/pwa-installability-safe
+    paths:
+      - 'index.html'
+      - 'public/manifest.json'
+      - 'public/app-bootstrap.js'
+      - 'public/sw.js'
+      - 'public/icons/pwa-*.png'
+      - 'scripts/verify-pwa.mjs'
+      - 'scripts/test-pwa-install.mjs'
+      - '.github/workflows/verify-pwa.yml'
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'public/manifest.json'
+      - 'public/app-bootstrap.js'
+      - 'public/sw.js'
+      - 'public/icons/pwa-*.png'
+      - 'scripts/verify-pwa.mjs'
+      - 'scripts/test-pwa-install.mjs'
+      - '.github/workflows/verify-pwa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/verify-pwa.mjs
+      - run: node scripts/test-pwa-install.mjs
