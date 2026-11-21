@@ -39,7 +39,15 @@ jobs:
               with Image.open(root / source) as img:
                   if img.width != img.height:
                       raise ValueError(f'{source} is not square')
-                  img.convert('RGBA').resize((size, size), Image.Resampling.LANCZOS).save(root / target, optimize=True)
+                  if target.startswith('pwa-maskable'):
+                      # Keep the original mark within Android's central safe zone.
+                      canvas = Image.new('RGBA', (size, size), '#020617')
+                      safe = int(size * 0.68)
+                      mark = img.convert('RGBA').resize((safe, safe), Image.Resampling.LANCZOS)
+                      canvas.alpha_composite(mark, ((size - safe) // 2, (size - safe) // 2))
+                      canvas.save(root / target, optimize=True)
+                  else:
+                      img.convert('RGBA').resize((size, size), Image.Resampling.LANCZOS).save(root / target, optimize=True)
           PY
       - name: Validate generated icon dimensions
         run: |
