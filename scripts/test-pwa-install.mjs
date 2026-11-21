@@ -7,7 +7,6 @@ const source = readFileSync('public/app-bootstrap.js', 'utf8');
 function scenario({ standalone = false, dismiss = false } = {}) {
   const listeners = new Map();
   const elements = [];
-  const session = new Map();
   const registered = [];
   const makeElement = () => ({
     style: {},
@@ -34,10 +33,6 @@ function scenario({ standalone = false, dismiss = false } = {}) {
   const context = {
     window, document, navigator: { serviceWorker: { register(url) { registered.push(url); return Promise.resolve(); } } },
     localStorage: { getItem() { return 'ka'; } },
-    sessionStorage: {
-      getItem(key) { return session.get(key) || null; },
-      setItem(key, value) { session.set(key, value); },
-    },
     console,
   };
   runInNewContext(source, context, { timeout: 2000 });
@@ -61,7 +56,8 @@ function scenario({ standalone = false, dismiss = false } = {}) {
       elements[0].children[1].listeners.click();
       assert.equal(elements.length, 0);
       listeners.get('beforeinstallprompt')(event);
-      assert.equal(elements.length, 0);
+      assert.equal(elements.length, 1);
+      assert.equal(elements[0].children.length, 2);
     }
   }
   return { listeners, elements, event };
@@ -75,4 +71,4 @@ assert.equal(normal.event.promptCalls, 1);
 assert.equal(normal.elements.length, 0);
 normal.listeners.get('appinstalled')();
 assert.equal(normal.elements.length, 0);
-console.log('PWA interaction checks passed: eligibility, dismissal, install click, installed state.');
+console.log('PWA interaction checks passed: eligibility, re-offer after dismissal, install click, installed state.');
