@@ -10,7 +10,11 @@
   "theme_color": "#020617",
   "background_color": "#020617",
   "lang": "ka",
-  "categories": ["business", "utilities", "lifestyle"],
+  "categories": [
+    "business",
+    "utilities",
+    "lifestyle"
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.jpg",
@@ -35,7 +39,14 @@
     {
       "name": "ძებნა (Search)",
       "url": "/",
-      "icons": [{ "src": "/icons/icon-192.jpg", "sizes": "1024x1024", "type": "image/jpeg" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192.jpg",
+          "sizes": "1024x1024",
+          "type": "image/jpeg"
+        }
+      ]
     }
-  ]
+  ],
+  "prefer_related_applications": false
 }
