@@ -20,4 +20,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run audit
+      - run: npx tsx --test server/payment-credentials.test.ts
+      - run: npx tsx --test server/bank-gateway.test.ts
       - run: npx tsx seo-test.ts

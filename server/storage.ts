@@ -1,6 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, CraftsmanDraft, CraftsmanListing, ListingPrice, Profession, ProviderConfig, RecipientAccount, ConfigLock, Top15Membership, Top15Price, Top15Reservation, User } from './types.js';
 import { sortProfessionsByDemand } from './professionOrder.js';
+import { decryptPaymentCredentials, encryptPaymentCredentials, separatePaymentCredentials } from './payment-credentials.js';
 
 export type AiProvider = 'gemini' | 'openai';
 
@@ -175,10 +176,11 @@ export class StorageService {
 
   async loadSuperAdminConfig(): Promise<SuperAdminPersistedConfig | null> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return null;
-    const [c, p, secrets] = await Promise.all([
+    const [c, p, secrets, paymentSecrets] = await Promise.all([
       this.db().query("SELECT id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at FROM public.system_config WHERE id='global_config' LIMIT 1"),
       this.db().query('SELECT * FROM public.top15_prices'),
       this.db().query("SELECT secret_value FROM public.server_secrets WHERE secret_name='provider_config' LIMIT 1"),
+      this.db().query("SELECT secret_value FROM public.server_secrets WHERE secret_name='payment_credentials' LIMIT 1"),
     ]);
     const r = c.rows[0];
     if (!r) return null;
@@ -194,8 +196,13 @@ export class StorageService {
       { id:'prov-stripe', name:'Stripe (საგადახდო სისტემა / Card Payments)', apiKeyMasked:'not configured', apiKey:env.STRIPE_PUBLISHABLE_KEY || '', secretKey:env.STRIPE_SECRET_KEY || '', webhookSecret:env.STRIPE_WEBHOOK_SECRET || '', isActive:Boolean(r.stripe_active && env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET) },
     ];
     const savedPayment = Array.isArray(savedProviders.payment) ? savedProviders.payment : envPayment;
+    const encrypted = paymentSecrets.rows[0]?.secret_value?.ciphertext;
+    const credentials = encrypted
+      ? decryptPaymentCredentials(encrypted, process.env.PAYMENT_CREDENTIAL_ENCRYPTION_KEY || '')
+      : {};
     const payment = savedPayment.map((provider: any) => ({
       ...provider,
+      ...(credentials[provider.id] || {}),
       ...(provider.id === 'prov-bog' ? { name: 'საქართველოს ბანკი (Bank of Georgia Payment Manager)' } : {}),
       ...(process.env.NODE_ENV === 'production' ? { isActive: false } : {}),
     }));
@@ -298,6 +305,10 @@ export class StorageService {
       client = await this.db().connect();
       await client.query('BEGIN');
       const p = config.providerConfig.payment || [];
+      const { publicProviders, credentials } = separatePaymentCredentials(p);
+      const credentialEnvelope = Object.keys(credentials).length
+        ? encryptPaymentCredentials(credentials, process.env.PAYMENT_CREDENTIAL_ENCRYPTION_KEY || '')
+        : null;
       const val = (id:string) => p.find((x) => x.id===id)?.isActive || false;
       await client.query(
         "INSERT INTO public.system_config (id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at) VALUES ('global_config',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) ON CONFLICT(id) DO UPDATE SET config_locked=EXCLUDED.config_locked,lock_expires_at=EXCLUDED.lock_expires_at,config_unlock_hash=EXCLUDED.config_unlock_hash,recipient_bank_name=EXCLUDED.recipient_bank_name,recipient_iban=EXCLUDED.recipient_iban,recipient_tax_id=EXCLUDED.recipient_tax_id,recipient_company_name=EXCLUDED.recipient_company_name,standard_listing_price_minor=EXCLUDED.standard_listing_price_minor,gemini_api_key_configured=EXCLUDED.gemini_api_key_configured,bog_active=EXCLUDED.bog_active,tbc_active=EXCLUDED.tbc_active,stripe_active=EXCLUDED.stripe_active,updated_at=NOW()",
@@ -308,8 +319,18 @@ export class StorageService {
          ON CONFLICT (secret_name) DO UPDATE
          SET secret_value=COALESCE(current_secrets.secret_value, '{}'::jsonb) || EXCLUDED.secret_value,
              updated_at=NOW()`,
-        [JSON.stringify({ providerConfig: config.providerConfig, backendConfig: config.backendConfig })]
+        [JSON.stringify({ providerConfig: { ...config.providerConfig, payment: publicProviders }, backendConfig: config.backendConfig })]
       );
+      if (credentialEnvelope) {
+        await client.query(
+          `INSERT INTO public.server_secrets(secret_name, secret_value, updated_at)
+           VALUES('payment_credentials', jsonb_build_object('ciphertext', $1::text), NOW())
+           ON CONFLICT(secret_name) DO UPDATE SET secret_value=EXCLUDED.secret_value, updated_at=NOW()`,
+          [credentialEnvelope],
+        );
+      } else {
+        await client.query("DELETE FROM public.server_secrets WHERE secret_name='payment_credentials'");
+      }
       await client.query('COMMIT');
       this.connected=true; return { success:true,database:true,snapshot:false };
     } catch(e:any) {
