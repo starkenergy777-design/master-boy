@@ -477,14 +477,25 @@ export class StorageService {
   // Persist a single craftsman photo without synchronizing unrelated accounts.
   // Use the same queue as runtime snapshots. Apply the in-memory change inside
   // the queued step, so a snapshot cannot revive a just-deleted photo.
-  async saveCraftsmanPhoto(photo: { id: string; craftsmanId: string; url: string; isPrimary: boolean; displayOrder: number; createdAt: string; updatedAt: string }, onSaved?: () => void): Promise<void> {
+  async saveCraftsmanPhoto(photo: { id: string; craftsmanId: string; url: string; isPrimary: boolean; displayOrder: number; createdAt: string; updatedAt: string }, userId?: string, onSaved?: () => void): Promise<void> {
     if (!this.pool && process.env.NODE_ENV !== 'production') { onSaved?.(); return; }
     const next = this.saveQueue.then(async () => {
-      await this.db().query(
-        'INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7)',
-        [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.createdAt, photo.updatedAt]
-      );
-      onSaved?.();
+      const client = await this.db().connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7)',
+          [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.createdAt, photo.updatedAt]
+        );
+        if (userId) await client.query("UPDATE public.craftsman_drafts SET data = COALESCE(data, '{}'::jsonb) - 'photoUrl' - 'photos', updated_at=NOW() WHERE user_id=$1", [userId]);
+        await client.query('COMMIT');
+        onSaved?.();
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     });
     this.saveQueue = next.catch(() => undefined);
     return next;
@@ -504,15 +515,30 @@ export class StorageService {
     return next;
   }
 
-  async updateCraftsmanPhoto(photo: { id: string; craftsmanId: string; url: string; isPrimary: boolean; displayOrder: number; updatedAt: string }, onUpdated?: () => void): Promise<boolean> {
+  async updateCraftsmanPhoto(photo: { id: string; craftsmanId: string; url: string; isPrimary: boolean; displayOrder: number; updatedAt: string }, userId?: string, onUpdated?: () => void): Promise<boolean> {
     if (!this.pool && process.env.NODE_ENV !== 'production') { onUpdated?.(); return true; }
     const next = this.saveQueue.then(async () => {
-      const result = await this.db().query(
-        'UPDATE public.craftsman_photos SET url=$3,is_primary=$4,display_order=$5,updated_at=$6 WHERE id=$1 AND craftsman_id=$2 RETURNING id',
-        [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.updatedAt]
-      );
-      if ((result.rowCount ?? 0) === 1) onUpdated?.();
-      return (result.rowCount ?? 0) === 1;
+      const client = await this.db().connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query(
+          'UPDATE public.craftsman_photos SET url=$3,is_primary=$4,display_order=$5,updated_at=$6 WHERE id=$1 AND craftsman_id=$2 RETURNING id',
+          [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.updatedAt]
+        );
+        if ((result.rowCount ?? 0) === 1) {
+          if (userId) await client.query("UPDATE public.craftsman_drafts SET data = COALESCE(data, '{}'::jsonb) - 'photoUrl' - 'photos', updated_at=NOW() WHERE user_id=$1", [userId]);
+          await client.query('COMMIT');
+          onUpdated?.();
+        } else {
+          await client.query('ROLLBACK');
+        }
+        return (result.rowCount ?? 0) === 1;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     });
     this.saveQueue = next.then(() => undefined, () => undefined);
     return next;

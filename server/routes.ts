@@ -1663,7 +1663,7 @@ apiRouter.post('/craftsmen/me/photos', requireCraftsman, async (req: AuthRequest
     };
 
     try {
-      await storage.saveCraftsmanPhoto(newPhoto, () => { c.photos.push(newPhoto); });
+      await storage.saveCraftsmanPhoto(newPhoto, c.userId, () => { c.photos.push(newPhoto); db.craftsmanDrafts.delete(c.userId); });
     } catch {
       return res.status(503).json({ code: 'PHOTO_SAVE_FAILED', message: 'Photo could not be saved to the database.' });
     }
@@ -1702,10 +1702,10 @@ apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequ
       updatedAt: new Date().toISOString(),
     };
     try {
-      if (!await storage.updateCraftsmanPhoto(updated, () => { Object.assign(photo, updated); })) {
+      if (!await storage.updateCraftsmanPhoto(updated, c.userId, () => { Object.assign(photo, updated); db.craftsmanDrafts.delete(c.userId); })) {
         // Repair a legacy in-memory photo whose earlier snapshot never reached
         // Supabase, then publish the replacement only after the insert succeeds.
-        await storage.saveCraftsmanPhoto(updated, () => { Object.assign(photo, updated); });
+        await storage.saveCraftsmanPhoto(updated, c.userId, () => { Object.assign(photo, updated); db.craftsmanDrafts.delete(c.userId); });
       }
     } catch {
       return res.status(503).json({ code: 'PHOTO_SAVE_FAILED', message: 'Photo could not be saved to the database.' });

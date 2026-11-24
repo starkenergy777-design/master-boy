@@ -98,9 +98,9 @@ try {
   const originalFetch = globalThis.fetch;
   const persistedPhotos = new Map();
   let failPhotoWrite = false;
-  storage.pool = {
-    query: async (sql, args) => {
+  const photoQuery = async (sql, args) => {
       if (failPhotoWrite) throw new Error('Simulated database outage');
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql)) return { rowCount: 0, rows: [] };
       if (sql.startsWith('SELECT c.*,COALESCE(jsonb_agg') && sql.includes('public.craftsmen')) {
         const c = db.craftsmen.get(auditCraftsmanId);
         return { rows: [{ id: c.id, user_id: c.userId, name: c.name, description: c.description,
@@ -124,8 +124,14 @@ try {
         persistedPhotos.delete(args[0]);
         return { rowCount: 1, rows: [{ id: args[0] }] };
       }
+      if (sql.startsWith("UPDATE public.craftsman_drafts SET data")) {
+        return { rowCount: 1, rows: [] };
+      }
       throw new Error(`Unexpected photo test query: ${sql}`);
-    },
+  };
+  storage.pool = {
+    query: photoQuery,
+    connect: async () => ({ query: photoQuery, release() {} }),
   };
   globalThis.fetch = (input, init) => String(input).startsWith('https://drive.google.com/thumbnail?')
     ? Promise.resolve(new Response(null, String(input).includes('00000000000000000000000000000000')
@@ -143,10 +149,12 @@ try {
   const privateDrive = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://drive.google.com/file/d/00000000000000000000000000000000/view' } });
   check('unavailable Drive photo is rejected', privateDrive.status === 422 && persistedPhotos.size === 0);
   const photoUrl = 'https://drive.google.com/file/d/1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU/view?usp=drivesdk';
+  db.craftsmanDrafts.set(roles.CRAFTSMAN.user.id, { step: 2, data: { photoUrl, photos: [{ url: photoUrl }] }, updatedAt: new Date().toISOString() });
   const acceptedPhoto = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: photoUrl } });
   check('Google Drive photo is persisted as a renderable URL', acceptedPhoto.status === 200 &&
     acceptedPhoto.body.url === 'https://drive.google.com/thumbnail?id=1h9_zgEqrDMpTiULQwh117oh0vFlYUJYU&sz=w1000' &&
     persistedPhotos.get(acceptedPhoto.body.id)?.url === acceptedPhoto.body.url && db.craftsmen.get(auditCraftsmanId).photos.length === 1);
+  check('saving a photo clears stale draft photo links', !db.craftsmanDrafts.has(roles.CRAFTSMAN.user.id));
   check('stored photo is loaded after simulated restart', (await storage.loadRuntimeCollection('craftsmen'))[auditCraftsmanId]?.photos[0]?.url === acceptedPhoto.body.url);
   const secondPhoto = await request(photoPath, { token: craftsmanToken, method: 'POST', body: { url: 'https://example.com/second.jpg' } });
   check('one-photo limit remains enforced', secondPhoto.status === 422 && db.craftsmen.get(auditCraftsmanId).photos.length === 1);
