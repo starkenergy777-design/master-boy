@@ -11,7 +11,10 @@ export function photoPreviewUrl(input: string): string {
       url.pathname.match(/^\/file\/d\/([A-Za-z0-9_-]{10,})(?:\/|$)/);
     const id = pathMatch?.[1] ?? url.searchParams.get('id');
     return id && /^[A-Za-z0-9_-]{10,}$/.test(id)
-      ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1000`
+      // The Drive thumbnail URL can redirect through a viewer/cookie edge in
+      // Android WebViews. The public Google image CDN is the direct image
+      // endpoint and renders reliably in an <img> preview.
+      ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=w1000`
       : input;
   } catch {
     return input;
