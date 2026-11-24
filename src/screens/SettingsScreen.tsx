@@ -76,7 +76,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const languages: { code: Language; label: string; flag: string }[] = [
     { code: 'ka', label: 'ქართული', flag: '🇬🇪' },
     { code: 'ru', label: 'Русский', flag: '🇷🇺' },
-    { code: 'en', label: 'English', flag: '🇬🇧' },
+    { code: 'en', label: 'English', flag: 'EN' },
   ];
 
   return localizeTree(lang, (
