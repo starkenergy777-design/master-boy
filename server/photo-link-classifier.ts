@@ -83,21 +83,31 @@ export function photoDisplayUrl(link: PhotoLink): string | null {
 export async function isPublicDriveImage(fileId: string): Promise<boolean> {
   let url = photoDisplayUrl({ kind: 'google_drive', fileId })!;
   try {
-    for (let redirect = 0; redirect < 3; redirect += 1) {
-      const response = await fetch(url, {
-        method: 'HEAD',
-        redirect: 'manual',
-        signal: AbortSignal.timeout(8000),
-      });
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location');
-        if (!location) return false;
-        const next = new URL(location, url);
-        if (next.protocol !== 'https:' || !['drive.google.com', 'lh3.googleusercontent.com'].includes(next.hostname)) return false;
-        url = next.toString();
-        continue;
+    // Some Google Drive edges answer HEAD with application/binary (or reject
+    // HEAD altogether) even though the image is public. Try HEAD first, then
+    // a one-byte GET fallback, while still following only Google redirects.
+    for (const method of ['HEAD', 'GET'] as const) {
+      let candidateUrl = url;
+      for (let redirect = 0; redirect < 3; redirect += 1) {
+        const response = await fetch(candidateUrl, {
+          method,
+          ...(method === 'GET' ? { headers: { Range: 'bytes=0-0' } } : {}),
+          redirect: 'manual',
+          signal: AbortSignal.timeout(8000),
+        });
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get('location');
+          if (!location) break;
+          const next = new URL(location, candidateUrl);
+          if (next.protocol !== 'https:' || !['drive.google.com', 'lh3.googleusercontent.com'].includes(next.hostname)) break;
+          candidateUrl = next.toString();
+          continue;
+        }
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && /^image\/(?:jpeg|png|webp|gif|avif)(?:;|$)/i.test(contentType)) return true;
+        response.body?.cancel?.();
+        break;
       }
-      return response.ok && /^image\/(?:jpeg|png|webp|gif|avif)(?:;|$)/i.test(response.headers.get('content-type') || '');
     }
   } catch {
     // Private, missing, or temporarily unreachable files must not become a
