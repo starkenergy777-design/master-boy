@@ -76,7 +76,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const languages: { code: Language; label: string; flag: string }[] = [
     { code: 'ka', label: 'ქართული', flag: '🇬🇪' },
     { code: 'ru', label: 'Русский', flag: '🇷🇺' },
-    { code: 'en', label: 'English', flag: 'EN' },
+    { code: 'en', label: 'English', flag: '🇬🇧' },
   ];
 
   return localizeTree(lang, (
@@ -106,7 +106,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <span className="text-base">{l.flag}</span>
+                <span className="text-base">
+                  {l.code === 'en' ? (
+                    <>
+                      <span className="sm:hidden" aria-hidden="true">🇬🇧</span>
+                      <span className="hidden sm:inline" aria-hidden="true">EN</span>
+                    </>
+                  ) : l.flag}
+                </span>
                 <span>{l.label}</span>
               </span>
               {lang === l.code && <Check className="w-4 h-4 text-amber-400" />}
