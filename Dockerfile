@@ -26,4 +26,6 @@ COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 10000
 
-CMD ["./node_modules/.bin/tsx", "server.ts"]
+# Apply additive database migrations before starting the API. The migration
+# runner is idempotent, so restarts only verify the already-applied set.
+CMD ["sh", "-c", "./node_modules/.bin/tsx migrations/run-migrations.ts && ./node_modules/.bin/tsx server.ts"]
