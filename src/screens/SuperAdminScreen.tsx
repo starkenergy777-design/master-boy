@@ -289,7 +289,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const [agentNotice, setAgentNotice] = useState('');
 
   // Recipient Account State (§3.5)
-  const [recipient, setRecipient] = useState<any>({ iban: '', bankName: '', beneficiary: '' });
+  const [recipient, setRecipient] = useState<any>({ iban: '', bankName: '', beneficiary: '', taxNumber: '', merchantAddress: '', merchantPhone: '', merchantEmail: '' });
 
   // Config Lock State (§3.5)
   const [configLock, setConfigLock] = useState<any>({ locked: false, lockedUntil: null });
@@ -1381,6 +1381,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               onChange={(e) => setRecipient({ ...recipient, beneficiary: e.target.value })}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
             />
+          </div>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+            <p className="text-[10px] font-semibold text-amber-200">UniPay საჯარო იურიდიული ინფორმაცია — გამოჩნდება ხელოსნის წესებში, არა საჯარო პროფილებში.</p>
+            <input type="text" placeholder="მეწარმის საიდენტიფიკაციო კოდი / პირადი ნომერი" value={recipient.taxNumber || ''} onChange={(e) => setRecipient({ ...recipient, taxNumber: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" />
+            <input type="text" placeholder="იურიდიული ან საკონტაქტო მისამართი" value={recipient.merchantAddress || ''} onChange={(e) => setRecipient({ ...recipient, merchantAddress: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" />
+            <input type="tel" placeholder="საკონტაქტო ტელეფონი" value={recipient.merchantPhone || ''} onChange={(e) => setRecipient({ ...recipient, merchantPhone: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" />
+            <input type="email" placeholder="საკონტაქტო ელფოსტა" value={recipient.merchantEmail || ''} onChange={(e) => setRecipient({ ...recipient, merchantEmail: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" />
           </div>
 
           <button

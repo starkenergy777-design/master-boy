@@ -141,6 +141,10 @@ class ApiClient {
     return this.request('/config/backend');
   }
 
+  getMerchantDisclosure() {
+    return this.request<{ legalName: string; identificationCode: string; address: string; phone: string; email: string; configured: boolean; termsVersion: string }>('/merchant-disclosure');
+  }
+
   // Auth
   requestOtp(phone: string) {
     return this.request('/auth/otp/request', {
@@ -209,6 +213,14 @@ class ApiClient {
 
   getMyCraftsman() {
     return this.request('/craftsmen/me');
+  }
+
+  getFinancialTermsConsent() {
+    return this.request<{ accepted: boolean; termsVersion: string; disclosureConfigured: boolean }>('/craftsmen/me/financial-terms');
+  }
+
+  acceptFinancialTerms() {
+    return this.request<{ accepted: boolean; termsVersion: string; acceptedAt: string }>('/craftsmen/me/financial-terms/accept', { method: 'POST', body: JSON.stringify({}) });
   }
 
   updateMyCraftsman(updates: any) {

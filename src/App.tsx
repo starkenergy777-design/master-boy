@@ -15,6 +15,7 @@ import { SuperAdminScreen } from './screens/SuperAdminScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { AdPartnerScreen } from './screens/AdPartnerScreen.js';
 import { FinancialTermsScreen } from './screens/FinancialTermsScreen.js';
+import { FinancialTermsGate } from './components/FinancialTermsGate.js';
 import { Language, User, CraftsmanPublic } from './types.js';
 import { api } from './api.js';
 
@@ -340,7 +341,7 @@ export default function App() {
               step={wizardStep}
               onStepChange={setWizardStep}
               onCancel={goBack}
-              onComplete={() => pushScreen('dashboard', 'craftsman')}
+              onComplete={async () => { const user = await api.getMe(); setCurrentUser(user); pushScreen('dashboard', 'craftsman'); }}
             />
           )}
 
@@ -420,6 +421,7 @@ export default function App() {
           lang={lang}
           currentUser={currentUser}
         />
+        {currentUser?.roles.includes('CRAFTSMAN') && <FinancialTermsGate key={currentUser.id} lang={lang} />}
 
       </div>
     </AndroidFrame>

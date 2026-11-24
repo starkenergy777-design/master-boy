@@ -32,8 +32,10 @@ export function seoRouter(templatePath: string) {
   });
   router.get('/financial-terms', (_req, res) => {
     const terms = financialTerms.ka;
+    const disclosure = db.merchantDisclosure;
     const title = `${terms.title} | მასტერ ბოი`;
-    const content = `<main style="max-width:720px;margin:auto;padding:24px"><a href="/">მასტერ ბოი</a><h1>${escapeHtml(terms.title)}</h1><p>${escapeHtml(terms.introduction)}</p>${terms.sections.map(([heading, body]) => `<section><h2>${escapeHtml(heading)}</h2><p>${escapeHtml(body)}</p></section>`).join('')}<small>${FINANCIAL_TERMS_VERSION}</small></main>`;
+    const merchant = `<section><h2>Master Boy — საკონტაქტო და საიდენტიფიკაციო ინფორმაცია</h2><p>იურიდიული დასახელება: ${escapeHtml(disclosure.legalName || 'არ არის მითითებული')}</p><p>საიდენტიფიკაციო კოდი: ${escapeHtml(disclosure.identificationCode || 'არ არის მითითებული')}</p><p>მისამართი: ${escapeHtml(disclosure.address || 'არ არის მითითებული')}</p><p>ტელეფონი: ${escapeHtml(disclosure.phone || 'არ არის მითითებული')}</p><p>ელფოსტა: ${escapeHtml(disclosure.email || 'არ არის მითითებული')}</p></section>`;
+    const content = `<main style="max-width:720px;margin:auto;padding:24px"><a href="/">მასტერ ბოი</a><h1>${escapeHtml(terms.title)}</h1>${merchant}<p>${escapeHtml(terms.introduction)}</p>${terms.sections.map(([heading, body]) => `<section><h2>${escapeHtml(heading)}</h2><p>${escapeHtml(body)}</p></section>`).join('')}<small>${FINANCIAL_TERMS_VERSION}</small></main>`;
     const bootstrap = { screen: 'financial-terms', title };
     const html = template.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
       .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${origin}/financial-terms" />`)

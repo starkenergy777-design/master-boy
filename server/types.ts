@@ -112,6 +112,8 @@ export interface Craftsman {
   cityId: string;
   professionId: string;
   bankAccount?: string | null;
+  financialTermsVersion?: string | null;
+  financialTermsAcceptedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   photos: CraftsmanPhoto[];
@@ -270,6 +272,17 @@ export interface RecipientAccount {
   bankName: string;
   beneficiary: string;
   taxNumber: string;
+  updatedAt: string;
+}
+
+// Public merchant disclosure required by the payment provider.  This is kept
+// separate from the receiving IBAN so bank-account data is never published.
+export interface MerchantDisclosure {
+  legalName: string;
+  identificationCode: string;
+  address: string;
+  phone: string;
+  email: string;
   updatedAt: string;
 }
 

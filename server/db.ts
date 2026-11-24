@@ -15,6 +15,7 @@ import {
   AdminAuditLog,
   ProviderConfig,
   RecipientAccount,
+  MerchantDisclosure,
   ConfigLock,
   Language,
   CraftsmanPublic,
@@ -150,6 +151,15 @@ class Database {
     bankName: process.env.RECIPIENT_BANK_NAME || '',
     beneficiary: process.env.RECIPIENT_BENEFICIARY || '',
     taxNumber: process.env.RECIPIENT_TAX_NUMBER || '',
+    updatedAt: new Date().toISOString(),
+  };
+
+  merchantDisclosure: MerchantDisclosure = {
+    legalName: process.env.MERCHANT_LEGAL_NAME || process.env.RECIPIENT_BENEFICIARY || '',
+    identificationCode: process.env.MERCHANT_IDENTIFICATION_CODE || process.env.RECIPIENT_TAX_NUMBER || '',
+    address: process.env.MERCHANT_ADDRESS || '',
+    phone: process.env.MERCHANT_CONTACT_PHONE || '',
+    email: process.env.MERCHANT_CONTACT_EMAIL || '',
     updatedAt: new Date().toISOString(),
   };
 
@@ -472,6 +482,7 @@ class Database {
         if (persisted.recipientAccount) {
           this.recipientAccount = persisted.recipientAccount;
         }
+        if (persisted.merchantDisclosure) this.merchantDisclosure = persisted.merchantDisclosure;
         if (persisted.configLock) {
           this.configLock = persisted.configLock;
         }
@@ -628,6 +639,7 @@ class Database {
       advertisements: Array.from(this.advertisements.values()),
       providerConfig: this.providerConfig,
       recipientAccount: this.recipientAccount,
+      merchantDisclosure: this.merchantDisclosure,
       configLock: this.configLock,
       bootstrap: { ...this.bootstrap, password: '' },
       backendConfig: this.backendConfig,

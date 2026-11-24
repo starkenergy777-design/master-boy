@@ -34,6 +34,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'profile' | 'top15'>('profile');
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const [activeAd, setActiveAd] = useState<AdvertisementPublic | null>(null);
+  const [merchantDisclosure, setMerchantDisclosure] = useState<any>(null);
 
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ name: '', description: '', workingHours: {} as Record<string, string> });
@@ -74,7 +75,6 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [paying, setPaying] = useState(false);
   const [renewalError, setRenewalError] = useState('');
-  const [financialTermsAccepted, setFinancialTermsAccepted] = useState(false);
   const [financialCaseOpen, setFinancialCaseOpen] = useState(false);
   const [financialPayments, setFinancialPayments] = useState<Array<{id:string;amountMinor:number;currency:string;createdAt:string}>>([]);
   const [financialCases, setFinancialCases] = useState<Array<{id:string;status:string;payment_intent_id:string;created_at:string}>>([]);
@@ -133,15 +133,17 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
     try {
       setProfileLoadError('');
       setLoading(true);
-      const [resProfile, resMemberships, resListing, provList, resAd] = await Promise.all([
+      const [resProfile, resMemberships, resListing, provList, resAd, resMerchant] = await Promise.all([
         api.getMyCraftsman(),
         api.getMyMemberships(),
         api.getCraftsmanListing().catch(() => null),
         api.getPaymentProviders().catch(() => []),
         api.getActiveAd().catch(() => ({ ad: null })),
+        api.getMerchantDisclosure().catch(() => null),
       ]);
       setCraftsman(resProfile.craftsman);
       setActiveAd(resAd?.ad || null);
+      setMerchantDisclosure(resMerchant);
       setMemberships(resMemberships);
       setPaymentProviders(Array.isArray(provList) ? provList : []);
       setSelectedProviderId('');
@@ -199,10 +201,6 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   const handlePayOrRenew = async () => {
     setRenewalError('');
-    if (!financialTermsAccepted) {
-      setRenewalError(lang === 'ka' ? 'გაეცანით და დაეთანხმეთ გადახდის წესებს.' : lang === 'ru' ? 'Примите правила оплаты.' : 'Accept the payment terms.');
-      return;
-    }
     if (!selectedPaymentProviderAvailable) {
       setRenewalError(paymentUnavailableMessage);
       return;
@@ -210,20 +208,19 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
     try {
       setPaying(true);
       if (listing?.status === 'UNPAID_DRAFT') {
-        const res = await api.payCraftsmanListing(selectedProviderId, financialTermsAccepted);
+        const res = await api.payCraftsmanListing(selectedProviderId, true);
         if (res.listing) {
           setListing(res.listing);
           setRemainingSeconds(res.listing.secondsRemaining || 0);
         }
       } else {
-        const res = await api.renewCraftsmanListing(selectedProviderId, financialTermsAccepted);
+        const res = await api.renewCraftsmanListing(selectedProviderId, true);
         if (res.listing) {
           setListing(res.listing);
           setRemainingSeconds(res.listing.secondsRemaining || 0);
         }
       }
       setShowRenewalModal(false);
-      setFinancialTermsAccepted(false);
       loadProfile();
     } catch (err: any) {
       setRenewalError(err.message || 'Payment failed');
@@ -333,6 +330,11 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
           <LogOut className="w-4 h-4" />
         </button>
       </div>
+
+      {merchantDisclosure?.configured && <div className="rounded-2xl border border-amber-500/25 bg-slate-900 p-3 text-xs text-slate-300 space-y-1">
+        <div className="flex items-center justify-between"><span className="font-semibold text-amber-300">{lang === 'ka' ? 'Master Boy — იურიდიული და საკონტაქტო ინფორმაცია' : lang === 'ru' ? 'Master Boy — юридическая и контактная информация' : 'Master Boy — legal and contact information'}</span><button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline">{lang === 'ka' ? 'წესები' : lang === 'ru' ? 'Условия' : 'Terms'}</button></div>
+        <p>{merchantDisclosure.legalName}</p><p>{lang === 'ka' ? 'საიდენტიფიკაციო კოდი' : lang === 'ru' ? 'Идентификационный код' : 'Identification code'}: {merchantDisclosure.identificationCode}</p><p>{merchantDisclosure.address}</p><p>{merchantDisclosure.phone} · {merchantDisclosure.email}</p>
+      </div>}
 
       <button type="button" onClick={openFinancialCases} className="self-start text-xs text-amber-400 underline">{lang === 'ka' ? 'გადახდის დავა და დაბრუნების მოთხოვნა' : lang === 'ru' ? 'Спор по оплате и запрос возврата' : 'Payment dispute or refund request'}</button>
 
@@ -830,7 +832,6 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
             <div className="space-y-2 text-xs text-slate-300">
               <button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline text-left">{lang === 'ka' ? 'გადახდისა და დაბრუნების წესები' : lang === 'ru' ? 'Условия оплаты и возврата' : 'Payment and refund terms'}</button>
-              <label className="flex items-start gap-2"><input type="checkbox" checked={financialTermsAccepted} onChange={event => setFinancialTermsAccepted(event.target.checked)} className="mt-0.5" /><span>{lang === 'ka' ? 'გავეცანი და ვეთანხმები ფინანსურ წესებს.' : lang === 'ru' ? 'Я прочитал и принимаю условия.' : 'I have read and accept the terms.'}</span></label>
             </div>
 
             <div className="pt-2 flex gap-2">
@@ -844,7 +845,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               <button
                 type="button"
                 onClick={handlePayOrRenew}
-                disabled={paying || !selectedPaymentProviderAvailable || !financialTermsAccepted}
+                disabled={paying || !selectedPaymentProviderAvailable}
                 className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {paying

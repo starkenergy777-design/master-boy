@@ -1,4 +1,4 @@
-export const FINANCIAL_TERMS_VERSION = '2026-11-21-v1';
+export const FINANCIAL_TERMS_VERSION = '2026-11-23-unipay-v2';
 export const TOP15_TERM_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function coversTop15Term(listingExpiresAt: string | null | undefined, now: number): boolean {

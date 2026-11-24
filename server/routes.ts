@@ -176,10 +176,21 @@ function requireRealPaymentIntegration(res: Response): boolean {
   return true;
 }
 
-function requireFinancialTerms(req: Request, res: Response): boolean {
-  if (req.body?.financialTermsVersion === FINANCIAL_TERMS_VERSION && req.body?.financialTermsAccepted === true) return true;
-  res.status(428).json({ code: 'FINANCIAL_TERMS_REQUIRED', message: 'Read and accept the current craftsman payment terms before payment.' });
+function hasCurrentFinancialTermsAcceptance(userId: string): boolean {
+  const craftsman = getMyCraftsman(userId);
+  return Boolean(craftsman && craftsman.financialTermsVersion === FINANCIAL_TERMS_VERSION && craftsman.financialTermsAcceptedAt);
+}
+
+function requireFinancialTerms(req: AuthRequest, res: Response): boolean {
+  if (req.user && hasCurrentFinancialTermsAcceptance(req.user.id)) return true;
+  res.status(428).json({ code: 'FINANCIAL_TERMS_REQUIRED', message: 'Read and accept the current craftsman payment terms before continuing.' });
   return false;
+}
+
+function hasMerchantDisclosure(): boolean {
+  const disclosure = db.merchantDisclosure;
+  return [disclosure.legalName, disclosure.identificationCode, disclosure.address, disclosure.phone, disclosure.email]
+    .every(value => typeof value === 'string' && value.trim().length > 0);
 }
 
 // Helper to extract language from Accept-Language header
@@ -1191,7 +1202,6 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
   }
   if (!isFree) {
     if (!requireRealPaymentIntegration(res)) return;
-    if (!requireFinancialTerms(req, res)) return;
     const provider = db.providerConfig.payment.find(p => p.id === providerId);
     if (!provider || !provider.isActive) {
       return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
@@ -1352,6 +1362,13 @@ apiRouter.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
   });
 });
 
+// Public before-payment disclosure. It deliberately excludes the recipient
+// IBAN and every payment-provider credential.
+apiRouter.get('/merchant-disclosure', (_req, res) => {
+  const d = db.merchantDisclosure;
+  res.json({ ...d, configured: hasMerchantDisclosure(), termsVersion: FINANCIAL_TERMS_VERSION });
+});
+
 // ==========================================
 // 6.3 CRAFTSMAN (SESSION) ENDPOINTS
 // ==========================================
@@ -1365,6 +1382,24 @@ function getMyCraftsman(userId: string): Craftsman | undefined {
   }
   return undefined;
 }
+
+apiRouter.get('/craftsmen/me/financial-terms', requireCraftsman, (req: AuthRequest, res) => {
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
+  res.json({ accepted: hasCurrentFinancialTermsAcceptance(req.user!.id), termsVersion: FINANCIAL_TERMS_VERSION, disclosureConfigured: hasMerchantDisclosure() });
+});
+
+apiRouter.post('/craftsmen/me/financial-terms/accept', requireCraftsman, async (req: AuthRequest, res) => {
+  const craftsman = getMyCraftsman(req.user!.id);
+  if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
+  if (!hasMerchantDisclosure()) return res.status(503).json({ code: 'MERCHANT_DISCLOSURE_NOT_READY' });
+  craftsman.financialTermsVersion = FINANCIAL_TERMS_VERSION;
+  craftsman.financialTermsAcceptedAt = new Date().toISOString();
+  craftsman.updatedAt = craftsman.financialTermsAcceptedAt;
+  try { await db.persistRuntimeState(); }
+  catch { return res.status(503).json({ code: 'TERMS_ACCEPTANCE_SAVE_FAILED' }); }
+  res.json({ accepted: true, termsVersion: FINANCIAL_TERMS_VERSION, acceptedAt: craftsman.financialTermsAcceptedAt });
+});
 
 // PUT /craftsmen/me/draft (wizard auto-save)
 apiRouter.put('/craftsmen/me/draft', requireCraftsman, (req: AuthRequest, res) => {
@@ -1427,7 +1462,6 @@ apiRouter.post('/craftsmen/register', requireCraftsman, async (req: AuthRequest,
   }
   if (!isFree) {
     if (!requireRealPaymentIntegration(res)) return;
-    if (!requireFinancialTerms(req, res)) return;
     const provider = db.providerConfig.payment.find(p => p.id === data.providerId);
     if (!provider || !provider.isActive) {
       return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
@@ -1544,6 +1578,7 @@ apiRouter.get(['/craftsmen/me', '/craftsman/profile', '/craftsmen/profile'], req
 
 // PUT /craftsmen/me (also /craftsman/profile, /craftsman/phone-visibility, /craftsmen/phone-visibility)
 apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibility', '/craftsmen/phone-visibility'], requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
@@ -1587,6 +1622,7 @@ async function withPhotoMutationLock<T>(craftsmanId: string, action: () => Promi
 
 // POST /craftsmen/me/photos
 apiRouter.post('/craftsmen/me/photos', requireCraftsman, async (req: AuthRequest, res) => {
+  if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman profile not found' });
@@ -1637,6 +1673,7 @@ apiRouter.post('/craftsmen/me/photos', requireCraftsman, async (req: AuthRequest
 
 // PUT /craftsmen/me/photos/:id
 apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequest, res) => {
+  if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
@@ -1679,6 +1716,7 @@ apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequ
 
 // DELETE /craftsmen/me/photos/:id
 apiRouter.delete('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequest, res) => {
+  if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Craftsman not found' });
@@ -1941,6 +1979,7 @@ apiRouter.get('/top15/availability', requireCraftsman, (req, res) => {
 
 // POST /top15/reserve (creates a 3-minute candidate ticket; it does not occupy a slot)
 apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
+  if (!requireFinancialTerms(req, res)) return;
   if (!requireRealPaymentIntegration(res)) return;
   if (!db.providerConfig.payment.some(provider => provider.isActive)) {
     return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'No active payment provider is available.' });
@@ -2226,6 +2265,7 @@ apiRouter.get('/financial/cases', requireCraftsman, async (req: AuthRequest, res
 });
 
 apiRouter.post('/financial/cases', requireCraftsman, async (req: AuthRequest, res) => {
+  if (!requireFinancialTerms(req, res)) return;
   const craftsman = getMyCraftsman(req.user!.id);
   if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
   const { paymentIntentId, reason, description } = req.body || {};
@@ -3289,9 +3329,16 @@ apiRouter.put('/admin/listing/price', requireSuperAdmin, checkConfigLock, async 
 
 // PUT /admin/payment/recipient-account (Protected by config lock!)
 apiRouter.put('/admin/payment/recipient-account', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
-  const { iban, bankName, beneficiary, taxNumber } = req.body;
+  const { iban, bankName, beneficiary, taxNumber, merchantAddress, merchantPhone, merchantEmail } = req.body;
   if (!iban || !bankName || !beneficiary) {
     return res.status(400).json({ code: 'INVALID_ACCOUNT', message: 'iban, bankName, and beneficiary required' });
+  }
+  const contact = { address: String(merchantAddress || '').trim(), phone: String(merchantPhone || '').trim(), email: String(merchantEmail || '').trim() };
+  if (![taxNumber, contact.address, contact.phone, contact.email].every(value => typeof value === 'string' && value.trim())) {
+    return res.status(400).json({ code: 'MERCHANT_DISCLOSURE_REQUIRED', message: 'Merchant identification code, address, phone and email are required.' });
+  }
+  if (!/^\S+@\S+\.\S+$/.test(contact.email) || contact.phone.length > 32 || String(taxNumber).trim().length > 32) {
+    return res.status(400).json({ code: 'INVALID_MERCHANT_DISCLOSURE' });
   }
 
   db.recipientAccount = {
@@ -3300,6 +3347,10 @@ apiRouter.put('/admin/payment/recipient-account', requireSuperAdmin, checkConfig
     beneficiary,
     taxNumber: taxNumber || db.recipientAccount.taxNumber,
     updatedAt: new Date().toISOString(),
+  };
+  db.merchantDisclosure = {
+    legalName: String(beneficiary).trim(), identificationCode: String(taxNumber).trim(),
+    address: contact.address, phone: contact.phone, email: contact.email, updatedAt: new Date().toISOString(),
   };
 
   db.auditLog.unshift({
@@ -3314,12 +3365,12 @@ apiRouter.put('/admin/payment/recipient-account', requireSuperAdmin, checkConfig
 
   await db.persistSuperAdminConfig();
 
-  res.json(db.recipientAccount);
+  res.json({ ...db.recipientAccount, merchantAddress: db.merchantDisclosure.address, merchantPhone: db.merchantDisclosure.phone, merchantEmail: db.merchantDisclosure.email });
 });
 
 // GET /admin/payment/recipient-account
 apiRouter.get('/admin/payment/recipient-account', requireSuperAdmin, (req, res) => {
-  res.json(db.recipientAccount);
+  res.json({ ...db.recipientAccount, merchantAddress: db.merchantDisclosure.address, merchantPhone: db.merchantDisclosure.phone, merchantEmail: db.merchantDisclosure.email });
 });
 
 // GET /admin/admins (§6.6)

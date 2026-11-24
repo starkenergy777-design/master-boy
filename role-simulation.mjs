@@ -59,6 +59,8 @@ function addSession(role) {
       cityId: 'city-tbilisi',
       professionId: 'prof-plumber',
       photos: [],
+      financialTermsVersion: '2026-11-23-unipay-v2',
+      financialTermsAcceptedAt: new Date().toISOString(),
     });
   }
   return { id, token, user };
@@ -505,12 +507,17 @@ try {
   const previousSimulation = process.env.PAYMENTS_SIMULATION;
   process.env.PAYMENTS_SIMULATION = 'true';
   try {
+    const auditedCraftsman = db.craftsmen.get(auditCraftsmanId);
+    const acceptedTerms = { financialTermsVersion: auditedCraftsman.financialTermsVersion, financialTermsAcceptedAt: auditedCraftsman.financialTermsAcceptedAt };
+    auditedCraftsman.financialTermsVersion = 'old-version';
+    auditedCraftsman.financialTermsAcceptedAt = null;
     const beforeTermsGuard = db.paymentIntents.size;
     const missingTerms = await request('/craftsmen/me/listing/pay', {
       method: 'POST', token: roles.CRAFTSMAN.token, body: { providerId: 'prov-bog' },
     });
     check('paid listing rejects missing financial terms before creating a payment',
       missingTerms.status === 428 && missingTerms.body.code === 'FINANCIAL_TERMS_REQUIRED' && db.paymentIntents.size === beforeTermsGuard);
+    Object.assign(auditedCraftsman, acceptedTerms);
   } finally {
     if (previousSimulation === undefined) delete process.env.PAYMENTS_SIMULATION;
     else process.env.PAYMENTS_SIMULATION = previousSimulation;

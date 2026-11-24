@@ -1,5 +1,5 @@
 import { Pool, PoolClient } from 'pg';
-import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, CraftsmanDraft, CraftsmanListing, ListingPrice, Profession, ProviderConfig, RecipientAccount, ConfigLock, Top15Membership, Top15Price, Top15Reservation, User } from './types.js';
+import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, CraftsmanDraft, CraftsmanListing, ListingPrice, Profession, ProviderConfig, RecipientAccount, MerchantDisclosure, ConfigLock, Top15Membership, Top15Price, Top15Reservation, User } from './types.js';
 import { sortProfessionsByDemand } from './professionOrder.js';
 import { decryptPaymentCredentials, encryptPaymentCredentials, separatePaymentCredentials } from './payment-credentials.js';
 
@@ -57,6 +57,7 @@ export interface SuperAdminPersistedConfig {
   advertisements: Advertisement[];
   providerConfig: ProviderConfig;
   recipientAccount: RecipientAccount;
+  merchantDisclosure: MerchantDisclosure;
   configLock: ConfigLock;
   bootstrap: { phone: string; password: string; enabled: boolean; invalidated: boolean; completedAt: string | null };
   backendConfig: { baseUrl: string; issuedAt: string; signature: string };
@@ -177,7 +178,7 @@ export class StorageService {
   async loadSuperAdminConfig(): Promise<SuperAdminPersistedConfig | null> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return null;
     const [c, p, secrets, paymentSecrets] = await Promise.all([
-      this.db().query("SELECT id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at FROM public.system_config WHERE id='global_config' LIMIT 1"),
+      this.db().query("SELECT id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,merchant_address,merchant_contact_phone,merchant_contact_email,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at FROM public.system_config WHERE id='global_config' LIMIT 1"),
       this.db().query('SELECT * FROM public.top15_prices'),
       this.db().query("SELECT secret_value FROM public.server_secrets WHERE secret_name='provider_config' LIMIT 1"),
       this.db().query("SELECT secret_value FROM public.server_secrets WHERE secret_name='payment_credentials' LIMIT 1"),
@@ -226,6 +227,7 @@ export class StorageService {
         openaiConfigured:Boolean(env.OPENAI_API_KEY),
       } },
       recipientAccount:{ iban:r.recipient_iban || '', bankName:r.recipient_bank_name || '', beneficiary:r.recipient_company_name || '', taxNumber:r.recipient_tax_id || '', updatedAt:date(r.updated_at) },
+      merchantDisclosure:{ legalName:r.recipient_company_name || '', identificationCode:r.recipient_tax_id || '', address:r.merchant_address || '', phone:r.merchant_contact_phone || '', email:r.merchant_contact_email || '', updatedAt:date(r.updated_at) },
       configLock:{ locked:Boolean(r.config_locked), lockedUntil:r.lock_expires_at ? date(r.lock_expires_at) : null, lockedAt:null, unlockCredentialHash:r.config_unlock_hash || undefined },
       bootstrap:{ phone:env.BOOTSTRAP_PHONE || '', password:'', enabled:Boolean(env.BOOTSTRAP_PASSWORD), invalidated:false, completedAt:null },
       backendConfig: persistedSettings.backendConfig || { baseUrl:env.APP_URL || '', issuedAt:date(r.updated_at), signature:'' }, version:1, lastPersistedAt:date(r.updated_at),
@@ -310,8 +312,8 @@ export class StorageService {
         : null;
       const val = (id:string) => p.find((x) => x.id===id)?.isActive || false;
       await client.query(
-        "INSERT INTO public.system_config (id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at) VALUES ('global_config',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) ON CONFLICT(id) DO UPDATE SET config_locked=EXCLUDED.config_locked,lock_expires_at=EXCLUDED.lock_expires_at,config_unlock_hash=EXCLUDED.config_unlock_hash,recipient_bank_name=EXCLUDED.recipient_bank_name,recipient_iban=EXCLUDED.recipient_iban,recipient_tax_id=EXCLUDED.recipient_tax_id,recipient_company_name=EXCLUDED.recipient_company_name,standard_listing_price_minor=EXCLUDED.standard_listing_price_minor,gemini_api_key_configured=EXCLUDED.gemini_api_key_configured,bog_active=EXCLUDED.bog_active,tbc_active=EXCLUDED.tbc_active,stripe_active=EXCLUDED.stripe_active,updated_at=NOW()",
-        [config.configLock.locked,config.configLock.lockedUntil,config.configLock.unlockCredentialHash || null,config.recipientAccount.bankName,config.recipientAccount.iban,config.recipientAccount.taxNumber,config.recipientAccount.beneficiary,config.listingPrice.amountMinor,Boolean(config.providerConfig.ai.geminiConfigured || process.env.GEMINI_API_KEY),val('prov-bog'),val('prov-tbc'),val('prov-stripe')]);
+        "INSERT INTO public.system_config (id,config_locked,lock_expires_at,config_unlock_hash,recipient_bank_name,recipient_iban,recipient_tax_id,recipient_company_name,merchant_address,merchant_contact_phone,merchant_contact_email,standard_listing_price_minor,gemini_api_key_configured,bog_active,tbc_active,stripe_active,updated_at) VALUES ('global_config',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW()) ON CONFLICT(id) DO UPDATE SET config_locked=EXCLUDED.config_locked,lock_expires_at=EXCLUDED.lock_expires_at,config_unlock_hash=EXCLUDED.config_unlock_hash,recipient_bank_name=EXCLUDED.recipient_bank_name,recipient_iban=EXCLUDED.recipient_iban,recipient_tax_id=EXCLUDED.recipient_tax_id,recipient_company_name=EXCLUDED.recipient_company_name,merchant_address=EXCLUDED.merchant_address,merchant_contact_phone=EXCLUDED.merchant_contact_phone,merchant_contact_email=EXCLUDED.merchant_contact_email,standard_listing_price_minor=EXCLUDED.standard_listing_price_minor,gemini_api_key_configured=EXCLUDED.gemini_api_key_configured,bog_active=EXCLUDED.bog_active,tbc_active=EXCLUDED.tbc_active,stripe_active=EXCLUDED.stripe_active,updated_at=NOW()",
+        [config.configLock.locked,config.configLock.lockedUntil,config.configLock.unlockCredentialHash || null,config.recipientAccount.bankName,config.recipientAccount.iban,config.merchantDisclosure.identificationCode,config.merchantDisclosure.legalName,config.merchantDisclosure.address,config.merchantDisclosure.phone,config.merchantDisclosure.email,config.listingPrice.amountMinor,Boolean(config.providerConfig.ai.geminiConfigured || process.env.GEMINI_API_KEY),val('prov-bog'),val('prov-tbc'),val('prov-stripe')]);
       await client.query(
         `INSERT INTO public.server_secrets AS current_secrets (secret_name, secret_value, updated_at)
          VALUES ('provider_config', $1::jsonb, NOW())
@@ -448,7 +450,7 @@ export class StorageService {
     for(const r of rs.rows) {
       let k=r.id,v:any;
       if(name==='users') v={id:r.id,phone:r.phone,password:r.password_hash,roles:r.roles,status:r.status,createdAt:date(r.created_at),adminSharePercent:r.admin_share_percent==null?null:Number(r.admin_share_percent)};
-      else if(name==='craftsmen') v={id:r.id,userId:r.user_id,name:r.name,description:r.description||'',phone:r.phone,phoneVisible:r.phone_visible,latitude:r.latitude==null?null:Number(r.latitude),longitude:r.longitude==null?null:Number(r.longitude),workingHours:r.working_hours,status:r.status,cityId:r.city_id,professionId:r.profession_id,bankAccount:r.bank_account,createdAt:date(r.created_at),updatedAt:date(r.updated_at),photos:r.photos||[]};
+      else if(name==='craftsmen') v={id:r.id,userId:r.user_id,name:r.name,description:r.description||'',phone:r.phone,phoneVisible:r.phone_visible,latitude:r.latitude==null?null:Number(r.latitude),longitude:r.longitude==null?null:Number(r.longitude),workingHours:r.working_hours,status:r.status,cityId:r.city_id,professionId:r.profession_id,bankAccount:r.bank_account,financialTermsVersion:r.financial_terms_version||null,financialTermsAcceptedAt:r.financial_terms_accepted_at?date(r.financial_terms_accepted_at):null,createdAt:date(r.created_at),updatedAt:date(r.updated_at),photos:r.photos||[]};
       else if(name==='craftsmanDrafts'){k=r.user_id;v={step:r.step,data:r.data||{},updatedAt:date(r.updated_at)};}
       else if(name==='top15Prices') v={cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,updatedAt:date(r.updated_at),updatedBy:r.updated_by||'system'};
       else if(name==='top15Reservations') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,expiresAt:new Date(r.expires_at).getTime(),status:r.status==='CONFIRMED'?'PAID':r.status==='EXPIRED'?'EXPIRED':r.status==='CANCELLED'?'CANCELLED':r.status==='CANDIDATE'?'CANDIDATE':'HELD'};
@@ -534,7 +536,7 @@ export class StorageService {
       await sync('users','id',[...s.users.keys()]);
       const photoIds:string[]=[];
       for(const x of s.craftsmen.values()){
-        await up("INSERT INTO public.craftsmen(id,user_id,name,description,phone,phone_visible,city_id,profession_id,latitude,longitude,working_hours,status,bank_account,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::craftsman_status,$13,$14,$15) ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id,name=EXCLUDED.name,description=EXCLUDED.description,phone=EXCLUDED.phone,phone_visible=EXCLUDED.phone_visible,city_id=EXCLUDED.city_id,profession_id=EXCLUDED.profession_id,latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,working_hours=EXCLUDED.working_hours,status=EXCLUDED.status,bank_account=EXCLUDED.bank_account,updated_at=EXCLUDED.updated_at",[x.id,x.userId,x.name,x.description||'',x.phone,x.phoneVisible,x.cityId,x.professionId,x.latitude,x.longitude,JSON.stringify(x.workingHours||{}),x.status,x.bankAccount||null,x.createdAt,x.updatedAt]);
+        await up("INSERT INTO public.craftsmen(id,user_id,name,description,phone,phone_visible,city_id,profession_id,latitude,longitude,working_hours,status,bank_account,financial_terms_version,financial_terms_accepted_at,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::craftsman_status,$13,$14,$15,$16,$17) ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id,name=EXCLUDED.name,description=EXCLUDED.description,phone=EXCLUDED.phone,phone_visible=EXCLUDED.phone_visible,city_id=EXCLUDED.city_id,profession_id=EXCLUDED.profession_id,latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,working_hours=EXCLUDED.working_hours,status=EXCLUDED.status,bank_account=EXCLUDED.bank_account,financial_terms_version=EXCLUDED.financial_terms_version,financial_terms_accepted_at=EXCLUDED.financial_terms_accepted_at,updated_at=EXCLUDED.updated_at",[x.id,x.userId,x.name,x.description||'',x.phone,x.phoneVisible,x.cityId,x.professionId,x.latitude,x.longitude,JSON.stringify(x.workingHours||{}),x.status,x.bankAccount||null,x.financialTermsVersion||null,x.financialTermsAcceptedAt||null,x.createdAt,x.updatedAt]);
         for(const p of x.photos||[]){photoIds.push(p.id);await up("INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET craftsman_id=EXCLUDED.craftsman_id,url=EXCLUDED.url,is_primary=EXCLUDED.is_primary,display_order=EXCLUDED.display_order,updated_at=EXCLUDED.updated_at",[p.id,x.id,p.url,p.isPrimary,p.displayOrder,p.createdAt,p.updatedAt]);}
       }
       await sync('craftsmen','id',[...s.craftsmen.keys()]); await sync('craftsman_photos','id',photoIds);
