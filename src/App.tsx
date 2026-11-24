@@ -421,7 +421,7 @@ export default function App() {
           lang={lang}
           currentUser={currentUser}
         />
-        {currentUser?.roles.includes('CRAFTSMAN') && <FinancialTermsGate key={currentUser.id} lang={lang} />}
+        {currentUser?.roles.includes('CRAFTSMAN') && <FinancialTermsGate key={currentUser.id} lang={lang} onExit={handleLogout} />}
 
       </div>
     </AndroidFrame>

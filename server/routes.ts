@@ -3363,7 +3363,10 @@ apiRouter.put('/admin/payment/recipient-account', requireSuperAdmin, checkConfig
     createdAt: new Date().toISOString(),
   });
 
-  await db.persistSuperAdminConfig();
+  const persisted = await db.persistSuperAdminConfig();
+  if (!persisted.success) {
+    return res.status(503).json({ code: 'RECIPIENT_ACCOUNT_SAVE_FAILED', message: 'Recipient and merchant disclosure could not be saved.' });
+  }
 
   res.json({ ...db.recipientAccount, merchantAddress: db.merchantDisclosure.address, merchantPhone: db.merchantDisclosure.phone, merchantEmail: db.merchantDisclosure.email });
 });
