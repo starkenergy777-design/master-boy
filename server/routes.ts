@@ -179,8 +179,25 @@ function requireRealPaymentIntegration(res: Response): boolean {
 }
 
 function sendBogResult(res: Response, error: unknown) {
-  if (error instanceof BogCheckoutError) return res.status(error.status).json({ code: error.code });
-  return res.status(503).json({ code: 'BOG_CHECKOUT_UNAVAILABLE' });
+  const reference = crypto.randomUUID();
+  // Keep only classified diagnostics. Raw bank responses can contain credentials or personal data.
+  const databaseCode = typeof (error as any)?.code === 'string' && /^[0-9]{2}[0-9A-Z]{3}$/.test((error as any).code)
+    ? (error as any).code : undefined;
+  console.warn('[MASTER_BOY] BOG request failed', {
+    reference,
+    code: error instanceof BogCheckoutError ? error.code : 'BOG_CHECKOUT_UNAVAILABLE',
+    ...(error instanceof BankApiError ? { bankStatus: error.status, operation: error.operation, bankCode: error.bankCode } : {}),
+    ...(databaseCode ? { databaseCode } : {}),
+    ...((error as any)?.name === 'TimeoutError' ? { timeout: true } : {}),
+  });
+  if (error instanceof BogCheckoutError) return res.status(error.status).json({ code: error.code, reference });
+  if (error instanceof BankApiError && error.operation === 'AUTHENTICATION' && [400, 401, 403].includes(error.status)) {
+    return res.status(503).json({ code: 'BOG_AUTH_REJECTED', reference });
+  }
+  if (error instanceof BankApiError && error.operation === 'CREATE_ORDER' && error.status >= 400 && error.status < 500) {
+    return res.status(503).json({ code: 'BOG_ORDER_REJECTED', reference });
+  }
+  return res.status(503).json({ code: 'BOG_CHECKOUT_UNAVAILABLE', reference });
 }
 
 function hasCurrentFinancialTermsAcceptance(userId: string): boolean {
@@ -2157,6 +2174,7 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
   // Check if idempotency key was already processed
   for (const intent of db.paymentIntents.values()) {
     if (intent.idempotencyKey === idempotencyKey && intent.craftsmanId === craftsman.id) {
+      if (intent.providerCheckout) return res.json({ ...checkoutResponse(intent), alreadyProcessed: true });
       return res.json({
         id: intent.id,
         status: intent.status,

@@ -70,7 +70,7 @@ export function verifyBogCallback(
 }
 
 export class BankApiError extends Error {
-  constructor(readonly status: number) {
+  constructor(readonly status: number, readonly operation = 'UNKNOWN', readonly bankCode?: string) {
     super(`Bank API request failed with HTTP ${status}.`);
   }
 }
@@ -97,7 +97,17 @@ function validateRequest(input: CheckoutRequest): void {
 
 async function bankJson(fetcher: typeof fetch, url: string, init: RequestInit): Promise<any> {
   const response = await fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new BankApiError(response.status);
+  if (!response.ok) {
+    const pathname = new URL(url).pathname;
+    const operation = pathname.endsWith('/token') || pathname.endsWith('/access-token')
+      ? 'AUTHENTICATION'
+      : pathname.endsWith('/orders') || pathname.endsWith('/payments') ? 'CREATE_ORDER' : 'PAYMENT_STATUS';
+    const body = await response.json().catch(() => null);
+    const candidate = body?.error_code ?? body?.code ?? body?.error;
+    const bankCode = /^(?:\d{1,6}|invalid_client|unauthorized_client|invalid_request|invalid_grant|unsupported_grant_type)$/.test(String(candidate))
+      ? String(candidate) : undefined;
+    throw new BankApiError(response.status, operation, bankCode);
+  }
   const body = await response.json();
   if (!body || typeof body !== 'object') throw new Error('Bank API returned invalid JSON.');
   return body;

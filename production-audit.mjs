@@ -150,6 +150,14 @@ check('Top15 payment provider selection requires explicit user choice', () => {
   assert.doesNotMatch(top15, /setSelectedProviderId\(provs\[0\]\.id\)/);
   assert.match(top15, /setSelectedProviderId\(''\)/);
 });
+check('Top15 keeps payment errors after expiry and reuses its request key', () => {
+  const update = top15.match(/setErrorMsg\((previous => previous \|\| .*?)\);/);
+  assert.ok(update, 'expiry must preserve an existing payment error');
+  const expireMessage = new Function('lang', 'return (' + update[1] + ');')('ka');
+  assert.equal(expireMessage('Bank rejected the order. Reference 123'), 'Bank rejected the order. Reference 123');
+  assert.match(expireMessage(''), /3-წუთიანი/);
+  assert.match(top15, /const idempotencyKey = `idem-\$\{reservation.reservationId\}`/);
+});
 check('Top15 does not reserve a slot when no payment provider is available', () => {
   const providerFetch = top15.indexOf('const provs = await api.getPaymentProviders();');
   const unavailableGuard = top15.indexOf('if (provs.length === 0)');
