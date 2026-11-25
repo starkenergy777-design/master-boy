@@ -1,7 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, CraftsmanDraft, CraftsmanListing, ListingPrice, Profession, ProviderConfig, RecipientAccount, MerchantDisclosure, ConfigLock, Top15Membership, Top15Price, Top15Reservation, User } from './types.js';
 import { sortProfessionsByDemand } from './professionOrder.js';
-import { decryptPaymentCredentials, encryptPaymentCredentials, separatePaymentCredentials } from './payment-credentials.js';
+import { decryptPaymentCredentials, encryptPaymentCredentials, PaymentCredentialKeyError, separatePaymentCredentials } from './payment-credentials.js';
 import type { PaymentIntent } from './types.js';
 
 export type AiProvider = 'gemini' | 'openai';
@@ -300,7 +300,7 @@ export class StorageService {
     this.connected = true;
   }
 
-  async saveSuperAdminConfig(config: SuperAdminPersistedConfig): Promise<{ success:boolean; database:boolean; snapshot:boolean; error?:string }> {
+  async saveSuperAdminConfig(config: SuperAdminPersistedConfig): Promise<{ success:boolean; database:boolean; snapshot:boolean; error?:string; errorCode?:string }> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return { success:false,database:false,snapshot:false };
     let client: PoolClient | null = null;
     try {
@@ -337,7 +337,11 @@ export class StorageService {
       this.connected=true; return { success:true,database:true,snapshot:false };
     } catch(e:any) {
       if (client) await client.query('ROLLBACK').catch(() => undefined);
-      this.connected=false; return { success:false,database:false,snapshot:false,error:e.message };
+      const errorCode = e instanceof PaymentCredentialKeyError ? 'PAYMENT_ENCRYPTION_UNAVAILABLE'
+        : e.code === '23514' && e.constraint === 'server_secrets_secret_name_check' ? 'PAYMENT_STORAGE_SCHEMA_OUTDATED'
+        : e.code === '42501' ? 'CONFIG_STORAGE_ACCESS_DENIED' : undefined;
+      this.connected=false;
+      return { success:false,database:false,snapshot:false,error:e.message,errorCode };
     } finally {
       client?.release();
     }

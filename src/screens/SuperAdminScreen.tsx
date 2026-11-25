@@ -331,6 +331,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   const [showKeyMask, setShowKeyMask] = useState(false);
   const [bogVerification, setBogVerification] = useState<{ ok: boolean; message: string } | null>(null);
   const [checkingBog, setCheckingBog] = useState(false);
+  const [providerSaveError, setProviderSaveError] = useState('');
   const [bogEnvironment, setBogEnvironment] = useState<'live' | 'sandbox'>('live');
 
   // Commercial Advertisements (§Task 10)
@@ -722,6 +723,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
   // Payment Providers Handlers (Bank of Georgia, TBC, Stripe)
   const handleOpenEditProvider = (prov: any) => {
+    setProviderSaveError('');
     setBogVerification(null);
     setBogEnvironment('live');
     setEditingProvider(prov);
@@ -740,7 +742,8 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     setBogVerification(null);
     setCheckingBog(true);
     try {
-      await api.verifyBogCredentials(providerForm.clientId, providerForm.secretKey, bogEnvironment);
+      const result = await api.verifyBogCredentials(providerForm.clientId, providerForm.secretKey, bogEnvironment);
+      if (result.verified !== true) throw new Error(lang === 'ka' ? 'ბანკის ავტორიზაციის დადასტურება ვერ მივიღეთ.' : lang === 'ru' ? 'Подтверждение авторизации от банка не получено.' : 'Bank authentication was not confirmed.');
       setBogVerification({ ok: true, message: lang === 'ka' ? 'ბანკმა ავტორიზაცია დაადასტურა. გადახდა არ დაწყებულა.' : lang === 'ru' ? 'Банк подтвердил авторизацию. Платёж не инициирован.' : 'Bank authentication succeeded. No payment was started.' });
     } catch (error) {
       setBogVerification({ ok: false, message: error instanceof Error ? error.message : 'Bank authentication could not be checked.' });
@@ -751,22 +754,19 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
   const handleSaveProvider = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProvider || checkingBog || (editingProvider.id === 'prov-bog' && bogEnvironment === 'sandbox')) return;
+    if (!editingProvider || loading || checkingBog || (editingProvider.id === 'prov-bog' && bogEnvironment === 'sandbox')) return;
+    setProviderSaveError('');
     setErrorMsg('');
     setSuccessMsg('');
     try {
       setLoading(true);
-      await api.updatePaymentProvider(editingProvider.id, providerForm);
+      const result = await api.updatePaymentProvider(editingProvider.id, providerForm);
+      setPaymentProviders(current => current.map(provider => provider.id === result.provider.id ? result.provider : provider));
+      setProviderForm(form => ({ ...form, secretKey: '', apiKey: '', webhookSecret: '' }));
       setSuccessMsg(`საგადახდო პროვაიდერი „${editingProvider.name}“ წარმატებით განახლდა!`);
       setEditingProvider(null);
-      const updated = await api.getProviders('payment');
-      setPaymentProviders(updated);
     } catch (err: any) {
-      if (err.status === 423) {
-        setErrorMsg('423 CONFIG_LOCKED: Cannot modify payment providers during 6-month lock.');
-      } else {
-        setErrorMsg(err.message || 'პროვაიდერის განახლება ვერ მოხერხდა');
-      }
+      setProviderSaveError(err.message || 'პროვაიდერის განახლება ვერ მოხერხდა');
     } finally {
       setLoading(false);
     }
@@ -1811,7 +1811,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingProvider(null)}
-                disabled={checkingBog}
+                disabled={checkingBog || loading}
                 className="text-slate-400 hover:text-white p-1"
               >
                 <X className="w-4 h-4" />
@@ -1819,6 +1819,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             </div>
 
             <form onSubmit={handleSaveProvider} className="space-y-3 text-xs">
+              {providerSaveError && <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/30 p-2 text-rose-200">{providerSaveError}</p>}
               {editingProvider.id === 'prov-bog' && (
                 <label className="block text-[10px] text-slate-400">
                   {lang === 'ka' ? 'ავტორიზაციის გარემო' : lang === 'ru' ? 'Среда авторизации' : 'Authentication environment'}
@@ -1868,6 +1869,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                   placeholder={editingProvider.secretKeyConfigured && bogEnvironment === 'live' ? 'შეავსეთ მხოლოდ გასაახლებლად' : 'Secret Key...'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
                 />
+                {editingProvider.id === 'prov-bog' && bogEnvironment === 'live' && (
+                  <p className="text-[10px] text-slate-400">
+                    {editingProvider.secretKeyConfigured
+                      ? (lang === 'ka' ? 'საიდუმლო გასაღები შენახულია' : lang === 'ru' ? 'Секретный ключ сохранён' : 'Secret key is saved')
+                      : (lang === 'ka' ? 'საიდუმლო გასაღები ჯერ არ არის შენახული' : lang === 'ru' ? 'Секретный ключ ещё не сохранён' : 'Secret key is not saved')}
+                  </p>
+                )}
               </div>
 
               {(editingProvider.id === 'prov-stripe' || editingProvider.id === 'prov-tbc') && (
@@ -1932,7 +1940,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingProvider(null)}
-                  disabled={checkingBog}
+                  disabled={checkingBog || loading}
                   className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
                 >
                   გაუქმება

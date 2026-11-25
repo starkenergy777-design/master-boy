@@ -3287,11 +3287,11 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkProviderConf
     return res.status(400).json({ code: 'INVALID_TYPE', message: 'Type must be payment, sms, or email' });
   }
   const items = db.providerConfig[type] as any[];
-  const item = items.find(p => p.id === req.params.id);
-  if (!item) {
+  const index = items.findIndex(p => p.id === req.params.id);
+  if (index < 0) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Provider not found' });
   }
-  const previousItem = { ...item };
+  const item = { ...items[index] };
 
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const { name, apiKey, secretKey, clientId, webhookSecret, isActive } = body;
@@ -3318,7 +3318,6 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkProviderConf
   if (type === 'payment') {
     const activationError = paymentProviderActivationError(item);
     if (activationError) {
-      Object.assign(item, previousItem);
       return res.status(422).json({ code: 'PAYMENT_CREDENTIALS_REQUIRED', message: activationError });
     }
   }
@@ -3335,14 +3334,15 @@ apiRouter.put('/admin/providers/:type/:id', requireSuperAdmin, checkProviderConf
     createdAt: new Date().toISOString(),
   });
 
-  const persistence = await db.persistSuperAdminConfig();
+  const updatedItems = items.map((provider, position) => position === index ? item : provider);
+  const persistence = await db.persistSuperAdminConfig({ ...db.providerConfig, [type]: updatedItems });
   if (!persistence.success) {
-    Object.assign(item, previousItem);
     const auditIndex = db.auditLog.findIndex(entry => entry.id === auditId);
     if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
-    return res.status(503).json({ code: 'CONFIG_PERSIST_FAILED', message: 'Provider settings could not be saved to Supabase.' });
+    return res.status(503).json({ code: persistence.errorCode ?? 'CONFIG_PERSIST_FAILED', message: 'Provider settings could not be saved to Supabase.' });
   }
 
+  Object.assign(items[index], item);
   res.json({ success: true, provider: safeProvider(item) });
 });
 
