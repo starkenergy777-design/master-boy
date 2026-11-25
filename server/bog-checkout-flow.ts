@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createBankCheckout, getBankPaymentState, type BankCredentials, type BogEnvironment } from './bank-gateway.js';
+import { BogProcessedAmountMismatch, createBankCheckout, getBankPaymentState, type BankCredentials, type BogEnvironment } from './bank-gateway.js';
 import { db } from './db.js';
 import { coversTop15Term, FINANCIAL_TERMS_VERSION, TOP15_TERM_MS } from './financial.js';
 import { storage } from './storage.js';
@@ -162,14 +162,24 @@ export async function reconcileBogPayment(id: string, callbackBankId?: string) {
     }
     const connection = config(checkout.environment, false);
     if (!connection) throw new BogCheckoutError(503, 'PAYMENT_PROVIDER_NOT_READY');
+    let processedAmountMinor: number | undefined;
     const state = await getBankPaymentState('prov-bog', connection.credentials, bankId, intent.amountMinor, fetch,
-      { environment: checkout.environment, externalOrderId: intent.id });
+      { environment: checkout.environment, externalOrderId: intent.id }).catch(error => {
+        if (!(error instanceof BogProcessedAmountMismatch)) throw error;
+        processedAmountMinor = error.processedAmountMinor;
+        return 'FAILED' as const;
+      });
     if (state === 'PENDING' || state === 'AUTHORIZED') return checkoutResponse(intent);
     const reservation = checkout.kind === 'TOP15' ? db.top15Reservations.get(intent.reservationId) : undefined;
     const changes: CheckoutChanges = {};
     if (reservation) changes.reservation = { ...reservation, status: 'CANCELLED' };
     const settled: PaymentIntent = { ...intent, bankPaymentId: bankId, status: state === 'SUCCEEDED' ? 'SUCCEEDED' : 'FAILED',
       providerCheckout: { ...checkout, registration: undefined, phone: undefined, redirectUrl: undefined } };
+    if (processedAmountMinor !== undefined) {
+      settled.providerCheckout!.needsReview = true;
+      settled.providerCheckout!.processedAmountMinor = processedAmountMinor;
+      changes.reviewCraftsmanId = intent.craftsmanId || checkout.registration?.craftsman.id;
+    }
     if (state === 'SUCCEEDED') {
       const now = Date.now();
       const settledAt = new Date(now).toISOString();

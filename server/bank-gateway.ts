@@ -75,6 +75,12 @@ export class BankApiError extends Error {
   }
 }
 
+export class BogProcessedAmountMismatch extends Error {
+  constructor(readonly processedAmountMinor: number) {
+    super('BOG did not confirm the full expected payment amount.');
+  }
+}
+
 function validateRequest(input: CheckoutRequest): void {
   if (!['prov-bog', 'prov-tbc'].includes(input.bank) ||
       !input.credentials.clientId || !input.credentials.secretKey ||
@@ -194,7 +200,11 @@ export async function getBankPaymentState(
     }
     const status = body.order_status?.key;
     if (status === 'completed' || status === 'partial_completed') {
-      if (bankAmountMinor(body.purchase_units?.transfer_amount) !== expectedAmountMinor) {
+      const processedAmount = bankAmountMinor(body.purchase_units?.transfer_amount);
+      if (processedAmount !== null && processedAmount > 0 && processedAmount !== expectedAmountMinor) {
+        throw new BogProcessedAmountMismatch(processedAmount);
+      }
+      if (processedAmount !== expectedAmountMinor) {
         throw new Error('BOG did not confirm the full expected payment amount.');
       }
       return 'SUCCEEDED';

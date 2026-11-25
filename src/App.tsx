@@ -96,8 +96,7 @@ export default function App() {
       activeScreen === nextScreen &&
       (!nextTab || currentTab === nextTab) &&
       (!params?.craftsman || selectedCraftsman?.id === params.craftsman.id) &&
-      (!params?.cityId || selectedCityId === params.cityId) &&
-      (!params?.professionId || selectedProfessionId === params.professionId)
+      (nextScreen !== 'results' || (selectedCityId === params?.cityId && selectedProfessionId === params?.professionId))
     ) {
       return;
     }
@@ -119,8 +118,10 @@ export default function App() {
 
     setActiveScreen(nextScreen);
     if (nextTab) setCurrentTab(nextTab);
-    if (params?.cityId !== undefined) setSelectedCityId(params.cityId);
-    if (params?.professionId !== undefined) setSelectedProfessionId(params.professionId);
+    if (nextScreen === 'results') {
+      setSelectedCityId(params?.cityId);
+      setSelectedProfessionId(params?.professionId);
+    }
     if (params?.craftsman !== undefined) setSelectedCraftsman(params.craftsman);
 
     try {

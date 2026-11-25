@@ -226,7 +226,7 @@ class ApiClient {
   }
 
   getFinancialTermsConsent() {
-    return this.request<{ accepted: boolean; termsVersion: string; disclosureConfigured: boolean }>('/craftsmen/me/financial-terms');
+    return this.request<{ required: boolean; accepted: boolean; termsVersion: string; disclosureConfigured: boolean }>('/craftsmen/me/financial-terms');
   }
 
   acceptFinancialTerms() {

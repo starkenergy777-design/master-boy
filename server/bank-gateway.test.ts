@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { createBankCheckout, getBankPaymentState, newBankRequestKey, verifyBogCallback } from './bank-gateway.js';
+import { BogProcessedAmountMismatch, createBankCheckout, getBankPaymentState, newBankRequestKey, verifyBogCallback } from './bank-gateway.js';
 
 function replies(values: unknown[]): { fetcher: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } {
   const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -21,7 +21,7 @@ const base = {
   manualCapture: true, requestKey: newBankRequestKey(),
 };
 
-test('BOG checkout starts manual capture only after the local arbitration and uses bank redirect', async () => {
+test('BOG gateway creates a manual-capture order and returns the bank redirect', async () => {
   const { fetcher, calls } = replies([
     { access_token: 'bog-token' },
     { id: 'bank-order', _links: { redirect: { href: 'https://payment.bog.ge/?order_id=bank-order' } } },
@@ -85,7 +85,8 @@ test('BOG fulfillment requires the amount actually processed, including on parti
   ]).fetcher;
   const status = (key: string, amount?: string) => getBankPaymentState('prov-bog', base.credentials, 'bank-id', 1250, receipt(key, amount));
   assert.equal(await status('completed', '12.5'), 'SUCCEEDED');
-  await assert.rejects(() => status('partial_completed', '10.00'), /full expected payment amount/);
+  await assert.rejects(() => status('partial_completed', '10.00'),
+    error => error instanceof BogProcessedAmountMismatch && error.processedAmountMinor === 1000);
   await assert.rejects(() => status('completed'), /full expected payment amount/);
   await assert.rejects(() => status('completed', '12.499'), /full expected payment amount/);
 });

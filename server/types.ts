@@ -220,6 +220,7 @@ export interface BogCheckout {
   proofHash?: string;
   registration?: { user: User; craftsman: Craftsman; existingUser?: boolean };
   needsReview?: boolean;
+  processedAmountMinor?: number;
 }
 
 export interface ChatMessage {

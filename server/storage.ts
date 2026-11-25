@@ -475,6 +475,29 @@ export class StorageService {
     throw new Error('Use transactional saveRuntimeState.');
   }
 
+  async saveFinancialTermsAcceptance(craftsmanId: string, userId: string, version: string, onSaved: (acceptedAt: string) => void): Promise<string | null> {
+    const next = this.saveQueue.then(async () => {
+      let acceptedAt = new Date().toISOString();
+      if (this.pool || process.env.NODE_ENV === 'production') {
+        const result = await this.db().query(
+          `UPDATE public.craftsmen
+           SET financial_terms_accepted_at = CASE WHEN financial_terms_version = $3
+                 THEN COALESCE(financial_terms_accepted_at, $4) ELSE $4 END,
+               financial_terms_version = $3
+           WHERE id = $1 AND user_id = $2 AND status <> 'DELETED'
+           RETURNING financial_terms_accepted_at`,
+          [craftsmanId, userId, version, acceptedAt],
+        );
+        if (!result.rows[0]?.financial_terms_accepted_at) return null;
+        acceptedAt = new Date(result.rows[0].financial_terms_accepted_at).toISOString();
+      }
+      onSaved(acceptedAt);
+      return acceptedAt;
+    });
+    this.saveQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
   // Persist a single craftsman photo without synchronizing unrelated accounts.
   // Use the same queue as runtime snapshots. Apply the in-memory change inside
   // the queued step, so a snapshot cannot revive a just-deleted photo.
@@ -609,8 +632,12 @@ export class StorageService {
           [intent.id,intent.reservationId||null,intent.craftsmanId||null,intent.providerId,intent.amountMinor,intent.currency,intent.idempotencyKey,intent.status,intent.bankPaymentId||null,
             intent.createdAt,intent.financialTermsVersion,intent.financialTermsAcceptedAt,intent.productType,intent.serviceStartsAt||null,intent.serviceEndsAt||null,JSON.stringify(intent.providerCheckout)]);
         if (changes.reviewCraftsmanId) await client.query(`INSERT INTO public.financial_cases(id,craftsman_id,payment_intent_id,reason,description,requested_refund_minor)
-          VALUES($1,$2,$3,'NOT_ACTIVATED','BOG confirmed payment, but the service could not be activated. Review the order and the refund.', $4) ON CONFLICT(id) DO NOTHING`,
-          [`case-${intent.id}`,changes.reviewCraftsmanId,intent.id,intent.amountMinor]);
+          VALUES($1,$2,$3,'NOT_ACTIVATED',$4,$5) ON CONFLICT(id) DO NOTHING`,
+          [`case-${intent.id}`, changes.reviewCraftsmanId, intent.id,
+            intent.providerCheckout?.processedAmountMinor === undefined
+              ? 'BOG confirmed payment, but the service could not be activated. Review the order and the refund.'
+              : 'The amount processed by BOG differs from the order. Service was not activated. Review the bank receipt and refund.',
+            intent.providerCheckout?.processedAmountMinor ?? intent.amountMinor]);
         await client.query('COMMIT');
         onCommitted();
       } catch (error) {

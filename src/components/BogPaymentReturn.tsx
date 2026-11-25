@@ -26,7 +26,7 @@ export function BogPaymentReturn({ id, lang, onClose, onCabinet }: { id: string;
     : status === 'FAILED'
       ? copy('შეკვეთა წარმატებული გადახდით არ დასრულებულა.', 'Заказ не завершён успешной оплатой.', 'The order did not complete with a successful payment.')
       : status === 'REVIEW'
-        ? copy('ბანკმა გადახდა დაადასტურა, მომსახურებას კი შემოწმება სჭირდება. დაუკავშირდით Master Boy-ს და მიუთითეთ შეკვეთის ნომერი.', 'Банк подтвердил оплату, но услугу нужно проверить. Сообщите Master Boy номер заказа.', 'The bank confirmed payment, but the service requires review. Contact Master Boy with the order number.')
+        ? copy('გადახდა შემოწმებას საჭიროებს. დაუკავშირდით Master Boy-ს და მიუთითეთ შეკვეთის ნომერი.', 'Платёж требует проверки. Сообщите Master Boy номер заказа.', 'The payment requires review. Contact Master Boy with the order number.')
         : copy('ველოდებით ბანკის დადასტურებას.', 'Ожидаем подтверждения банка.', 'Waiting for the bank to confirm payment.');
   return <div role="dialog" aria-modal="true" aria-labelledby="bog-payment-result" className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/90 p-4">
     <section className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 text-sm text-slate-100">

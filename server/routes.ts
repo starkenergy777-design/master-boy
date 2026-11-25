@@ -1405,20 +1405,26 @@ function getMyCraftsman(userId: string): Craftsman | undefined {
 
 apiRouter.get('/craftsmen/me/financial-terms', requireCraftsman, (req: AuthRequest, res) => {
   const craftsman = getMyCraftsman(req.user!.id);
-  if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
-  res.json({ accepted: hasCurrentFinancialTermsAcceptance(req.user!.id), termsVersion: FINANCIAL_TERMS_VERSION, disclosureConfigured: hasMerchantDisclosure() });
+  res.json({ required: Boolean(craftsman), accepted: hasCurrentFinancialTermsAcceptance(req.user!.id), termsVersion: FINANCIAL_TERMS_VERSION, disclosureConfigured: hasMerchantDisclosure() });
 });
 
 apiRouter.post('/craftsmen/me/financial-terms/accept', requireCraftsman, async (req: AuthRequest, res) => {
   const craftsman = getMyCraftsman(req.user!.id);
   if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
+  if (hasCurrentFinancialTermsAcceptance(req.user!.id)) {
+    return res.json({ accepted: true, termsVersion: FINANCIAL_TERMS_VERSION, acceptedAt: craftsman.financialTermsAcceptedAt });
+  }
   if (!hasMerchantDisclosure()) return res.status(503).json({ code: 'MERCHANT_DISCLOSURE_NOT_READY' });
-  craftsman.financialTermsVersion = FINANCIAL_TERMS_VERSION;
-  craftsman.financialTermsAcceptedAt = new Date().toISOString();
-  craftsman.updatedAt = craftsman.financialTermsAcceptedAt;
-  try { await db.persistRuntimeState(); }
-  catch { return res.status(503).json({ code: 'TERMS_ACCEPTANCE_SAVE_FAILED' }); }
-  res.json({ accepted: true, termsVersion: FINANCIAL_TERMS_VERSION, acceptedAt: craftsman.financialTermsAcceptedAt });
+  try {
+    const acceptedAt = await storage.saveFinancialTermsAcceptance(craftsman.id, req.user!.id, FINANCIAL_TERMS_VERSION, (savedAt) => {
+      craftsman.financialTermsVersion = FINANCIAL_TERMS_VERSION;
+      craftsman.financialTermsAcceptedAt = savedAt;
+    });
+    if (!acceptedAt) return res.status(404).json({ code: 'NOT_FOUND' });
+    return res.json({ accepted: true, termsVersion: FINANCIAL_TERMS_VERSION, acceptedAt });
+  } catch {
+    return res.status(503).json({ code: 'TERMS_ACCEPTANCE_SAVE_FAILED' });
+  }
 });
 
 // PUT /craftsmen/me/draft (wizard auto-save)
@@ -2389,7 +2395,13 @@ apiRouter.get('/financial/payments', requireCraftsman, (req: AuthRequest, res) =
   if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
   return res.json([...db.paymentIntents.values()]
     .filter(payment => payment.craftsmanId === craftsman.id)
-    .map(payment => ({ id: payment.id, amountMinor: payment.amountMinor, currency: payment.currency, status: payment.status, createdAt: payment.createdAt }))
+    .map(payment => ({
+      id: payment.id,
+      amountMinor: payment.providerCheckout?.processedAmountMinor ?? payment.amountMinor,
+      currency: payment.currency,
+      status: payment.providerCheckout?.needsReview ? 'REVIEW' : payment.status,
+      createdAt: payment.createdAt,
+    }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 });
 
@@ -2426,7 +2438,9 @@ apiRouter.get('/admin/financial/cases', requireAdmin, async (_req, res) => {
     return res.json(cases.map(item => {
       const payment = db.paymentIntents.get(item.payment_intent_id);
       let refundEstimateMinor: number | null = null;
-      if (payment && payment.status === 'SUCCEEDED') {
+      if (payment?.providerCheckout?.processedAmountMinor !== undefined && item.reason === 'NOT_ACTIVATED') {
+        refundEstimateMinor = payment.providerCheckout.processedAmountMinor;
+      } else if (payment && payment.status === 'SUCCEEDED') {
         if (item.reason === 'NOT_ACTIVATED' || item.reason === 'DUPLICATE_CHARGE') refundEstimateMinor = payment.amountMinor;
         else if (item.reason === 'EARLY_STOP' && payment.serviceStartsAt && payment.serviceEndsAt) {
           refundEstimateMinor = unusedTimeRefundMinor(payment.amountMinor, Date.parse(payment.serviceStartsAt), Date.parse(payment.serviceEndsAt), Date.now());
@@ -2455,10 +2469,11 @@ apiRouter.patch('/admin/financial/cases/:id', requireAdmin, async (req: AuthRequ
       return res.status(422).json({ code: 'PROVIDER_REFUND_REFERENCE_REQUIRED' });
     }
     const payment = db.paymentIntents.get(selectedCase.payment_intent_id);
-    if (approvedRefundMinor != null && (!payment || approvedRefundMinor > payment.amountMinor)) {
+    const approvedAmount = status === 'CLOSED' ? (approvedRefundMinor ?? selectedCase.approved_refund_minor ?? null) : (approvedRefundMinor ?? null);
+    const refundableAmount = payment?.providerCheckout?.processedAmountMinor ?? (payment?.status === 'SUCCEEDED' ? payment.amountMinor : 0);
+    if (approvedAmount != null && approvedAmount > refundableAmount) {
       return res.status(422).json({ code: 'REFUND_EXCEEDS_PAYMENT' });
     }
-    const approvedAmount = status === 'CLOSED' ? (approvedRefundMinor ?? selectedCase.approved_refund_minor ?? null) : (approvedRefundMinor ?? null);
     const item = await storage.reviewFinancialCase(req.params.id, status, decisionReason.trim(), approvedAmount, typeof providerRefundReference === 'string' ? providerRefundReference.trim() : null);
     if (!item) return res.status(404).json({ code: 'FINANCIAL_CASE_NOT_FOUND' });
     return res.json(item);
@@ -2842,6 +2857,13 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
   const craftsmanIds = new Set(targetCraftsmen.map(item => item.id));
   const userIds = new Set(targetCraftsmen.map(item => item.userId));
   if (user) userIds.add(user.id);
+
+  const bankPaymentPending = [...db.paymentIntents.values()].some(payment => {
+    if (payment.status !== 'PENDING' || !payment.providerCheckout) return false;
+    return (payment.craftsmanId != null && craftsmanIds.has(payment.craftsmanId)) ||
+      (payment.providerCheckout.registration?.existingUser === true && userIds.has(payment.providerCheckout.registration.user.id));
+  });
+  if (bankPaymentPending) return res.status(409).json({ code: 'BOG_ACCOUNT_PAYMENT_PENDING' });
 
   const previousUsers = Array.from(db.users.entries())
     .filter(([id]) => userIds.has(id))

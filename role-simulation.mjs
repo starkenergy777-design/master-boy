@@ -93,6 +93,43 @@ try {
   };
   roles.CRAFTSMAN.user.password = hashPassword('Audit-only-password-123');
 
+  const termsProfile = db.craftsmen.get(auditCraftsmanId);
+  const previousTerms = { financialTermsVersion: termsProfile.financialTermsVersion, financialTermsAcceptedAt: termsProfile.financialTermsAcceptedAt };
+  const previousDisclosure = db.merchantDisclosure;
+  const poolBeforeConsent = storage.pool;
+  const termsPath = '/craftsmen/me/financial-terms';
+  const termsSession = { token: roles.CRAFTSMAN.token };
+  const acceptTerms = () => request(`${termsPath}/accept`, { ...termsSession, method: 'POST', body: {} });
+  try {
+    termsProfile.financialTermsVersion = null;
+    termsProfile.financialTermsAcceptedAt = null;
+    db.merchantDisclosure = { legalName: 'Test Merchant', identificationCode: '00000000000', address: 'Test address', phone: '+995555000000', email: 'audit@example.com' };
+    let failWrite = true;
+    let savedAt;
+    let writes = 0;
+    storage.pool = { query: async (sql, args) => {
+      assert.match(sql, /UPDATE public\.craftsmen/);
+      assert.deepEqual(args.slice(0, 3), [termsProfile.id, termsProfile.userId, previousTerms.financialTermsVersion]);
+      if (failWrite) throw new Error('Simulated consent write failure');
+      writes++;
+      savedAt ??= args[3];
+      return { rows: [{ financial_terms_accepted_at: new Date(savedAt) }] };
+    } };
+    const failedAcceptance = await acceptTerms();
+    const afterFailure = await request(termsPath, termsSession);
+    check('failed consent write leaves the profile unaccepted',
+      failedAcceptance.status === 503 && failedAcceptance.body.code === 'TERMS_ACCEPTANCE_SAVE_FAILED' && afterFailure.body.accepted === false);
+    failWrite = false;
+    const saved = await acceptTerms();
+    const retry = await acceptTerms();
+    check('persisted consent is accepted and repeat submission preserves its timestamp',
+      saved.status === 200 && retry.body.acceptedAt === savedAt && writes === 1);
+  } finally {
+    Object.assign(termsProfile, previousTerms);
+    db.merchantDisclosure = previousDisclosure;
+    storage.pool = poolBeforeConsent;
+  }
+
   // Isolated photo persistence simulation: no Supabase connection or real rows.
   const originalPool = storage.pool;
   const originalFetch = globalThis.fetch;
@@ -598,6 +635,20 @@ try {
   const restoredCraftsmanToken = 'audit-session-craftsman-restored';
   db.sessions.set(restoredCraftsmanToken, { userId: craftsmanUserId, createdAt: Date.now() });
   roles.CRAFTSMAN.token = restoredCraftsmanToken;
+  const pendingBankId = 'audit-bog-pending-before-deletion';
+  db.paymentIntents.set(pendingBankId, {
+    id: pendingBankId, reservationId: '', craftsmanId: auditCraftsmanId, providerId: 'prov-bog',
+    amountMinor: 5000, currency: 'GEL', idempotencyKey: pendingBankId, status: 'PENDING', createdAt: new Date().toISOString(),
+    providerCheckout: { kind: 'LISTING', environment: 'live' },
+  });
+  try {
+    const pendingDeletion = await request(`/admin/craftsmen/${auditCraftsmanId}`, { method: 'DELETE', token: roles.SUPER_ADMIN.token });
+    check('admin deletion preserves the profile while a bank order awaits reconciliation',
+      pendingDeletion.status === 409 && pendingDeletion.body.code === 'BOG_ACCOUNT_PAYMENT_PENDING' &&
+      db.craftsmen.has(auditCraftsmanId) && db.paymentIntents.get(pendingBankId)?.status === 'PENDING');
+  } finally {
+    db.paymentIntents.delete(pendingBankId);
+  }
   db.craftsmanDrafts.set(craftsmanUserId, { step: 2, data: { auditOnly: true }, updatedAt: new Date().toISOString() });
   db.paymentIntents.set(auditPaymentIntentId, {
     id: auditPaymentIntentId, reservationId: 'audit-ad', craftsmanId: null, providerId: 'prov-bog',
