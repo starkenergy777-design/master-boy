@@ -4,13 +4,17 @@ const FIELDS = ['apiKey', 'secretKey', 'clientId', 'webhookSecret'] as const;
 type CredentialField = (typeof FIELDS)[number];
 type Provider = { id: string; [key: string]: unknown };
 
+export class PaymentCredentialKeyError extends Error {
+  constructor() { super('PAYMENT_CREDENTIAL_ENCRYPTION_KEY must be a 32-byte base64 secret.'); }
+}
+
 function keyBytes(encoded: string | undefined): Buffer {
   if (!encoded || !/^[A-Za-z0-9+/]{43}=$/.test(encoded)) {
-    throw new Error('PAYMENT_CREDENTIAL_ENCRYPTION_KEY must be a 32-byte base64 secret.');
+    throw new PaymentCredentialKeyError();
   }
   const key = Buffer.from(encoded, 'base64');
   if (key.length !== 32 || key.toString('base64') !== encoded) {
-    throw new Error('PAYMENT_CREDENTIAL_ENCRYPTION_KEY must be a 32-byte base64 secret.');
+    throw new PaymentCredentialKeyError();
   }
   return key;
 }

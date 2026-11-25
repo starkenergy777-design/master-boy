@@ -632,12 +632,12 @@ class Database {
     });
   }
 
-  async persistSuperAdminConfig(): Promise<{ success: boolean; database: boolean; snapshot: boolean; error?: string }> {
+  async persistSuperAdminConfig(providerConfig = this.providerConfig) {
     const configToSave: SuperAdminPersistedConfig = {
       listingPrice: this.listingPrice,
       top15Prices: Object.fromEntries(this.top15Prices.entries()),
       advertisements: Array.from(this.advertisements.values()),
-      providerConfig: this.providerConfig,
+      providerConfig,
       recipientAccount: this.recipientAccount,
       merchantDisclosure: this.merchantDisclosure,
       configLock: this.configLock,

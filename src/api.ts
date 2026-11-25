@@ -432,7 +432,7 @@ class ApiClient {
   }
 
   updatePaymentProvider(id: string, data: any) {
-    return this.request(`/admin/providers/payment/${id}`, {
+    return this.request<{ success: true; provider: { id: string; name: string; isActive: boolean; clientId?: string; secretKeyConfigured?: boolean } }>(`/admin/providers/payment/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });

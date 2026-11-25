@@ -528,12 +528,25 @@ try {
     });
     check('superadmin cannot activate a bank with missing credentials',
       incomplete.status === 422 && bogProvider.isActive === false);
+    db.persistSuperAdminConfig = async () => ({
+      success: false, database: false, snapshot: false, errorCode: 'PAYMENT_STORAGE_SCHEMA_OUTDATED',
+    });
+    const failedSave = await request('/admin/providers/payment/prov-bog', {
+      method: 'PUT', token: roles.SUPER_ADMIN.token,
+      body: { clientId: 'discarded-audit-id', secretKey: 'discarded-audit-secret', isActive: true },
+    });
+    check('failed BOG persistence reports the database cause without publishing credentials or activation',
+      failedSave.status === 503 && failedSave.body.code === 'PAYMENT_STORAGE_SCHEMA_OUTDATED' &&
+      bogProvider.clientId === originalBogProvider.clientId && bogProvider.secretKey === originalBogProvider.secretKey &&
+      bogProvider.isActive === originalBogProvider.isActive);
+    db.persistSuperAdminConfig = async () => ({ success: true, database: true, snapshot: false });
     const enabled = await request('/admin/providers/payment/prov-bog', {
       method: 'PUT', token: roles.SUPER_ADMIN.token,
       body: { clientId: 'audit-merchant', secretKey: 'audit-secret', isActive: true },
     });
     check('superadmin can turn on configured BOG in production without leaking its secret',
       enabled.status === 200 && bogProvider.isActive === true &&
+      enabled.body.provider?.clientId === 'audit-merchant' && enabled.body.provider?.isActive === true &&
       enabled.body.provider?.secretKey === undefined && enabled.body.provider?.secretKeyConfigured === true);
     const stillBlocked = await request('/craftsmen/me/listing/pay', {
       method: 'POST', token: roles.CRAFTSMAN.token, body: { providerId: 'prov-bog' },

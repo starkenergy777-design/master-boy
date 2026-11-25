@@ -77,6 +77,7 @@ async function runMigrations() {
     '015_financial_terms_and_cases.sql',
     '016_unipay_terms_consent.sql',
     '017_bog_payment_checkout.sql',
+    '018_payment_credentials_secret_name.sql',
   ];
 
   // Verify all files exist
