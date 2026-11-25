@@ -211,6 +211,16 @@ class ApiClient {
     });
   }
 
+  getBogPaymentStatus(id: string, checkoutProof?: string) {
+    return this.request<{ id: string; status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REVIEW'; kind: 'REGISTRATION' | 'LISTING' | 'TOP15'; redirectUrl?: string }>(`/payments/bog/${encodeURIComponent(id)}/status`, {
+      method: 'POST', body: JSON.stringify({ checkoutProof }),
+    });
+  }
+
+  getPendingBogPayments() {
+    return this.request<Array<{ id: string; kind: 'LISTING' | 'TOP15' }>>('/payments/bog/pending');
+  }
+
   getMyCraftsman() {
     return this.request('/craftsmen/me');
   }
@@ -425,6 +435,13 @@ class ApiClient {
     return this.request(`/admin/providers/payment/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    });
+  }
+
+  verifyBogCredentials(clientId: string, secretKey: string, environment: 'live' | 'sandbox') {
+    return this.request<{ verified: true }>('/admin/providers/payment/prov-bog/verify', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, secretKey, environment }),
     });
   }
 

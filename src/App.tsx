@@ -16,6 +16,8 @@ import { SettingsScreen } from './screens/SettingsScreen.js';
 import { AdPartnerScreen } from './screens/AdPartnerScreen.js';
 import { FinancialTermsScreen } from './screens/FinancialTermsScreen.js';
 import { FinancialTermsGate } from './components/FinancialTermsGate.js';
+import { BogPaymentReturn } from './components/BogPaymentReturn.js';
+import { currentBogOrder } from './bogCheckout.js';
 import { Language, User, CraftsmanPublic } from './types.js';
 import { api } from './api.js';
 
@@ -43,6 +45,7 @@ interface HistoryItem {
 }
 
 export default function App() {
+  const [bogOrderId, setBogOrderId] = useState(currentBogOrder);
   const [publicPage] = useState(() => {
     try { return JSON.parse(document.getElementById('mb-public-page')?.textContent || '{}'); }
     catch { return {}; }
@@ -421,7 +424,8 @@ export default function App() {
           lang={lang}
           currentUser={currentUser}
         />
-        {currentUser?.roles.includes('CRAFTSMAN') && <FinancialTermsGate key={currentUser.id} lang={lang} onExit={handleLogout} />}
+      {currentUser?.roles.includes('CRAFTSMAN') && <FinancialTermsGate key={currentUser.id} lang={lang} onExit={handleLogout} />}
+      {bogOrderId && <BogPaymentReturn id={bogOrderId} lang={lang} onClose={() => setBogOrderId(null)} onCabinet={() => { setBogOrderId(null); handleTabChange('craftsman'); }} />}
 
       </div>
     </AndroidFrame>

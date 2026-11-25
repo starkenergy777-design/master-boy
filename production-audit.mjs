@@ -163,8 +163,9 @@ check('Top15 payment verifies reservation ownership and payment-status ownership
 check('ad payment records do not misuse the craftsman foreign key', () => {
   assert.match(routes, /reservationId: ad\.id,[\s\S]{0,100}craftsmanId: null,[\s\S]{0,100}providerId: paymentProvider\.id/);
 });
-check('super admin is told that provider activation alone does not complete checkout', () => {
-  assert.match(superAdmin, /Payment processing becomes available after the real bank checkout and confirmation flow is completed and verified/i);
+check('super admin can check BOG credentials and controls new orders separately from reconciliation', () => {
+  assert.match(superAdmin, /Verify BOG authentication/);
+  assert.match(superAdmin, /Disabling stops new orders\. Existing payments can still be reconciled\./i);
 });
 check('payment provider preference survives production startup while unsafe checkout stays blocked', () => {
   assert.doesNotMatch(storage, /process\.env\.NODE_ENV === 'production' \? \{ isActive: false \}/);

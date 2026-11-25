@@ -208,6 +208,18 @@ export interface PaymentIntent {
   productType?: 'LISTING' | 'TOP15' | null;
   serviceStartsAt?: string | null;
   serviceEndsAt?: string | null;
+  bankPaymentId?: string | null;
+  providerCheckout?: BogCheckout | null;
+}
+
+export interface BogCheckout {
+  kind: 'REGISTRATION' | 'LISTING' | 'TOP15';
+  environment: 'live' | 'sandbox';
+  redirectUrl?: string;
+  phone?: string;
+  proofHash?: string;
+  registration?: { user: User; craftsman: Craftsman; existingUser?: boolean };
+  needsReview?: boolean;
 }
 
 export interface ChatMessage {

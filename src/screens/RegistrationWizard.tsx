@@ -6,6 +6,8 @@ import { Language, City, Profession, PaymentProvider } from '../types.js';
 import { api } from '../api.js';
 import { ProfessionPicker } from '../components/ProfessionPicker.js';
 import { photoPreviewUrl } from '../photo-url.js';
+import { FINANCIAL_TERMS_VERSION } from '../financialTerms.js';
+import { getBogRegistrationProof, redirectToBog } from '../bogCheckout.js';
 
 interface RegistrationWizardProps {
   lang: Language;
@@ -24,6 +26,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
   step: controlledStep,
   onStepChange,
 }) => {
+  const [financialTermsAccepted, setFinancialTermsAccepted] = useState(false);
   const t = translations[lang] || translations.ka;
   const [internalStep, setInternalStep] = useState(1);
   const step = controlledStep !== undefined ? controlledStep : internalStep;
@@ -186,14 +189,16 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
       const payload = {
         ...formData,
         paid: !isFreeRegistration,
-        ...(isFreeRegistration ? {} : { providerId: selectedProviderId }),
+        ...(isFreeRegistration ? {} : { providerId: selectedProviderId, checkoutProof: getBogRegistrationProof(), financialTermsAccepted, financialTermsVersion: FINANCIAL_TERMS_VERSION }),
         photos: formData.photoUrl.trim() ? [{ url: formData.photoUrl.trim() }] : [],
       };
 
       if (api.getToken()) {
-        await api.registerCraftsman(payload);
+        const res = await api.registerCraftsman(payload);
+        if (redirectToBog(res)) return;
       } else {
         const res = await api.directRegisterCraftsman(payload);
+        if (redirectToBog(res)) return;
         if (res.sessionToken) {
           api.setToken(res.sessionToken);
         }
@@ -548,6 +553,10 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
             )}
             {!isFreeRegistration && <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-300 space-y-2">
               <button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline text-left">{lang === 'ka' ? 'გადახდისა და დაბრუნების სრული წესები' : lang === 'ru' ? 'Полные правила оплаты и возврата' : 'Full payment and refund terms'}</button>
+              <label className="flex items-center gap-2 text-slate-200">
+                <input type="checkbox" checked={financialTermsAccepted} onChange={event => setFinancialTermsAccepted(event.target.checked)} className="accent-amber-400" />
+                {lang === 'ka' ? 'გავეცანი გადახდისა და დაბრუნების წესებს და ვეთანხმები' : lang === 'ru' ? 'Я ознакомился с правилами оплаты и возврата и согласен с ними' : 'I have read and agree to the payment and refund terms'}
+              </label>
             </div>}
           </div>
         )}
@@ -568,7 +577,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={loading || priceLoading || !registrationPrice || (!isFreeRegistration && !selectedProviderId)}
+            disabled={loading || priceLoading || !registrationPrice || (!isFreeRegistration && (!selectedProviderId || !financialTermsAccepted))}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {loading ? (

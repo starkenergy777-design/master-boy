@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Star, Clock, ShieldCheck, CheckCircle2, AlertCircle, CreditCard, ChevronRight } from 'lucide-react';
 import { translations } from '../i18n.js';
 import { Language, City, Profession, PaymentProvider } from '../types.js';
+import { redirectToBog } from '../bogCheckout.js';
 import { api } from '../api.js';
 import { getProfessionDisplayNumber, ProfessionIcon } from '../components/ProfessionPicker.js';
 
@@ -156,6 +157,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
       setLoading(true);
       const idempotencyKey = `idem-${reservation.reservationId}-${Date.now()}`;
       const payRes = await api.payTop15(reservation.reservationId, selectedProviderId, idempotencyKey, true);
+      if (redirectToBog(payRes)) return;
       if (payRes.status === 'SUCCEEDED') {
         setIsSuccess(true);
       } else {

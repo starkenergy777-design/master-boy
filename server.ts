@@ -6,6 +6,7 @@ import { apiRouter } from './server/routes.js';
 import { db } from './server/db.js';
 import { storage } from './server/storage.js';
 import { seoRouter } from './server/seo.js';
+import { reconcilePendingBogOrders } from './server/bog-checkout-flow.js';
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ async function startServer() {
 
   // Body parsing middleware
   app.disable('x-powered-by');
+  app.use('/api/v1/payments/bog/callback', express.raw({ type: 'application/json', limit: '128kb', inflate: false }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 
@@ -66,6 +68,8 @@ async function startServer() {
   // a newer snapshot after a read.
   const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   app.use((req, res, next) => {
+    // Bank OAuth verification sends only an authentication request and saves no app data.
+    if (/^\/api\/v1\/(?:admin\/providers\/payment\/prov-bog\/verify|payments\/bog\/(?:callback\/(?:live|sandbox)|[a-f0-9-]{36}\/status))\/?$/i.test(req.path)) return next();
     res.on('finish', () => {
       if (req.path.startsWith('/api/v1/') && mutatingMethods.has(req.method) && res.statusCode < 500) {
         void db.persistRuntimeState().catch((err) => console.error('[MASTER_BOY] Runtime persistence failed:', err));
@@ -136,6 +140,10 @@ async function startServer() {
     console.log(`[MASTER_BOY] Server running on http://${HOST}:${PORT} in ${isProd ? 'production' : 'development'} mode`);
     console.log(`[MASTER_BOY] API v1 base: http://${HOST}:${PORT}/api/v1`);
   });
+  // Covers lost redirects and missed notifications without requiring a separate worker service.
+  const pendingPayments = setInterval(() => { void reconcilePendingBogOrders(); }, 60_000);
+  pendingPayments.unref();
+  server.on('close', () => clearInterval(pendingPayments));
 
   server.on('error', (err: any) => {
     console.error('[MASTER_BOY] Server error:', err);

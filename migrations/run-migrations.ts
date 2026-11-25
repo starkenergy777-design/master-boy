@@ -76,6 +76,7 @@ async function runMigrations() {
     '014_top15_candidate_reservations.sql',
     '015_financial_terms_and_cases.sql',
     '016_unipay_terms_consent.sql',
+    '017_bog_payment_checkout.sql',
   ];
 
   // Verify all files exist
