@@ -659,17 +659,6 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
             )}
           </div>
 
-          {/* Profile Overview */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 text-xs">
-            <h3 className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-              {t.aboutCraftsman}
-            </h3>
-            <button type="button" onClick={openProfileEditor} disabled={!craftsman} className="text-xs font-bold text-amber-400 disabled:opacity-50">{profileText.title}</button>
-            <p className="text-slate-300 leading-relaxed whitespace-pre-line bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-              {craftsman?.description || 'აღწერა არ არის მითითებული.'}
-            </p>
-
-          </div>
         </div>
       )}
 
