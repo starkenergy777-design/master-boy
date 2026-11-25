@@ -68,10 +68,12 @@ async function startServer() {
   // a newer snapshot after a read.
   const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   app.use((req, res, next) => {
+    // Express removes the mounted router prefix while its response is finishing.
+    const requestPath = req.path;
     // Bank OAuth verification sends only an authentication request and saves no app data.
-    if (/^\/api\/v1\/(?:admin\/providers\/payment\/prov-bog\/verify|payments\/bog\/(?:callback\/(?:live|sandbox)|[a-f0-9-]{36}\/status))\/?$/i.test(req.path)) return next();
+    if (/^\/api\/v1\/(?:admin\/providers\/payment\/prov-bog\/verify|payments\/bog\/(?:callback\/(?:live|sandbox)|[a-f0-9-]{36}\/status))\/?$/i.test(requestPath)) return next();
     res.on('finish', () => {
-      if (req.path.startsWith('/api/v1/') && mutatingMethods.has(req.method) && res.statusCode < 500) {
+      if (requestPath.startsWith('/api/v1/') && mutatingMethods.has(req.method) && res.statusCode < 500) {
         void db.persistRuntimeState().catch((err) => console.error('[MASTER_BOY] Runtime persistence failed:', err));
       }
     });
