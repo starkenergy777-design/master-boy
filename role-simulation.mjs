@@ -93,6 +93,52 @@ try {
   };
   roles.CRAFTSMAN.user.password = hashPassword('Audit-only-password-123');
 
+  const listingStart = Date.now() - 86400_000;
+  const listingExpiry = new Date(listingStart + 180 * 86400_000).toISOString();
+  const listingCreatedAt = new Date(listingStart).toISOString();
+  const listingId = `list-${auditCraftsmanId}`;
+  let storedListing;
+  const listingQuery = async (sql, args) => {
+    if (sql.startsWith('INSERT INTO public.craftsman_listings(')) {
+      storedListing = Object.fromEntries([
+        'id', 'craftsman_id', 'city_id', 'profession_id', 'status', 'starts_at',
+        'expires_at', 'grace_ends_at', 'last_payment_id', 'created_at', 'updated_at',
+      ].map((column, index) => [column, args[index]]));
+    }
+    if (sql.startsWith('DELETE FROM public.craftsman_listings ') && !args[0].includes(storedListing?.id)) {
+      storedListing = undefined;
+    }
+    return { rows: sql === 'SELECT * FROM public.craftsman_listings' && storedListing ? [storedListing] : [] };
+  };
+  const poolBeforeListing = storage.pool;
+  storage.pool = { query: listingQuery, connect: async () => ({ query: listingQuery, release() {} }) };
+  try {
+    db.craftsmanListings.set(auditCraftsmanId, {
+      id: listingId,
+      craftsmanId: auditCraftsmanId,
+      cityId: 'city-tbilisi',
+      professionId: 'prof-plumber',
+      status: 'ACTIVE',
+      startsAt: listingCreatedAt,
+      expiresAt: listingExpiry,
+      createdAt: listingCreatedAt,
+      updatedAt: listingCreatedAt,
+    });
+    await db.persistRuntimeState();
+    check('saving the runtime keeps the active listing in storage', storedListing?.id === listingId);
+    db.craftsmanListings.clear();
+    for (const [id, listing] of Object.entries(await storage.loadRuntimeCollection('craftsmanListings'))) {
+      db.craftsmanListings.set(id, listing);
+    }
+    const listing = await request('/craftsmen/me/listing', { token: roles.CRAFTSMAN.token });
+    check('reloaded active listing keeps its original timer and expiry',
+      listing.status === 200 && listing.body.status === 'ACTIVE' &&
+      listing.body.expiresAt === listingExpiry && listing.body.secondsRemaining > 0);
+  } finally {
+    db.craftsmanListings.clear();
+    storage.pool = poolBeforeListing;
+  }
+
   const termsProfile = db.craftsmen.get(auditCraftsmanId);
   const previousTerms = { financialTermsVersion: termsProfile.financialTermsVersion, financialTermsAcceptedAt: termsProfile.financialTermsAcceptedAt };
   const previousDisclosure = db.merchantDisclosure;
