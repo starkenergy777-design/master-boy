@@ -2,6 +2,7 @@ import { Pool, PoolClient } from 'pg';
 import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, CraftsmanDraft, CraftsmanListing, ListingPrice, Profession, ProviderConfig, RecipientAccount, MerchantDisclosure, ConfigLock, Top15Membership, Top15Price, Top15Reservation, User } from './types.js';
 import { sortProfessionsByDemand } from './professionOrder.js';
 import { decryptPaymentCredentials, encryptPaymentCredentials, separatePaymentCredentials } from './payment-credentials.js';
+import type { PaymentIntent } from './types.js';
 
 export type AiProvider = 'gemini' | 'openai';
 
@@ -455,7 +456,7 @@ export class StorageService {
       else if(name==='top15Prices') v={cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,updatedAt:date(r.updated_at),updatedBy:r.updated_by||'system'};
       else if(name==='top15Reservations') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,expiresAt:new Date(r.expires_at).getTime(),status:r.status==='CONFIRMED'?'PAID':r.status==='EXPIRED'?'EXPIRED':r.status==='CANCELLED'?'CANCELLED':r.status==='CANDIDATE'?'CANDIDATE':'HELD'};
       else if(name==='top15Memberships') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,cityName:r.city_name,professionId:r.profession_id,professionName:r.profession_name,startsAt:date(r.starts_at),expiresAt:date(r.expires_at),status:r.status==='ACTIVE'?'ACTIVE':'EXPIRED'};
-      else if(name==='paymentIntents') v={id:r.id,reservationId:r.reservation_id,craftsmanId:r.craftsman_id||'',providerId:r.provider,amountMinor:Number(r.amount_minor),currency:r.currency,idempotencyKey:r.idempotency_key,status:r.status,createdAt:date(r.created_at),financialTermsVersion:r.financial_terms_version,financialTermsAcceptedAt:r.financial_terms_accepted_at?date(r.financial_terms_accepted_at):null,productType:r.product_type,serviceStartsAt:r.service_starts_at?date(r.service_starts_at):null,serviceEndsAt:r.service_ends_at?date(r.service_ends_at):null};
+      else if(name==='paymentIntents') v={id:r.id,reservationId:r.reservation_id,craftsmanId:r.craftsman_id||'',providerId:r.provider,amountMinor:Number(r.amount_minor),currency:r.currency,idempotencyKey:r.idempotency_key,status:r.status,createdAt:date(r.created_at),financialTermsVersion:r.financial_terms_version,financialTermsAcceptedAt:r.financial_terms_accepted_at?date(r.financial_terms_accepted_at):null,productType:r.product_type,serviceStartsAt:r.service_starts_at?date(r.service_starts_at):null,serviceEndsAt:r.service_ends_at?date(r.service_ends_at):null,bankPaymentId:r.provider_transaction_id,providerCheckout:r.provider_checkout};
       else if(name==='craftsmanListings') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,status:r.status,startsAt:r.starts_at?date(r.starts_at):null,expiresAt:r.expires_at?date(r.expires_at):null,graceEndsAt:r.grace_ends_at?date(r.grace_ends_at):null,lastPaymentId:r.last_payment_id,createdAt:date(r.created_at),updatedAt:date(r.updated_at)};
       else v={id:r.id,company_name:r.company_name,phone_number:r.phone_number,password:r.password,expires_at:date(r.expires_at),image_url:r.image_url||'',target_url:r.target_url||'',is_active:r.is_active,payment_status:r.payment_status,terms_accepted:r.terms_accepted,price_gel:Number(r.price_gel),days_duration:r.days_duration,created_at:date(r.created_at),updated_at:date(r.updated_at)};
       out[k]=v;
@@ -472,6 +473,29 @@ export class StorageService {
   }
   async saveRuntimeArray<T>(_name:string,_values:T[]):Promise<void> {
     throw new Error('Use transactional saveRuntimeState.');
+  }
+
+  async saveFinancialTermsAcceptance(craftsmanId: string, userId: string, version: string, onSaved: (acceptedAt: string) => void): Promise<string | null> {
+    const next = this.saveQueue.then(async () => {
+      let acceptedAt = new Date().toISOString();
+      if (this.pool || process.env.NODE_ENV === 'production') {
+        const result = await this.db().query(
+          `UPDATE public.craftsmen
+           SET financial_terms_accepted_at = CASE WHEN financial_terms_version = $3
+                 THEN COALESCE(financial_terms_accepted_at, $4) ELSE $4 END,
+               financial_terms_version = $3
+           WHERE id = $1 AND user_id = $2 AND status <> 'DELETED'
+           RETURNING financial_terms_accepted_at`,
+          [craftsmanId, userId, version, acceptedAt],
+        );
+        if (!result.rows[0]?.financial_terms_accepted_at) return null;
+        acceptedAt = new Date(result.rows[0].financial_terms_accepted_at).toISOString();
+      }
+      onSaved(acceptedAt);
+      return acceptedAt;
+    });
+    this.saveQueue = next.then(() => undefined, () => undefined);
+    return next;
   }
 
   // Persist a single craftsman photo without synchronizing unrelated accounts.
@@ -547,6 +571,84 @@ export class StorageService {
   async saveRuntimeState(state:RuntimeState):Promise<void> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return;
     const next=this.saveQueue.then(()=>this.persist(state)); this.saveQueue=next.catch(()=>undefined); return next;
+  }
+
+  // This shares the runtime snapshot queue. Publish in memory only after the SQL transaction commits.
+  async saveBogPayment(intent: PaymentIntent, changes: {
+    registration?: { user: User; craftsman: Craftsman; existingUser?: boolean };
+    listing?: CraftsmanListing;
+    reservation?: Top15Reservation;
+    membership?: Top15Membership;
+    reviewCraftsmanId?: string;
+  }, onCommitted: () => void): Promise<void> {
+    const next = this.saveQueue.then(async () => {
+      const client = await this.db().connect();
+      try {
+        await client.query('BEGIN');
+        const previous = await client.query('SELECT status, provider_transaction_id FROM public.payment_intents WHERE id=$1 FOR UPDATE', [intent.id]);
+        if (previous.rows[0] && (previous.rows[0].status !== 'PENDING' ||
+            (previous.rows[0].provider_transaction_id && previous.rows[0].provider_transaction_id !== intent.bankPaymentId))) {
+          throw new Error('Bank order was already finalized or does not match.');
+        }
+        const registration = changes.registration;
+        if (registration) {
+          const { user, craftsman: c } = registration;
+          if (registration.existingUser) {
+            const account = await client.query("SELECT id FROM public.users WHERE id=$1 AND phone=$2 AND status='ACTIVE' FOR UPDATE", [user.id,user.phone]);
+            if (!account.rows.length) throw new Error('Registration account is no longer eligible.');
+            await client.query('DELETE FROM public.craftsman_drafts WHERE user_id=$1', [user.id]);
+          } else {
+            await client.query('INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,$6)',
+              [user.id,user.phone,user.password,user.roles,user.status,user.createdAt]);
+          }
+          await client.query(`INSERT INTO public.craftsmen(id,user_id,name,description,phone,phone_visible,city_id,profession_id,working_hours,status,bank_account,financial_terms_version,financial_terms_accepted_at,created_at,updated_at)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::craftsman_status,$11,$12,$13,$14,$14)`,
+            [c.id,c.userId,c.name,c.description,c.phone,c.phoneVisible,c.cityId,c.professionId,JSON.stringify(c.workingHours),c.status,c.bankAccount,c.financialTermsVersion,c.financialTermsAcceptedAt,c.createdAt]);
+          for (const photo of c.photos) await client.query('INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$6)',
+            [photo.id,c.id,photo.url,photo.isPrimary,photo.displayOrder,photo.createdAt]);
+        }
+        const listing = changes.listing;
+        if (listing) {
+          const active = await client.query("UPDATE public.craftsmen SET status='ACTIVE',updated_at=$2 WHERE id=$1 AND status NOT IN ('BLOCKED','DELETED','PURGED')", [listing.craftsmanId,listing.updatedAt]);
+          if (active.rowCount !== 1) throw new Error('Listing no longer eligible.');
+          await client.query(`INSERT INTO public.craftsman_listings(id,craftsman_id,city_id,profession_id,status,starts_at,expires_at,grace_ends_at,last_payment_id,created_at,updated_at)
+            VALUES($1,$2,$3,$4,'ACTIVE',$5,$6,$7,$8,$9,$10) ON CONFLICT(craftsman_id) DO UPDATE SET status='ACTIVE',starts_at=EXCLUDED.starts_at,expires_at=EXCLUDED.expires_at,
+            grace_ends_at=EXCLUDED.grace_ends_at,last_payment_id=EXCLUDED.last_payment_id,updated_at=EXCLUDED.updated_at`,
+            [listing.id,listing.craftsmanId,listing.cityId,listing.professionId,listing.startsAt,listing.expiresAt,listing.graceEndsAt,listing.lastPaymentId,listing.createdAt,listing.updatedAt]);
+        }
+        const reservation = changes.reservation;
+        if (reservation) await client.query(`INSERT INTO public.top15_reservations(id,craftsman_id,city_id,profession_id,amount_minor,currency,expires_at,status)
+          VALUES($1,$2,$3,$4,$5,$6,to_timestamp($7/1000.0),$8::reservation_status) ON CONFLICT(id) DO UPDATE SET expires_at=EXCLUDED.expires_at,status=EXCLUDED.status`,
+          [reservation.id,reservation.craftsmanId,reservation.cityId,reservation.professionId,reservation.amountMinor,reservation.currency,reservation.expiresAt,reservation.status==='PAID'?'CONFIRMED':reservation.status==='HELD'?'PENDING':reservation.status]);
+        const membership = changes.membership;
+        if (membership) await client.query(`INSERT INTO public.top15_memberships(id,craftsman_id,city_id,profession_id,payment_id,status,starts_at,expires_at,created_at)
+          VALUES($1,$2,$3,$4,$5,'ACTIVE',$6,$7,$6)`,
+          [membership.id,membership.craftsmanId,membership.cityId,membership.professionId,intent.id,membership.startsAt,membership.expiresAt]);
+        await client.query(`INSERT INTO public.payment_intents(id,reservation_id,craftsman_id,provider,amount_minor,currency,idempotency_key,status,provider_transaction_id,created_at,updated_at,
+            financial_terms_version,financial_terms_accepted_at,product_type,service_starts_at,service_ends_at,provider_checkout)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8::payment_status,$9,$10,NOW(),$11,$12,$13,$14,$15,$16::jsonb)
+          ON CONFLICT(id) DO UPDATE SET craftsman_id=EXCLUDED.craftsman_id,status=EXCLUDED.status,provider_transaction_id=EXCLUDED.provider_transaction_id,
+            service_starts_at=EXCLUDED.service_starts_at,service_ends_at=EXCLUDED.service_ends_at,provider_checkout=EXCLUDED.provider_checkout,updated_at=NOW()`,
+          [intent.id,intent.reservationId||null,intent.craftsmanId||null,intent.providerId,intent.amountMinor,intent.currency,intent.idempotencyKey,intent.status,intent.bankPaymentId||null,
+            intent.createdAt,intent.financialTermsVersion,intent.financialTermsAcceptedAt,intent.productType,intent.serviceStartsAt||null,intent.serviceEndsAt||null,JSON.stringify(intent.providerCheckout)]);
+        if (changes.reviewCraftsmanId) await client.query(`INSERT INTO public.financial_cases(id,craftsman_id,payment_intent_id,reason,description,requested_refund_minor)
+          VALUES($1,$2,$3,'NOT_ACTIVATED',$4,$5) ON CONFLICT(id) DO NOTHING`,
+          [`case-${intent.id}`, changes.reviewCraftsmanId, intent.id,
+            intent.providerCheckout?.processedAmountMinor === undefined
+              ? 'BOG confirmed payment, but the service could not be activated. Review the order and the refund.'
+              : 'The amount processed by BOG differs from the order. Service was not activated. Review the bank receipt and refund.',
+            intent.providerCheckout?.processedAmountMinor ?? intent.amountMinor]);
+        await client.query('COMMIT');
+        onCommitted();
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    });
+    this.saveQueue = next.catch(() => undefined);
+    return next;
   }
 
   private async persist(s:RuntimeState):Promise<void> {

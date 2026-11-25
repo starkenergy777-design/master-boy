@@ -315,7 +315,7 @@ class Database {
     let count = 0;
     for (const res of this.top15Reservations.values()) {
       if (res.cityId === cityId && res.professionId === professionId && res.status === 'HELD') {
-        if (res.expiresAt > now) {
+        if (res.expiresAt > now || [...this.paymentIntents.values()].some(intent => intent.status === 'PENDING' && intent.providerCheckout?.kind === 'TOP15' && intent.reservationId === res.id)) {
           count++;
         } else {
           res.status = 'EXPIRED';

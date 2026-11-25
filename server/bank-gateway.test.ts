@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createBankCheckout, getBankPaymentState, newBankRequestKey } from './bank-gateway.js';
+import { generateKeyPairSync, sign } from 'node:crypto';
+import { BogProcessedAmountMismatch, createBankCheckout, getBankPaymentState, newBankRequestKey, verifyBogCallback } from './bank-gateway.js';
 
 function replies(values: unknown[]): { fetcher: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } {
   const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -20,7 +21,7 @@ const base = {
   manualCapture: true, requestKey: newBankRequestKey(),
 };
 
-test('BOG checkout starts manual capture only after the local arbitration and uses bank redirect', async () => {
+test('BOG gateway creates a manual-capture order and returns the bank redirect', async () => {
   const { fetcher, calls } = replies([
     { access_token: 'bog-token' },
     { id: 'bank-order', _links: { redirect: { href: 'https://payment.bog.ge/?order_id=bank-order' } } },
@@ -61,4 +62,50 @@ test('payment details are checked against bank order, amount and currency before
 test('unexpected redirect host is rejected', async () => {
   const { fetcher } = replies([{ access_token: 'token' }, { id: 'bank-order', _links: { redirect: { href: 'https://example.com/steal' } } }]);
   await assert.rejects(() => createBankCheckout({ ...base, bank: 'prov-bog' }, fetcher));
+});
+
+test('BOG callback verification checks the signed bytes and returns the two order identifiers', () => {
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+  const raw = Buffer.from('{ "event": "order_payment", "body": { "order_id": "bank-001", "external_order_id": "master-order-001" } }');
+  const signature = sign('RSA-SHA256', raw, privateKey).toString('base64');
+  assert.deepEqual(verifyBogCallback(raw, signature, 'sandbox', pem), { bankPaymentId: 'bank-001', externalOrderId: 'master-order-001' });
+  assert.equal(verifyBogCallback(Buffer.from(JSON.stringify(JSON.parse(raw.toString()))), signature, 'sandbox', pem), null);
+  assert.equal(verifyBogCallback(raw, signature, 'sandbox'), null);
+  assert.equal(verifyBogCallback(raw, signature, 'live'), null);
+  assert.equal(verifyBogCallback(raw, undefined, 'sandbox', pem), null);
+  const unrelated = Buffer.from('{ "event": "something_else", "body": {} }');
+  assert.equal(verifyBogCallback(unrelated, sign('RSA-SHA256', unrelated, privateKey).toString('base64'), 'sandbox', pem), null);
+});
+
+test('BOG fulfillment requires the amount actually processed, including on partial capture', async () => {
+  const receipt = (key: string, transferAmount?: string) => replies([
+    { access_token: 'token' },
+    { order_id: 'bank-id', order_status: { key }, purchase_units: { currency_code: 'GEL', request_amount: '12.50', transfer_amount: transferAmount } },
+  ]).fetcher;
+  const status = (key: string, amount?: string) => getBankPaymentState('prov-bog', base.credentials, 'bank-id', 1250, receipt(key, amount));
+  assert.equal(await status('completed', '12.5'), 'SUCCEEDED');
+  await assert.rejects(() => status('partial_completed', '10.00'),
+    error => error instanceof BogProcessedAmountMismatch && error.processedAmountMinor === 1000);
+  await assert.rejects(() => status('completed'), /full expected payment amount/);
+  await assert.rejects(() => status('completed', '12.499'), /full expected payment amount/);
+});
+
+test('BOG sandbox checkout and receipt stay in sandbox, and bind the bank order to the local order', async () => {
+  const receipt = { order_id: 'bank-sandbox', external_order_id: base.paymentId, order_status: { key: 'completed' }, purchase_units: { currency_code: 'GEL', request_amount: '12.50', transfer_amount: '12.50' } };
+  const { fetcher, calls } = replies([
+    { access_token: 'sandbox-token' },
+    { id: 'bank-sandbox', _links: { redirect: { href: 'https://payment-sandbox.bog.ge/?order_id=bank-sandbox' } } },
+    { access_token: 'sandbox-token' }, receipt,
+    { access_token: 'sandbox-token' }, { ...receipt, external_order_id: 'different-order' },
+  ]);
+  const order = await createBankCheckout({ ...base, bank: 'prov-bog', bogEnvironment: 'sandbox' }, fetcher);
+  assert.equal(new URL(order.redirectUrl).hostname, 'payment-sandbox.bog.ge');
+  const statusOptions = { environment: 'sandbox' as const, externalOrderId: base.paymentId };
+  assert.equal(await getBankPaymentState('prov-bog', base.credentials, order.bankPaymentId, 1250, fetcher, statusOptions), 'SUCCEEDED');
+  await assert.rejects(() => getBankPaymentState('prov-bog', base.credentials, order.bankPaymentId, 1250, fetcher, statusOptions), /do not match/);
+  assert.deepEqual(calls.map(call => new URL(call.url).hostname), [
+    'oauth2-sandbox.bog.ge', 'api-sandbox.bog.ge', 'oauth2-sandbox.bog.ge',
+    'api-sandbox.bog.ge', 'oauth2-sandbox.bog.ge', 'api-sandbox.bog.ge',
+  ]);
 });

@@ -329,6 +329,9 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     isActive: false,
   });
   const [showKeyMask, setShowKeyMask] = useState(false);
+  const [bogVerification, setBogVerification] = useState<{ ok: boolean; message: string } | null>(null);
+  const [checkingBog, setCheckingBog] = useState(false);
+  const [bogEnvironment, setBogEnvironment] = useState<'live' | 'sandbox'>('live');
 
   // Commercial Advertisements (§Task 10)
   const [ads, setAds] = useState<Advertisement[]>([]);
@@ -719,6 +722,8 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
   // Payment Providers Handlers (Bank of Georgia, TBC, Stripe)
   const handleOpenEditProvider = (prov: any) => {
+    setBogVerification(null);
+    setBogEnvironment('live');
     setEditingProvider(prov);
     setProviderForm({
       clientId: prov.clientId || '',
@@ -731,9 +736,22 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
     setShowKeyMask(false);
   };
 
+  const handleVerifyBog = async () => {
+    setBogVerification(null);
+    setCheckingBog(true);
+    try {
+      await api.verifyBogCredentials(providerForm.clientId, providerForm.secretKey, bogEnvironment);
+      setBogVerification({ ok: true, message: lang === 'ka' ? 'ბანკმა ავტორიზაცია დაადასტურა. გადახდა არ დაწყებულა.' : lang === 'ru' ? 'Банк подтвердил авторизацию. Платёж не инициирован.' : 'Bank authentication succeeded. No payment was started.' });
+    } catch (error) {
+      setBogVerification({ ok: false, message: error instanceof Error ? error.message : 'Bank authentication could not be checked.' });
+    } finally {
+      setCheckingBog(false);
+    }
+  };
+
   const handleSaveProvider = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProvider) return;
+    if (!editingProvider || checkingBog || (editingProvider.id === 'prov-bog' && bogEnvironment === 'sandbox')) return;
     setErrorMsg('');
     setSuccessMsg('');
     try {
@@ -1553,10 +1571,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         </div>
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-100">
           {lang === 'ka'
-            ? 'აქ შეგიძლიათ ბანკის მონაცემების შეყვანა და პროვაიდერის ჩართვა ან გამორთვა. გადახდის შესრულება ხელმისაწვდომი გახდება მხოლოდ ბანკის რეალური გადახდის გზისა და დადასტურების დასრულების შემდეგ.'
+            ? 'BOG-ისთვის შეიყვანეთ Public Key და Secret Key, შეამოწმეთ ავტორიზაცია, შემდეგ შეინახეთ და ჩართეთ. გამორთვა ახალ შეკვეთებს აჩერებს. უკვე დაწყებული გადახდების დადასტურება გაგრძელდება.'
             : lang === 'ru'
-              ? 'Здесь можно сохранить банковские данные и включить или выключить провайдера. Приём платежей станет доступен после завершения и проверки реального банковского процесса.'
-              : 'Save bank credentials and turn a provider on or off here. Payment processing becomes available after the real bank checkout and confirmation flow is completed and verified.'}
+              ? 'Для BOG укажите Public Key и Secret Key, проверьте авторизацию, сохраните и включите провайдера. Отключение остановит новые заказы. Подтверждение уже начатых платежей продолжится.'
+              : 'For BOG, enter the Public Key and Secret Key, verify authentication, save, and enable the provider. Disabling stops new orders. Existing payments can still be reconciled.'}
         </div>
 
         <div className="space-y-2.5 pt-1">
@@ -1793,6 +1811,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingProvider(null)}
+                disabled={checkingBog}
                 className="text-slate-400 hover:text-white p-1"
               >
                 <X className="w-4 h-4" />
@@ -1800,20 +1819,36 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             </div>
 
             <form onSubmit={handleSaveProvider} className="space-y-3 text-xs">
+              {editingProvider.id === 'prov-bog' && (
+                <label className="block text-[10px] text-slate-400">
+                  {lang === 'ka' ? 'ავტორიზაციის გარემო' : lang === 'ru' ? 'Среда авторизации' : 'Authentication environment'}
+                  <select value={bogEnvironment} disabled={checkingBog || loading} onChange={event => {
+                    const next = event.target.value === 'sandbox' ? 'sandbox' : 'live';
+                    setBogEnvironment(next);
+                    setBogVerification(null);
+                    setProviderForm(form => ({ ...form, clientId: next === 'sandbox' ? '' : editingProvider.clientId || '', secretKey: '' }));
+                  }} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+                    <option value="live">Live</option>
+                    <option value="sandbox">Sandbox</option>
+                  </select>
+                </label>
+              )}
               <div className="space-y-1">
-                <label className="text-[10px] text-slate-400">Client ID / Merchant ID</label>
+                <label className="text-[10px] text-slate-400" htmlFor="payment-provider-client-id">{editingProvider.id === 'prov-bog' ? 'Public Key (Client ID)' : 'Client ID / Merchant ID'}</label>
                 <input
+                  id="payment-provider-client-id"
                   type="text"
+                  disabled={checkingBog}
                   value={providerForm.clientId}
-                  onChange={(e) => setProviderForm({ ...providerForm, clientId: e.target.value })}
-                  placeholder="მაგ: პროვაიდერის მიერ მოწოდებული Merchant ID"
+                  onChange={(e) => { setBogVerification(null); setProviderForm({ ...providerForm, clientId: e.target.value }); }}
+                  placeholder={editingProvider.id === 'prov-bog' ? 'Public Key' : 'მაგ: პროვაიდერის მიერ მოწოდებული Merchant ID'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
                 />
               </div>
 
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] text-slate-400">Secret Key / Client Secret</label>
+                  <label className="text-[10px] text-slate-400" htmlFor="payment-provider-client-secret">{editingProvider.id === 'prov-bog' ? 'Secret Key (Client Secret)' : 'Secret Key / Client Secret'}</label>
                   <button
                     type="button"
                     onClick={() => setShowKeyMask(!showKeyMask)}
@@ -1824,10 +1859,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                   </button>
                 </div>
                 <input
+                  id="payment-provider-client-secret"
                   type={showKeyMask ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  disabled={checkingBog}
                   value={providerForm.secretKey}
-                  onChange={(e) => setProviderForm({ ...providerForm, secretKey: e.target.value })}
-                  placeholder={editingProvider.secretKeyConfigured ? 'შეავსეთ მხოლოდ გასაახლებლად' : 'Secret Key...'}
+                  onChange={(e) => { setBogVerification(null); setProviderForm({ ...providerForm, secretKey: e.target.value }); }}
+                  placeholder={editingProvider.secretKeyConfigured && bogEnvironment === 'live' ? 'შეავსეთ მხოლოდ გასაახლებლად' : 'Secret Key...'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -1858,15 +1896,24 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                 </>
               )}
 
+              {editingProvider.id === 'prov-bog' && (
+                <div className="space-y-2">
+                  <button type="button" disabled={checkingBog || loading} onClick={handleVerifyBog} className="w-full rounded-xl border border-amber-500/40 px-3 py-2 text-amber-300 disabled:opacity-50">
+                    {checkingBog ? '…' : lang === 'ka' ? 'BOG ავტორიზაციის შემოწმება' : lang === 'ru' ? 'Проверить авторизацию BOG' : 'Verify BOG authentication'}
+                  </button>
+                  {bogVerification && <p role={bogVerification.ok ? 'status' : 'alert'} className={bogVerification.ok ? 'text-emerald-400' : 'text-rose-300'}>{bogVerification.message}</p>}
+                </div>
+              )}
+
               <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold text-white block">სისტემაში გააქტიურება</span>
-                  <span className="text-[10px] text-slate-400 block">ჩართვის შემთხვევაში გამოჩნდება გადახდისას</span>
+                  <span className="text-[10px] text-slate-400 block">{editingProvider.id === 'prov-bog' ? (lang === 'ka' ? 'შენახვის შემდეგ გააკონტროლებს ახალ BOG შეკვეთებს.' : lang === 'ru' ? 'После сохранения управляет новыми заказами BOG.' : 'Controls new BOG orders once saved.') : (lang === 'ka' ? 'პროვაიდერის კონფიგურაცია.' : lang === 'ru' ? 'Настройка провайдера.' : 'Provider configuration.')}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setProviderForm({ ...providerForm, isActive: !providerForm.isActive })}
-                  disabled={editingProvider.id === 'prov-stripe'}
+                  disabled={editingProvider.id === 'prov-stripe' || (editingProvider.id === 'prov-bog' && bogEnvironment === 'sandbox')}
                   aria-label={providerForm.isActive ? 'პროვაიდერის გამორთვა' : 'პროვაიდერის ჩართვა'}
                   aria-pressed={providerForm.isActive}
                   className={`w-11 h-6 rounded-full transition-colors relative p-0.5 ${
@@ -1885,13 +1932,14 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingProvider(null)}
+                  disabled={checkingBog}
                   className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
                 >
                   გაუქმება
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || checkingBog || (editingProvider.id === 'prov-bog' && bogEnvironment === 'sandbox')}
                   className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50"
                 >
                   {loading ? '...' : 'შენახვა'}

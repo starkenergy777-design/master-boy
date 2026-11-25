@@ -5,6 +5,7 @@ import { translations } from '../i18n.js';
 import { Language, User, Top15Membership, CraftsmanListingInfo, AdvertisementPublic } from '../types.js';
 import { api } from '../api.js';
 import { photoPreviewUrl } from '../photo-url.js';
+import { redirectToBog } from '../bogCheckout.js';
 
 interface CraftsmanDashboardProps {
   lang: Language;
@@ -115,6 +116,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const [showDeletePhotoConfirm, setShowDeletePhotoConfirm] = useState(false);
 
   const [paymentProviders, setPaymentProviders] = useState<{ id: string; name: string }[]>([]);
+  const [pendingBankOrders, setPendingBankOrders] = useState<Awaited<ReturnType<typeof api.getPendingBogPayments>>>([]);
   const [profileLoadError, setProfileLoadError] = useState('');
   const [profileActionError, setProfileActionError] = useState('');
 
@@ -133,19 +135,21 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
     try {
       setProfileLoadError('');
       setLoading(true);
-      const [resProfile, resMemberships, resListing, provList, resAd, resMerchant] = await Promise.all([
+      const [resProfile, resMemberships, resListing, provList, resAd, resMerchant, pending] = await Promise.all([
         api.getMyCraftsman(),
         api.getMyMemberships(),
         api.getCraftsmanListing().catch(() => null),
         api.getPaymentProviders().catch(() => []),
         api.getActiveAd().catch(() => ({ ad: null })),
         api.getMerchantDisclosure().catch(() => null),
+        api.getPendingBogPayments().catch(() => []),
       ]);
       setCraftsman(resProfile.craftsman);
       setActiveAd(resAd?.ad || null);
       setMerchantDisclosure(resMerchant);
       setMemberships(resMemberships);
       setPaymentProviders(Array.isArray(provList) ? provList : []);
+      setPendingBankOrders(Array.isArray(pending) ? pending : []);
       setSelectedProviderId('');
       if (resListing) {
         setListing(resListing);
@@ -209,12 +213,14 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       setPaying(true);
       if (listing?.status === 'UNPAID_DRAFT') {
         const res = await api.payCraftsmanListing(selectedProviderId, true);
+        if (redirectToBog(res)) return;
         if (res.listing) {
           setListing(res.listing);
           setRemainingSeconds(res.listing.secondsRemaining || 0);
         }
       } else {
         const res = await api.renewCraftsmanListing(selectedProviderId, true);
+        if (redirectToBog(res)) return;
         if (res.listing) {
           setListing(res.listing);
           setRemainingSeconds(res.listing.secondsRemaining || 0);
@@ -337,6 +343,9 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       </div>}
 
       <button type="button" onClick={openFinancialCases} className="self-start text-xs text-amber-400 underline">{lang === 'ka' ? 'გადახდის დავა და დაბრუნების მოთხოვნა' : lang === 'ru' ? 'Спор по оплате и запрос возврата' : 'Payment dispute or refund request'}</button>
+      {pendingBankOrders.map(order => <a key={order.id} href={`/?bog_order=${encodeURIComponent(order.id)}`} className="self-start text-xs text-amber-400 underline">
+        {order.kind === 'TOP15' ? 'Top 15' : lang === 'ka' ? 'პროფილის განთავსება' : lang === 'ru' ? 'Размещение профиля' : 'Profile listing'} · {lang === 'ka' ? 'გადახდის მდგომარეობა' : lang === 'ru' ? 'Статус оплаты' : 'Payment status'}
+      </a>)}
 
       {activeAd && activeAd.company_name && activeAd.image_url && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">

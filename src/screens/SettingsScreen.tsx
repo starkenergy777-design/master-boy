@@ -109,8 +109,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <span className="text-base">
                   {l.code === 'en' ? (
                     <>
-                      <span className="sm:hidden" aria-hidden="true">🇬🇧</span>
-                      <span className="hidden sm:inline" aria-hidden="true">EN</span>
+                      <span className="hidden pointer-coarse:inline" aria-hidden="true">{l.flag}</span>
+                      <span className="pointer-coarse:hidden" aria-hidden="true">EN</span>
                     </>
                   ) : l.flag}
                 </span>

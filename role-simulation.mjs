@@ -93,6 +93,43 @@ try {
   };
   roles.CRAFTSMAN.user.password = hashPassword('Audit-only-password-123');
 
+  const termsProfile = db.craftsmen.get(auditCraftsmanId);
+  const previousTerms = { financialTermsVersion: termsProfile.financialTermsVersion, financialTermsAcceptedAt: termsProfile.financialTermsAcceptedAt };
+  const previousDisclosure = db.merchantDisclosure;
+  const poolBeforeConsent = storage.pool;
+  const termsPath = '/craftsmen/me/financial-terms';
+  const termsSession = { token: roles.CRAFTSMAN.token };
+  const acceptTerms = () => request(`${termsPath}/accept`, { ...termsSession, method: 'POST', body: {} });
+  try {
+    termsProfile.financialTermsVersion = null;
+    termsProfile.financialTermsAcceptedAt = null;
+    db.merchantDisclosure = { legalName: 'Test Merchant', identificationCode: '00000000000', address: 'Test address', phone: '+995555000000', email: 'audit@example.com' };
+    let failWrite = true;
+    let savedAt;
+    let writes = 0;
+    storage.pool = { query: async (sql, args) => {
+      assert.match(sql, /UPDATE public\.craftsmen/);
+      assert.deepEqual(args.slice(0, 3), [termsProfile.id, termsProfile.userId, previousTerms.financialTermsVersion]);
+      if (failWrite) throw new Error('Simulated consent write failure');
+      writes++;
+      savedAt ??= args[3];
+      return { rows: [{ financial_terms_accepted_at: new Date(savedAt) }] };
+    } };
+    const failedAcceptance = await acceptTerms();
+    const afterFailure = await request(termsPath, termsSession);
+    check('failed consent write leaves the profile unaccepted',
+      failedAcceptance.status === 503 && failedAcceptance.body.code === 'TERMS_ACCEPTANCE_SAVE_FAILED' && afterFailure.body.accepted === false);
+    failWrite = false;
+    const saved = await acceptTerms();
+    const retry = await acceptTerms();
+    check('persisted consent is accepted and repeat submission preserves its timestamp',
+      saved.status === 200 && retry.body.acceptedAt === savedAt && writes === 1);
+  } finally {
+    Object.assign(termsProfile, previousTerms);
+    db.merchantDisclosure = previousDisclosure;
+    storage.pool = poolBeforeConsent;
+  }
+
   // Isolated photo persistence simulation: no Supabase connection or real rows.
   const originalPool = storage.pool;
   const originalFetch = globalThis.fetch;
@@ -443,6 +480,40 @@ try {
   }
 
   // Provider configuration is an administrator preference, not a payment receipt.
+  const verifyBogPath = '/admin/providers/payment/prov-bog/verify';
+  const verifyAuditFetch = globalThis.fetch;
+  let bankOAuthCalls = 0;
+  try {
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.startsWith(`${baseUrl}/`)) return verifyAuditFetch(input, init);
+      const oauth = new URL(url);
+      assert.ok(['oauth2.bog.ge', 'oauth2-sandbox.bog.ge'].includes(oauth.hostname));
+      assert.equal(oauth.pathname, '/auth/realms/bog/protocol/openid-connect/token');
+      assert.equal(init.redirect, 'error');
+      assert.equal(init.body, 'grant_type=client_credentials');
+      bankOAuthCalls++;
+      const credential = oauth.hostname === 'oauth2-sandbox.bog.ge' ? 'audit-sandbox:audit-sandbox-secret' : 'audit-merchant:audit-secret';
+      const authorized = new Headers(init.headers).get('authorization') === `Basic ${Buffer.from(credential).toString('base64')}`;
+      return new Response(JSON.stringify(authorized ? { access_token: 'not-returned-to-browser' } : { error: 'invalid_client' }), { status: authorized ? 200 : 401 });
+    };
+    const verify = (token, body) => request(verifyBogPath, { token, method: 'POST', body });
+    const valid = { clientId: 'audit-merchant', secretKey: 'audit-secret' };
+    const unauthorized = await verify(roles.ADMIN.token, valid);
+    const missing = await verify(roles.SUPER_ADMIN.token, { clientId: 'audit-merchant' });
+    check('BOG credential verification is superadmin-only and validates before contacting the bank', unauthorized.status === 403 && missing.status === 422 && bankOAuthCalls === 0);
+    const beforePayments = db.paymentIntents.size;
+    const beforeProvider = JSON.stringify(db.providerConfig.payment);
+    const verified = await verify(roles.SUPER_ADMIN.token, valid);
+    const rejected = await verify(roles.SUPER_ADMIN.token, { ...valid, secretKey: 'wrong-secret' });
+    check('BOG OAuth verification reports success without revealing tokens or changing provider/payment data', verified.status === 200 && verified.body.verified === true && Object.keys(verified.body).length === 1 && db.paymentIntents.size === beforePayments && JSON.stringify(db.providerConfig.payment) === beforeProvider);
+    check('BOG OAuth rejects an invalid credential pair', rejected.status === 422 && rejected.body.code === 'BOG_AUTH_REJECTED' && bankOAuthCalls === 2);
+    const sandbox = await verify(roles.SUPER_ADMIN.token, { clientId: 'audit-sandbox', secretKey: 'audit-sandbox-secret', environment: 'sandbox' });
+    const missingSandbox = await verify(roles.SUPER_ADMIN.token, { environment: 'sandbox' });
+    check('BOG sandbox sends only explicit sandbox credentials to the sandbox endpoint', sandbox.status === 200 && missingSandbox.status === 422 && bankOAuthCalls === 3);
+  } finally {
+    globalThis.fetch = verifyAuditFetch;
+  }
   // The isolated persistence stub avoids touching Supabase or a real bank.
   const originalPersistConfig = db.persistSuperAdminConfig;
   const bogProvider = db.providerConfig.payment.find(provider => provider.id === 'prov-bog');
@@ -564,6 +635,20 @@ try {
   const restoredCraftsmanToken = 'audit-session-craftsman-restored';
   db.sessions.set(restoredCraftsmanToken, { userId: craftsmanUserId, createdAt: Date.now() });
   roles.CRAFTSMAN.token = restoredCraftsmanToken;
+  const pendingBankId = 'audit-bog-pending-before-deletion';
+  db.paymentIntents.set(pendingBankId, {
+    id: pendingBankId, reservationId: '', craftsmanId: auditCraftsmanId, providerId: 'prov-bog',
+    amountMinor: 5000, currency: 'GEL', idempotencyKey: pendingBankId, status: 'PENDING', createdAt: new Date().toISOString(),
+    providerCheckout: { kind: 'LISTING', environment: 'live' },
+  });
+  try {
+    const pendingDeletion = await request(`/admin/craftsmen/${auditCraftsmanId}`, { method: 'DELETE', token: roles.SUPER_ADMIN.token });
+    check('admin deletion preserves the profile while a bank order awaits reconciliation',
+      pendingDeletion.status === 409 && pendingDeletion.body.code === 'BOG_ACCOUNT_PAYMENT_PENDING' &&
+      db.craftsmen.has(auditCraftsmanId) && db.paymentIntents.get(pendingBankId)?.status === 'PENDING');
+  } finally {
+    db.paymentIntents.delete(pendingBankId);
+  }
   db.craftsmanDrafts.set(craftsmanUserId, { step: 2, data: { auditOnly: true }, updatedAt: new Date().toISOString() });
   db.paymentIntents.set(auditPaymentIntentId, {
     id: auditPaymentIntentId, reservationId: 'audit-ad', craftsmanId: null, providerId: 'prov-bog',
