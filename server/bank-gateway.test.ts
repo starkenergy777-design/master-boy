@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { BogProcessedAmountMismatch, createBankCheckout, getBankPaymentState, newBankRequestKey, verifyBogCallback } from './bank-gateway.js';
+import { BankApiError, BogProcessedAmountMismatch, createBankCheckout, getBankPaymentState, newBankRequestKey, verifyBogCallback } from './bank-gateway.js';
 
 function replies(values: unknown[]): { fetcher: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } {
   const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -20,6 +20,32 @@ const base = {
   returnUrl: 'https://master-boy.onrender.com/payment-return',
   manualCapture: true, requestKey: newBankRequestKey(),
 };
+
+test('bank failures retain only the HTTP status, operation and allowed error code', async () => {
+  const sensitive = 'never-include-this-in-diagnostics';
+  const deniedAuth = (async () => Response.json({
+    error: 'invalid_client', error_description: sensitive, client_secret: sensitive,
+  }, { status: 401 })) as typeof fetch;
+  await assert.rejects(() => createBankCheckout({ ...base, bank: 'prov-bog' }, deniedAuth), error => {
+    assert.ok(error instanceof BankApiError);
+    assert.equal(error.operation, 'AUTHENTICATION');
+    assert.equal(error.status, 401);
+    assert.equal(error.bankCode, 'invalid_client');
+    assert.ok(!JSON.stringify(error).includes(sensitive));
+    return true;
+  });
+  let calls = 0;
+  const deniedOrder = (async () => ++calls === 1
+    ? Response.json({ access_token: sensitive })
+    : Response.json({ code: 106, message: sensitive }, { status: 400 })) as typeof fetch;
+  await assert.rejects(() => createBankCheckout({ ...base, bank: 'prov-bog' }, deniedOrder), error => {
+    assert.ok(error instanceof BankApiError);
+    assert.equal(error.operation, 'CREATE_ORDER');
+    assert.equal(error.bankCode, '106');
+    assert.ok(!JSON.stringify(error).includes(sensitive));
+    return true;
+  });
+});
 
 test('BOG gateway creates a manual-capture order and returns the bank redirect', async () => {
   const { fetcher, calls } = replies([

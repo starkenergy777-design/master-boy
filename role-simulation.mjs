@@ -643,8 +643,85 @@ try {
   }
 
   const previousSimulation = process.env.PAYMENTS_SIMULATION;
+  const diagnosticId = 'c2083dee-862f-42dc-b601-782153612654';
+  const diagnosticFetch = globalThis.fetch;
+  const diagnosticStatus = storage.getStatus;
+  const diagnosticWarn = console.warn;
+  const diagnosticProvider = db.providerConfig.payment.find(provider => provider.id === 'prov-bog');
+  const diagnosticActive = diagnosticProvider.isActive;
+  const diagnosticEnv = Object.fromEntries(['APP_ORIGIN', 'BOG_SANDBOX_CLIENT_ID', 'BOG_SANDBOX_CLIENT_SECRET'].map(key => [key, process.env[key]]));
+  const diagnosticLogs = [];
+  try {
+    process.env.APP_ORIGIN = 'https://isolated-test.example.com';
+    process.env.BOG_SANDBOX_CLIENT_ID = 'test-only-client';
+    process.env.BOG_SANDBOX_CLIENT_SECRET = 'never-log-this-secret';
+    diagnosticProvider.isActive = true;
+    storage.getStatus = () => ({ ...diagnosticStatus.call(storage), databaseConfigured: true });
+    console.warn = (...args) => diagnosticLogs.push(args);
+    db.paymentIntents.set(diagnosticId, {
+      id: diagnosticId, craftsmanId: auditCraftsmanId, amountMinor: 1000, currency: 'GEL',
+      status: 'PENDING', createdAt: new Date().toISOString(),
+      providerCheckout: { kind: 'TOP15', environment: 'sandbox' },
+    });
+    let denyAuth = true;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith(baseUrl + '/')) return diagnosticFetch(input, init);
+      const host = new URL(String(input)).hostname;
+      assert.ok(['oauth2-sandbox.bog.ge', 'api-sandbox.bog.ge'].includes(host));
+      if (host === 'oauth2-sandbox.bog.ge') return denyAuth
+        ? Response.json({ error: 'invalid_client', error_description: 'never-log-this-secret' }, { status: 401 })
+        : Response.json({ access_token: 'never-log-this-token' });
+      return Response.json({ code: 106, message: 'never-log-this-bank-body' }, { status: 400 });
+    };
+    for (const expected of ['BOG_AUTH_REJECTED', 'BOG_ORDER_REJECTED']) {
+      const failure = await request('/payments/bog/' + diagnosticId + '/status', {
+        token: roles.CRAFTSMAN.token, method: 'POST', body: {},
+      });
+      const logged = diagnosticLogs.at(-1)?.[1];
+      check('bank rejection has a matching safe diagnostic reference',
+        failure.status === 503 && failure.body.code === expected &&
+        /^[a-f0-9-]{36}$/.test(failure.body.reference) && logged?.reference === failure.body.reference &&
+        logged.operation === (denyAuth ? 'AUTHENTICATION' : 'CREATE_ORDER') &&
+        logged.bankCode === (denyAuth ? 'invalid_client' : '106') &&
+        !JSON.stringify({ body: failure.body, diagnosticLogs }).includes('never-log-this'));
+      denyAuth = false;
+    }
+  } finally {
+    globalThis.fetch = diagnosticFetch;
+    storage.getStatus = diagnosticStatus;
+    console.warn = diagnosticWarn;
+    diagnosticProvider.isActive = diagnosticActive;
+    db.paymentIntents.delete(diagnosticId);
+    for (const [key, value] of Object.entries(diagnosticEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
   process.env.PAYMENTS_SIMULATION = 'true';
   try {
+    const replayId = 'audit-top15-replay';
+    const replayKey = 'audit-top15-replay-key';
+    const redirectUrl = 'https://payment.bog.ge/?order_id=audit-only';
+    const beforeReplay = db.paymentIntents.size;
+    db.paymentIntents.set(replayId, {
+      id: replayId, craftsmanId: auditCraftsmanId, idempotencyKey: replayKey, status: 'PENDING',
+      providerCheckout: { kind: 'TOP15', environment: 'live', redirectUrl },
+    });
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const replay = await request('/top15/pay', {
+          method: 'POST', token: roles.CRAFTSMAN.token,
+          body: { providerId: 'prov-bog', reservationId: 'audit-reservation' },
+          headers: { 'Idempotency-Key': replayKey },
+        });
+        check('replayed Top15 payment retains its bank redirect without creating another payment',
+          replay.status === 200 && replay.body.id === replayId && replay.body.status === 'PENDING' &&
+          replay.body.redirectUrl === redirectUrl && replay.body.alreadyProcessed === true &&
+          db.paymentIntents.size === beforeReplay + 1);
+      }
+    } finally {
+      db.paymentIntents.delete(replayId);
+    }
     const auditedCraftsman = db.craftsmen.get(auditCraftsmanId);
     const acceptedTerms = { financialTermsVersion: auditedCraftsman.financialTermsVersion, financialTermsAcceptedAt: auditedCraftsman.financialTermsAcceptedAt };
     auditedCraftsman.financialTermsVersion = 'old-version';

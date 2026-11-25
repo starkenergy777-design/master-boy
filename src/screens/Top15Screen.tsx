@@ -109,7 +109,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
           if (c <= 1) {
             clearInterval(timer);
             setReservation(null);
-            setErrorMsg(lang === 'ka' ? 'დაჯავშნის 3-წუთიანი დრო ამოიწურა. სცადეთ თავიდან.' : 'Reservation time expired (3 mins).');
+            setErrorMsg(previous => previous || (lang === 'ka' ? 'დაჯავშნის 3-წუთიანი დრო ამოიწურა. სცადეთ თავიდან.' : 'Reservation time expired (3 mins).'));
             return 0;
           }
           return c - 1;
@@ -155,7 +155,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
     setErrorMsg('');
     try {
       setLoading(true);
-      const idempotencyKey = `idem-${reservation.reservationId}-${Date.now()}`;
+      const idempotencyKey = `idem-${reservation.reservationId}`;
       const payRes = await api.payTop15(reservation.reservationId, selectedProviderId, idempotencyKey, true);
       if (redirectToBog(payRes)) return;
       if (payRes.status === 'SUCCEEDED') {
@@ -164,7 +164,10 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
         setErrorMsg('Payment could not be completed.');
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Payment failed');
+      const reference = typeof err.data?.reference === 'string' && /^[a-f0-9-]{36}$/.test(err.data.reference)
+        ? ` (${lang === 'ka' ? 'შეცდომის ნომერი' : lang === 'ru' ? 'Номер ошибки' : 'Error reference'}: ${err.data.reference})`
+        : '';
+      setErrorMsg((err.message || 'Payment failed') + reference);
       if (err.code === 'TOP15_FULL' || err.code === 'TOP15_PAYMENT_LOST') {
         setReservation(null);
         setCountdown(0);
