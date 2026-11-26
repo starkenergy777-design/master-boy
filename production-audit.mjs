@@ -137,18 +137,21 @@ check('cities keep major centers first, then follow Georgian alphabetical order'
 check('fresh-install seed has no placeholder credentials or demo accounts', () => {
   assert.doesNotMatch(seed, /UNUSABLE_SEED_PASSWORD|INSERT INTO users|INSERT INTO craftsmen|Demo Craftsman/i);
 });
-check('craftsman registration does not default to a payment bank', () => {
-  assert.match(wizard, /useState\(''\)/);
+check('craftsman registration uses the enabled payment provider without hardcoding a bank', () => {
   assert.doesNotMatch(wizard, /prov-bog/);
-  assert.match(wizard, /!isFreeRegistration && !selectedProviderId/);
+  assert.match(wizard, /isFreeRegistration \? \[\] : await api\.getPaymentProviders\(\)/);
+  assert.match(wizard, /!paymentAvailable \|\| !financialTermsAccepted/);
 });
 check('Top15 checkout requires an operational provider before reserving a slot', () => {
   assert.match(routes, /apiRouter\.post\('\/top15\/reserve'[\s\S]{0,260}requireRealPaymentIntegration/);
   assert.match(routes, /const simulationEnabled = process\.env\.NODE_ENV !== 'production'[\s\S]{0,180}PAYMENTS_SIMULATION/);
 });
-check('Top15 payment provider selection requires explicit user choice', () => {
-  assert.doesNotMatch(top15, /setSelectedProviderId\(provs\[0\]\.id\)/);
-  assert.match(top15, /setSelectedProviderId\(''\)/);
+check('craftsman payment flows use server-enabled providers without displaying a chooser', () => {
+  for (const source of [craftsman, top15, wizard]) {
+    assert.doesNotMatch(source, /setSelectedProviderId|t\.providerSelect|\{(?:prov|p)\.name\}/);
+    assert.match(source, /await api\.getPaymentProviders\(\)/);
+    assert.match(source, /const providerId = providers\[0\]\?\.id/);
+  }
 });
 check('Top15 keeps payment errors after expiry and reuses its request key', () => {
   const update = top15.match(/setErrorMsg\((previous => previous \|\| .*?)\);/);

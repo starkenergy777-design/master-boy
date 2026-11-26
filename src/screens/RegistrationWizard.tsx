@@ -1,8 +1,8 @@
 import { localizeTree } from '../i18n.js';
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, Sparkles, AlertCircle, Camera, Clock, Eye, EyeOff, CreditCard, ShieldCheck, Phone, Lock } from 'lucide-react';
+import { ArrowLeft, Check, Sparkles, AlertCircle, Camera, Clock, Eye, EyeOff, ShieldCheck, Phone, Lock } from 'lucide-react';
 import { translations } from '../i18n.js';
-import { Language, City, Profession, PaymentProvider } from '../types.js';
+import { Language, City, Profession } from '../types.js';
 import { api } from '../api.js';
 import { ProfessionPicker } from '../components/ProfessionPicker.js';
 import { photoPreviewUrl } from '../photo-url.js';
@@ -42,7 +42,6 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [selectedProviderId, setSelectedProviderId] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [registrationPrice, setRegistrationPrice] = useState<{ amountMinor: number; currency: string } | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
@@ -53,6 +52,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
     : '—';
 
   const [paymentProviders, setPaymentProviders] = useState<{ id: string; name: string; code?: string }[]>([]);
+  const paymentAvailable = paymentProviders.length > 0;
 
   // Form State
   const [formData, setFormData] = useState({
@@ -125,6 +125,17 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
     init();
   }, []);
 
+  useEffect(() => {
+    if (step !== 3 || !registrationPrice || registrationPrice.amountMinor === 0) return;
+    let cancelled = false;
+    api.getPaymentProviders().then(providers => {
+      if (!cancelled) setPaymentProviders(providers);
+    }).catch(() => {
+      if (!cancelled) setPaymentProviders([]);
+    });
+    return () => { cancelled = true; };
+  }, [step, registrationPrice?.amountMinor]);
+
   // Server-side draft auto-save (§4.2 & §6.3)
   const autoSaveDraft = async (newStep: number, updatedData: any) => {
     if (!api.getToken()) return;
@@ -176,20 +187,25 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
       setStep(1);
       return;
     }
-    if (!isFreeRegistration && !selectedProviderId) {
-      setErrorMsg(lang === 'ka'
-        ? 'ონლაინ გადახდა ჯერ ხელმისაწვდომი არ არის. ანგარიში არ შეიქმნება, სანამ გადახდა არ დადასტურდება.'
-        : lang === 'ru'
-          ? 'Онлайн-оплата пока недоступна. Аккаунт не будет создан до подтверждения платежа.'
-          : 'Online payment is not available yet. The account will not be created until payment is confirmed.');
-      return;
-    }
     try {
       setLoading(true);
+      const providers = isFreeRegistration ? [] : await api.getPaymentProviders();
+      const providerId = providers[0]?.id;
+      if (!isFreeRegistration) {
+        setPaymentProviders(providers);
+        if (!providerId) {
+          setErrorMsg(lang === 'ka'
+            ? 'ონლაინ გადახდა ჯერ ხელმისაწვდომი არ არის. ანგარიში არ შეიქმნება, სანამ გადახდა არ დადასტურდება.'
+            : lang === 'ru'
+              ? 'Онлайн-оплата пока недоступна. Аккаунт не будет создан до подтверждения платежа.'
+              : 'Online payment is not available yet. The account will not be created until payment is confirmed.');
+          return;
+        }
+      }
       const payload = {
         ...formData,
         paid: !isFreeRegistration,
-        ...(isFreeRegistration ? {} : { providerId: selectedProviderId, checkoutProof: getBogRegistrationProof(), financialTermsAccepted, financialTermsVersion: FINANCIAL_TERMS_VERSION }),
+        ...(isFreeRegistration ? {} : { providerId, checkoutProof: getBogRegistrationProof(), financialTermsAccepted, financialTermsVersion: FINANCIAL_TERMS_VERSION }),
         photos: formData.photoUrl.trim() ? [{ url: formData.photoUrl.trim() }] : [],
       };
 
@@ -205,12 +221,14 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
       }
       onComplete();
     } catch (err: any) {
-      setErrorMsg(err.code === 'PAYMENT_PROVIDER_NOT_READY' || err.code === 'PAYMENT_PROVIDER_UNAVAILABLE'
+      setErrorMsg(err.code === 'BOG_ORDER_REJECTED'
+        ? (lang === 'ka' ? 'გადახდა ვერ შესრულდა. სცადეთ ხელახლა ან დაუკავშირდით მხარდაჭერას.' : lang === 'ru' ? 'Не удалось выполнить оплату. Повторите попытку или обратитесь в поддержку.' : 'Payment could not be completed. Retry or contact support.')
+        : err.code === 'PAYMENT_PROVIDER_NOT_READY' || err.code === 'PAYMENT_PROVIDER_UNAVAILABLE'
         ? (lang === 'ka'
-          ? 'საგადახდო პროვაიდერი ჯერ დაკავშირებული არ არის. ანგარიში არ შექმნილა; სცადეთ მოგვიანებით.'
+          ? 'ონლაინ გადახდა ამჟამად მიუწვდომელია. ანგარიში არ შექმნილა; სცადეთ მოგვიანებით.'
           : lang === 'ru'
-            ? 'Платёжный провайдер ещё не подключён. Аккаунт не создан; попробуйте позже.'
-            : 'The payment provider is not configured yet. No account was created; please try again later.')
+            ? 'Онлайн-оплата сейчас недоступна. Аккаунт не создан; попробуйте позже.'
+            : 'Online payment is currently unavailable. No account was created; please try again later.')
         : (err.message || 'Registration failed'));
     } finally {
       setLoading(false);
@@ -517,39 +535,10 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
               </div>
             </div>
 
-            {!isFreeRegistration && registrationPrice && (
-              <div className="space-y-2">
-                <label className="text-[11px] font-medium text-slate-400 px-1">
-                  {lang === 'ka' ? 'აირჩიეთ გადახდის მეთოდი' : lang === 'ru' ? 'Выберите способ оплаты' : 'Select Payment Provider'}
-                </label>
-                <div className="space-y-2">
-                  {paymentProviders.length === 0 ? (
-                  <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
-                    {lang === 'ka' ? 'გადახდის მეთოდი ჯერ არ არის ხელმისაწვდომი.' : lang === 'ru' ? 'Способ оплаты пока недоступен.' : 'No payment method is available yet.'}
-                  </p>
-                ) : paymentProviders.map((prov) => (
-                    <button
-                      type="button"
-                      key={prov.id}
-                      aria-pressed={selectedProviderId === prov.id}
-                      onClick={() => setSelectedProviderId(prov.id)}
-                      className={`w-full text-left p-3 rounded-2xl border flex items-center justify-between transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
-                        selectedProviderId === prov.id
-                          ? 'bg-amber-500/10 border-amber-500 text-white shadow-sm'
-                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <CreditCard className={`w-4 h-4 ${selectedProviderId === prov.id ? 'text-amber-400' : 'text-slate-400'}`} />
-                        <span className="text-xs font-semibold">{prov.name}</span>
-                      </span>
-                      {selectedProviderId === prov.id && (
-                        <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {!isFreeRegistration && registrationPrice && paymentProviders.length === 0 && (
+              <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
+                {lang === 'ka' ? 'გადახდის მეთოდი ჯერ არ არის ხელმისაწვდომი.' : lang === 'ru' ? 'Способ оплаты пока недоступен.' : 'No payment method is available yet.'}
+              </p>
             )}
             {!isFreeRegistration && <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-300 space-y-2">
               <button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline text-left">{lang === 'ka' ? 'გადახდისა და დაბრუნების სრული წესები' : lang === 'ru' ? 'Полные правила оплаты и возврата' : 'Full payment and refund terms'}</button>
@@ -577,7 +566,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-            disabled={loading || priceLoading || !registrationPrice || (!isFreeRegistration && (!selectedProviderId || !financialTermsAccepted))}
+            disabled={loading || priceLoading || !registrationPrice || (!isFreeRegistration && (!paymentAvailable || !financialTermsAccepted))}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-sm transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {loading ? (

@@ -1,8 +1,8 @@
 import { localizeTree } from '../i18n.js';
 import React, { useState, useEffect } from 'react';
-import { Star, Clock, ShieldCheck, CheckCircle2, AlertCircle, CreditCard, ChevronRight } from 'lucide-react';
+import { Star, Clock, ShieldCheck, CheckCircle2, AlertCircle, ChevronRight } from 'lucide-react';
 import { translations } from '../i18n.js';
-import { Language, City, Profession, PaymentProvider } from '../types.js';
+import { Language, City, Profession } from '../types.js';
 import { redirectToBog } from '../bogCheckout.js';
 import { api } from '../api.js';
 import { getProfessionDisplayNumber, ProfessionIcon } from '../components/ProfessionPicker.js';
@@ -30,8 +30,6 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   // Flow State
   const [availability, setAvailability] = useState<{ freeSlots: number; amountMinor: number; currency: string } | null>(null);
   const [reservation, setReservation] = useState<{ reservationId: string; ttlSeconds: number; amountMinor: number; currency: string } | null>(null);
-  const [providers, setProviders] = useState<PaymentProvider[]>([]);
-  const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   const [countdown, setCountdown] = useState<number>(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -126,9 +124,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
       setLoading(true);
       const provs = await api.getPaymentProviders();
       if (provs.length === 0) {
-        setProviders([]);
         setReservation(null);
-        setSelectedProviderId('');
         setErrorMsg(lang === 'ka'
           ? 'Top 15-ის ონლაინ გადახდა ჯერ მიუწვდომელია; ადგილი არ დაჯავშნილა.'
           : lang === 'ru'
@@ -139,8 +135,6 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
       const res = await api.reserveTop15Slot(cityId, professionId);
       setReservation(res);
       setCountdown(res.ttlSeconds || 180);
-      setProviders(provs);
-      setSelectedProviderId('');
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to reserve slot');
       if (err.code === 'TOP15_FULL') void checkAvailability();
@@ -151,12 +145,18 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
 
   // Pay Slot with Idempotency Key (§4.2 step 5)
   const handlePay = async () => {
-    if (!reservation || !selectedProviderId) return;
+    if (!reservation) return;
     setErrorMsg('');
     try {
       setLoading(true);
+      const providers = await api.getPaymentProviders();
+      const providerId = providers[0]?.id;
+      if (!providerId) {
+        setErrorMsg(lang === 'ka' ? 'ონლაინ გადახდა ამჟამად მიუწვდომელია.' : lang === 'ru' ? 'Онлайн-оплата сейчас недоступна.' : 'Online payment is currently unavailable.');
+        return;
+      }
       const idempotencyKey = `idem-${reservation.reservationId}`;
-      const payRes = await api.payTop15(reservation.reservationId, selectedProviderId, idempotencyKey, true);
+      const payRes = await api.payTop15(reservation.reservationId, providerId, idempotencyKey, true);
       if (redirectToBog(payRes)) return;
       if (payRes.status === 'SUCCEEDED') {
         setIsSuccess(true);
@@ -167,7 +167,12 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
       const reference = typeof err.data?.reference === 'string' && /^[a-f0-9-]{36}$/.test(err.data.reference)
         ? ` (${lang === 'ka' ? 'შეცდომის ნომერი' : lang === 'ru' ? 'Номер ошибки' : 'Error reference'}: ${err.data.reference})`
         : '';
-      setErrorMsg((err.message || 'Payment failed') + reference);
+      const message = err.code === 'BOG_ORDER_REJECTED'
+        ? (lang === 'ka' ? 'გადახდა ვერ შესრულდა. სცადეთ ხელახლა ან დაუკავშირდით მხარდაჭერას.' : lang === 'ru' ? 'Не удалось выполнить оплату. Повторите попытку или обратитесь в поддержку.' : 'Payment could not be completed. Retry or contact support.')
+        : err.code === 'PAYMENT_PROVIDER_UNAVAILABLE' || err.code === 'PAYMENT_PROVIDER_NOT_READY'
+        ? (lang === 'ka' ? 'ონლაინ გადახდა ამჟამად მიუწვდომელია.' : lang === 'ru' ? 'Онлайн-оплата сейчас недоступна.' : 'Online payment is currently unavailable.')
+        : (err.message || 'Payment failed');
+      setErrorMsg(message + reference);
       if (err.code === 'TOP15_FULL' || err.code === 'TOP15_PAYMENT_LOST') {
         setReservation(null);
         setCountdown(0);
@@ -323,37 +328,6 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
               </div>
             </div>
 
-            {/* Provider Selection */}
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-1">
-                {t.providerSelect}
-              </label>
-
-              <div className="space-y-2">
-                {providers.map((prov) => (
-                  <button
-                    type="button"
-                    key={prov.id}
-                    aria-pressed={selectedProviderId === prov.id}
-                    onClick={() => setSelectedProviderId(prov.id)}
-                    className={`w-full text-left p-3 rounded-xl border flex items-center justify-between transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
-                      selectedProviderId === prov.id
-                        ? 'bg-amber-500/10 border-amber-500 text-white'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <CreditCard className="w-4 h-4 text-amber-400" />
-                      <span className="text-xs font-semibold">{prov.name}</span>
-                    </span>
-                    {selectedProviderId === prov.id && (
-                      <span aria-hidden="true" className="w-2 h-2 rounded-full bg-amber-400" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
               <span className="text-slate-400">თანხა გადასახდელად:</span>
               <span className="font-bold text-white font-mono text-base">
@@ -366,7 +340,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
             </div>
             <button
               onClick={handlePay}
-              disabled={loading || countdown <= 0 || !selectedProviderId || (availability?.freeSlots ?? 0) <= 0}
+              disabled={loading || countdown <= 0 || (availability?.freeSlots ?? 0) <= 0}
               className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-400 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-950/40 text-xs transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <ShieldCheck className="w-4 h-4" />
