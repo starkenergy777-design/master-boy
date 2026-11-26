@@ -33,6 +33,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   const [countdown, setCountdown] = useState<number>(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [paymentWait, setPaymentWait] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   const [craftsmanProfile, setCraftsmanProfile] = useState<any>(null);
@@ -119,6 +120,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
 
   // Reserve Slot (§4.2 step 3 & 4)
   const handleReserve = async () => {
+    if (loading) return;
     setErrorMsg('');
     try {
       setLoading(true);
@@ -145,7 +147,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
 
   // Pay Slot with Idempotency Key (§4.2 step 5)
   const handlePay = async () => {
-    if (!reservation) return;
+    if (!reservation || loading) return;
     setErrorMsg('');
     try {
       setLoading(true);
@@ -156,6 +158,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
         return;
       }
       const idempotencyKey = `idem-${reservation.reservationId}`;
+      setPaymentWait(10);
       const payRes = await api.payTop15(reservation.reservationId, providerId, idempotencyKey, true);
       if (redirectToBog(payRes)) return;
       if (payRes.status === 'SUCCEEDED') {
@@ -180,8 +183,15 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
       }
     } finally {
       setLoading(false);
+      setPaymentWait(null);
     }
   };
+
+  useEffect(() => {
+    if (!loading || paymentWait === null || paymentWait <= 0) return;
+    const timer = window.setInterval(() => setPaymentWait(previous => previous === null ? null : Math.max(0, previous - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [loading, paymentWait]);
 
   const formatCountdown = (secs: number) => {
     const m = Math.floor(secs / 60)
@@ -340,12 +350,15 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
             </div>
             <button
               onClick={handlePay}
+              aria-busy={loading}
               disabled={loading || countdown <= 0 || (availability?.freeSlots ?? 0) <= 0}
               className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-400 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-950/40 text-xs transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <ShieldCheck className="w-4 h-4" />
               <span>{loading
-                ? lang === 'ka' ? 'მოთხოვნის დამუშავება...' : lang === 'ru' ? 'Обработка запроса...' : 'Processing request...'
+                ? paymentWait !== null && paymentWait > 0
+                  ? (lang === 'ka' ? `ადგილის დადასტურება • ${paymentWait} წმ` : lang === 'ru' ? `Подтверждение места • ${paymentWait} с` : `Confirming slot • ${paymentWait}s`)
+                  : (lang === 'ka' ? 'გადახდის გვერდი მზადდება…' : lang === 'ru' ? 'Подготовка страницы оплаты…' : 'Preparing payment page…')
                 : `${t.pay} • ${(reservation.amountMinor / 100).toFixed(2)} GEL`}</span>
             </button>
           </div>

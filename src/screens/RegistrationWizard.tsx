@@ -177,6 +177,7 @@ export const RegistrationWizard: React.FC<RegistrationWizardProps> = ({
   };
 
   const handleSubmit = async () => {
+    if (loading) return;
     setErrorMsg('');
     if (!registrationPrice) {
       setErrorMsg(priceError || (lang === 'ka' ? 'რეგისტრაციის ტარიფი ჯერ არ ჩაიტვირთა' : lang === 'ru' ? 'Тариф регистрации ещё не загружен' : 'Registration price has not loaded yet'));

@@ -192,7 +192,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   }, [remainingSeconds]);
 
   const togglePhoneVisibility = async () => {
-    if (!craftsman) return;
+    if (!craftsman || updating) return;
     setProfileActionError('');
     try {
       setUpdating(true);
@@ -213,6 +213,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   };
 
   const handlePayOrRenew = async () => {
+    if (paying) return;
     setRenewalError('');
     try {
       setPaying(true);
@@ -251,6 +252,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   };
 
   const handleSavePhoto = async () => {
+    if (photoSaving) return;
     if (!photoInputUrl.trim()) {
       setPhotoError(lang === 'ka' ? 'შეიყვანეთ ვალიდური ფოტოს URL' : 'Please enter a valid photo URL');
       return;
@@ -273,7 +275,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   };
 
   const handleDeletePhoto = async () => {
-    if (!craftsman?.photos?.[0]) return;
+    if (!craftsman?.photos?.[0] || photoSaving) return;
     setPhotoSaving(true);
     try {
       await api.deletePhoto(craftsman.photos[0].id);
@@ -834,11 +836,12 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               <button
                 type="button"
                 onClick={handlePayOrRenew}
+                aria-busy={paying}
                 disabled={paying || !paymentAvailable}
                 className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {paying
-                  ? '...'
+                  ? (lang === 'ka' ? 'გადახდის გვერდი მზადდება…' : lang === 'ru' ? 'Подготовка страницы оплаты…' : 'Preparing payment page…')
                   : !paymentAvailable
                     ? (lang === 'ka' ? 'გადახდა მიუწვდომელია' : lang === 'ru' ? 'Оплата недоступна' : 'Payment unavailable')
                     : (lang === 'ka'

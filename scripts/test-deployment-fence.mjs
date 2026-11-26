@@ -164,8 +164,21 @@ try {
       { id: 'retired-delete', actorType: 'USER', actorId: 'admin', action: 'DELETE_CRAFTSMAN', targetType: 'CRAFTSMAN', targetId: 'fixture-craftsman', createdAt: membership.startsAt },
       () => false, () => { deletionPublished = true; }), isDeploymentHandoff);
     assert.equal(deletionPublished, false);
+    let cabinetChangePublished = false;
+    const publishCabinetChange = () => { cabinetChangePublished = true; };
+    const fixtureUser = { id:'fixture-user',phone:'+995555000000',password:'fixture',roles:['CRAFTSMAN'],status:'ACTIVE',createdAt:membership.startsAt };
+    const fixtureCraftsman = { id:'fixture-craftsman',userId:fixtureUser.id,photos:[] };
+    for (const write of [
+      () => priorStorage.saveCraftsmanDraft(fixtureUser.id,{step:2,data:{},updatedAt:membership.startsAt},publishCabinetChange),
+      () => priorStorage.updateCraftsmanProfile(fixtureCraftsman.id,fixtureUser.id,{name:'Fixture'},membership.startsAt,publishCabinetChange),
+      () => priorStorage.saveTop15Candidate({id:'fixture-reservation',craftsmanId:fixtureCraftsman.id},publishCabinetChange),
+      () => priorStorage.saveTop15ReservationStates(()=>[]),
+      () => priorStorage.saveFreeCraftsmanRegistration(fixtureUser,fixtureCraftsman,{},false,publishCabinetChange),
+      () => priorStorage.saveSupportMessages([{id:'fixture-message',craftsmanId:fixtureCraftsman.id}],publishCabinetChange),
+    ]) await assert.rejects(write(),isDeploymentHandoff);
+    assert.equal(cabinetChangePublished,false);
     assert.equal((await postgres.query('SELECT status FROM public.payment_intents WHERE id=$1', [intent.id])).rows[0].status, 'SUCCEEDED');
-    pass('retired targeted payment and account deletion writes cannot bypass the same deployment fence');
+    pass('retired payment, deletion and craftsman cabinet writes cannot bypass the same deployment fence');
   } finally { process.env.NODE_ENV = 'test'; }
 
   const snapshotStorage = new StorageService();

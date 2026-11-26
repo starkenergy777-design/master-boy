@@ -207,7 +207,7 @@ try {
         persistedPhotos.delete(args[0]);
         return { rowCount: 1, rows: [{ id: args[0] }] };
       }
-      if (sql.startsWith("UPDATE public.craftsman_drafts SET data")) {
+      if (sql.startsWith('DELETE FROM public.craftsman_drafts WHERE user_id=')) {
         return { rowCount: 1, rows: [] };
       }
       throw new Error(`Unexpected photo test query: ${sql}`);
