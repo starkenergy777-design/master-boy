@@ -212,8 +212,8 @@ check('accountant agent has read-only context and no administrative action execu
   assert.doesNotMatch(routes, /runSuperAdminAgentAction|validateAgentAdminAction/);
 });
 check('craftsman deletion handles drafts by map key and nullable payment owner safely', () => {
-  assert.match(routes, /filter\(\(\[userId\]\) => userIds\.has\(userId\)\)/);
-  assert.match(routes, /payment\.craftsmanId !== null && craftsmanIds\.has\(payment\.craftsmanId\)/);
+  assert.match(routes, /for \(const id of userIds\) \{\s*db\.craftsmanDrafts\.delete\(id\)/);
+  assert.match(routes, /payment\.craftsmanId != null && craftsmanIds\.has\(payment\.craftsmanId\)/);
 });
 check('AI user interface identifies the selected provider and does not promise continuous audits', () => {
   assert.match(topBar, /subtitle: t\.supportSubtitle/);
