@@ -30,7 +30,7 @@ DECLARE fencing_enabled boolean;
 BEGIN
   -- Administrative migration/backup roles remain usable. The application
   -- always uses masterboy_app, with no access for public browser roles.
-  IF current_user <> 'masterboy_app' THEN RETURN NULL; END IF;
+  IF current_user NOT IN ('masterboy_app','masterboy_runtime') THEN RETURN NULL; END IF;
   SELECT writer_token,enforced INTO active_token,fencing_enabled
     FROM masterboy_deploy.writer_control WHERE singleton=true FOR SHARE;
   -- Installation alone must not disable the existing commercial application.

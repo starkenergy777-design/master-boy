@@ -27,9 +27,9 @@ async function connect() {
   };
 }
 const pool = { connect, query: async (sql, values) => { const c = await connect(); try { return await c.query(sql, values); } finally { c.release(); } } };
-async function legacy(sql) {
+async function legacy(sql, role = 'masterboy_app') {
   const c = await pool.connect();
-  try { await c.query('BEGIN'); await c.query('SET LOCAL ROLE masterboy_app'); await c.query(sql); await c.query('COMMIT'); }
+  try { await c.query('BEGIN'); await c.query(`SET LOCAL ROLE ${role}`); await c.query(sql); await c.query('COMMIT'); }
   catch (e) { await c.query('ROLLBACK'); throw e; }
   finally { c.release(); }
 }
@@ -37,7 +37,7 @@ const beforeListing = '2027-05-24T14:07:27.932Z';
 const beforeTop15 = '2026-12-25T15:03:47.287Z';
 
 try {
-  await postgres.exec('CREATE ROLE masterboy_app; CREATE ROLE anon; CREATE ROLE authenticated;');
+  await postgres.exec('CREATE ROLE masterboy_app; CREATE ROLE masterboy_runtime; GRANT masterboy_app TO masterboy_runtime; CREATE ROLE anon; CREATE ROLE authenticated;');
   for (const name of tables) await postgres.exec(`CREATE TABLE public.${name}(id text PRIMARY KEY, expires_at timestamptz, starts_at timestamptz, status text); GRANT SELECT,INSERT,UPDATE,DELETE ON public.${name} TO masterboy_app;`);
   await postgres.query('INSERT INTO public.craftsman_listings(id,expires_at) VALUES($1,$2)', ['listing-existing', beforeListing]);
   await postgres.query('INSERT INTO public.top15_memberships(id,expires_at) VALUES($1,$2)', ['top15-existing', beforeTop15]);
@@ -64,6 +64,8 @@ try {
   await first.claim(pool);
   await assert.rejects(legacy('DELETE FROM public.top15_memberships'), error => error.code === '55000');
   pass('after activation the unfenced legacy writer is rejected at the database boundary');
+  await assert.rejects(legacy('DELETE FROM public.top15_memberships', 'masterboy_runtime'), error => error.code === '55000');
+  pass('the actual Supavisor login role cannot bypass the fence if an old session loses SET ROLE');
   const oldDb = first.wrap(pool);
   await first.assertActive(pool);
   const failedBoot = new DeploymentWriter();
