@@ -159,8 +159,13 @@ try {
     assert.equal(actual.rows[0].status, 'SUCCEEDED');
     pass('real saveBogPayment followed by a retired real saveRuntimeState preserves the paid position and payment');
     await assert.rejects(priorStorage.saveBogPayment({ ...intent, id: 'retired-new-payment', idempotencyKey: 'retired-new-payment', status: 'FAILED' }, {}, () => {}), isDeploymentHandoff);
+    let deletionPublished = false;
+    await assert.rejects(priorStorage.deleteCraftsmanAccount(['fixture-craftsman'], ['fixture-user'],
+      { id: 'retired-delete', actorType: 'USER', actorId: 'admin', action: 'DELETE_CRAFTSMAN', targetType: 'CRAFTSMAN', targetId: 'fixture-craftsman', createdAt: membership.startsAt },
+      () => false, () => { deletionPublished = true; }), isDeploymentHandoff);
+    assert.equal(deletionPublished, false);
     assert.equal((await postgres.query('SELECT status FROM public.payment_intents WHERE id=$1', [intent.id])).rows[0].status, 'SUCCEEDED');
-    pass('retired targeted payment writes cannot bypass the same deployment fence');
+    pass('retired targeted payment and account deletion writes cannot bypass the same deployment fence');
   } finally { process.env.NODE_ENV = 'test'; }
 
   const snapshotStorage = new StorageService();

@@ -608,6 +608,32 @@ export class StorageService {
     return next;
   }
 
+  // Use the existing write queue and transaction guard, but only touch this
+  // account. FK cascades remove its profile children and detach payment history.
+  async deleteCraftsmanAccount(craftsmanIds: string[], userIds: string[], audit: AdminAuditLog, hasPendingPayment: () => boolean, onDeleted: () => void): Promise<void> {
+    const next = this.saveQueue.then(async () => {
+      if (hasPendingPayment()) throw Object.assign(new Error('Bank payment is pending.'), { code: 'BOG_ACCOUNT_PAYMENT_PENDING' });
+      if (!this.pool && process.env.NODE_ENV !== 'production') { onDeleted(); return; }
+      const client = await this.db().connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM public.ai_reports WHERE craftsman_id=ANY($1::text[])', [craftsmanIds]);
+        await client.query('DELETE FROM public.craftsmen WHERE id=ANY($1::text[])', [craftsmanIds]);
+        await client.query('DELETE FROM public.craftsman_drafts WHERE user_id=ANY($1::text[])', [userIds]);
+        await client.query('DELETE FROM public.users WHERE id=ANY($1::text[])', [userIds]);
+        await client.query('INSERT INTO public.audit_logs(id,actor_type,actor_id,action,target_type,target_id,reason,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+          [audit.id,audit.actorType,audit.actorId,audit.action,audit.targetType,audit.targetId,audit.reason ?? null,audit.createdAt]);
+        await client.query('COMMIT');
+        onDeleted();
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally { client.release(); }
+    });
+    this.saveQueue = next.catch(() => undefined);
+    return next;
+  }
+
   async saveRuntimeState(state:RuntimeState):Promise<void> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return;
     // Freeze at queue execution, after preceding targeted commits publish their

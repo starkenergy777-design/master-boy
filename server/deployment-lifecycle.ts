@@ -39,7 +39,7 @@ export function durableApiResponses(lifecycle: PersistenceLifecycle): RequestHan
       res.end = function (...args: any[]) {
         if (ending) return res;
         ending = true;
-        if (!mutating || !needsRuntimeSnapshot(requestPath) || res.statusCode >= 500) return end.apply(res, args as any);
+        if (!mutating || res.locals.runtimeSnapshotHandled === true || !needsRuntimeSnapshot(requestPath) || res.statusCode >= 500) return end.apply(res, args as any);
         void lifecycle.persist().then(() => { end.apply(res, args as any); }).catch(error => {
           lifecycle.onPersistenceFailure(error);
           unavailable(error);

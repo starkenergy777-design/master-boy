@@ -1030,6 +1030,9 @@ apiRouter.post('/auth/otp/verify', (req, res) => {
 
 // POST /auth/password/login (§16.1 bootstrap & Craftsman/Admin Phone+Password, also /auth/login and /auth/phone/login)
 apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (req, res) => {
+  // Sessions and login rate limits are in-memory state, outside runtime snapshots.
+  // Bootstrap below creates an account/audit record and still requires a save.
+  res.locals.runtimeSnapshotHandled = true;
   const rawPhone = req.body?.phone;
   const password = req.body?.password;
   const normalizedPhone = typeof rawPhone === 'string' && rawPhone.length <= 64 ? rawPhone.trim() : '';
@@ -1044,6 +1047,7 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
 
   // 1. Check Super Admin Bootstrap credentials (§16.1)
   if (db.bootstrap.enabled && normalizedPhone === db.bootstrap.phone && password === db.bootstrap.password) {
+    res.locals.runtimeSnapshotHandled = false;
     let superAdminUser: User | undefined;
     for (const u of db.users.values()) {
       if (u.roles.includes('SUPER_ADMIN')) {
@@ -1379,7 +1383,10 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
 });
 
 // POST /auth/logout
-apiRouter.post('/auth/logout', requireAuth, (req: AuthRequest, res) => {
+apiRouter.post('/auth/logout', (_req, res, next) => {
+  res.locals.runtimeSnapshotHandled = true;
+  next();
+}, requireAuth, (req: AuthRequest, res) => {
   if (req.sessionToken) {
     db.sessions.delete(req.sessionToken);
   }
@@ -2853,6 +2860,8 @@ apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requ
 
 // DELETE /admin/craftsmen/:id & /admin/users/:id
 apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, async (req: AuthRequest, res) => {
+  // This handler commits its own transaction before responding.
+  res.locals.runtimeSnapshotHandled = true;
   let craftsman = db.craftsmen.get(req.params.id);
   let user = db.users.get(req.params.id);
 
@@ -2876,49 +2885,12 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
   const userIds = new Set(targetCraftsmen.map(item => item.userId));
   if (user) userIds.add(user.id);
 
-  const bankPaymentPending = [...db.paymentIntents.values()].some(payment => {
+  const hasPendingPayment = () => [...db.paymentIntents.values()].some(payment => {
     if (payment.status !== 'PENDING' || !payment.providerCheckout) return false;
     return (payment.craftsmanId != null && craftsmanIds.has(payment.craftsmanId)) ||
       (payment.providerCheckout.registration?.existingUser === true && userIds.has(payment.providerCheckout.registration.user.id));
   });
-  if (bankPaymentPending) return res.status(409).json({ code: 'BOG_ACCOUNT_PAYMENT_PENDING' });
-
-  const previousUsers = Array.from(db.users.entries())
-    .filter(([id]) => userIds.has(id))
-    .map(([id, item]) => [id, { ...item }] as const);
-  const previousCraftsmen = targetCraftsmen.map(item => [item.id, item] as const);
-  // Drafts are keyed by user ID; CraftsmanDraft intentionally contains only
-  // wizard data, so use the map key when collecting rows for rollback.
-  const previousDrafts = Array.from(db.craftsmanDrafts.entries()).filter(([userId]) => userIds.has(userId));
-  const previousListings = Array.from(db.craftsmanListings.entries()).filter(([, listing]) => craftsmanIds.has(listing.craftsmanId));
-  const previousReservations = Array.from(db.top15Reservations.entries()).filter(([, reservation]) => craftsmanIds.has(reservation.craftsmanId));
-  const previousMemberships = Array.from(db.top15Memberships.entries()).filter(([, membership]) => craftsmanIds.has(membership.craftsmanId));
-  const previousPayments = Array.from(db.paymentIntents.entries())
-    .filter(([, payment]) => payment.craftsmanId !== null && craftsmanIds.has(payment.craftsmanId))
-    .map(([id, payment]) => [id, { ...payment }] as const);
-  const previousSessions = Array.from(db.sessions.entries()).filter(([, session]) => userIds.has(session.userId));
-  const previousSupportMessages = db.supportMessages;
-  const previousAiReports = db.aiReports;
-
-  if (isCraftsmanAccount) {
-    for (const id of craftsmanIds) db.craftsmen.delete(id);
-    for (const [id, listing] of previousListings) db.craftsmanListings.delete(id);
-    for (const [id] of previousReservations) db.top15Reservations.delete(id);
-    for (const [id] of previousMemberships) db.top15Memberships.delete(id);
-    for (const [id, payment] of previousPayments) {
-      db.paymentIntents.set(id, { ...payment, craftsmanId: '' });
-    }
-    for (const id of userIds) {
-      db.craftsmanDrafts.delete(id);
-      db.users.delete(id);
-      revokeUserSessions(id);
-    }
-    db.supportMessages = db.supportMessages.filter(message => !craftsmanIds.has(message.craftsmanId));
-    db.aiReports = db.aiReports.filter(report => !report.craftsmanId || !craftsmanIds.has(report.craftsmanId));
-  } else if (user) {
-    user.status = 'DELETED';
-    revokeUserSessions(user.id);
-  }
+  if (hasPendingPayment()) return res.status(409).json({ code: 'BOG_ACCOUNT_PAYMENT_PENDING' });
 
   const auditEntry = {
     id: `audit-${crypto.randomUUID()}`,
@@ -2930,22 +2902,45 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
     reason: isCraftsmanAccount ? 'Craftsman profile permanently deleted' : undefined,
     createdAt: new Date().toISOString(),
   };
-  db.auditLog.unshift(auditEntry);
 
-  if (!await persistAdminMutation(res, () => {
-    for (const [id, item] of previousUsers) db.users.set(id, item);
-    for (const [id, item] of previousCraftsmen) db.craftsmen.set(id, item);
-    for (const [id, item] of previousDrafts) db.craftsmanDrafts.set(id, item);
-    for (const [id, item] of previousListings) db.craftsmanListings.set(id, item);
-    for (const [id, item] of previousReservations) db.top15Reservations.set(id, item);
-    for (const [id, item] of previousMemberships) db.top15Memberships.set(id, item);
-    for (const [id, item] of previousPayments) db.paymentIntents.set(id, item);
-    for (const [id, item] of previousSessions) db.sessions.set(id, item);
-    db.supportMessages = previousSupportMessages;
-    db.aiReports = previousAiReports;
-    const auditIndex = db.auditLog.indexOf(auditEntry);
-    if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
-  })) return;
+  if (isCraftsmanAccount) {
+    try {
+      await storage.deleteCraftsmanAccount([...craftsmanIds], [...userIds], auditEntry, hasPendingPayment, () => {
+        // Publish only after commit, inside the same queue as runtime snapshots.
+        for (const id of craftsmanIds) db.craftsmen.delete(id);
+        for (const [id, listing] of db.craftsmanListings) if (craftsmanIds.has(listing.craftsmanId)) db.craftsmanListings.delete(id);
+        for (const [id, reservation] of db.top15Reservations) if (craftsmanIds.has(reservation.craftsmanId)) db.top15Reservations.delete(id);
+        for (const [id, membership] of db.top15Memberships) if (craftsmanIds.has(membership.craftsmanId)) db.top15Memberships.delete(id);
+        for (const [id, payment] of db.paymentIntents) {
+          if (payment.craftsmanId != null && craftsmanIds.has(payment.craftsmanId)) db.paymentIntents.set(id, { ...payment, craftsmanId: '' });
+        }
+        // Drafts are keyed by user ID, not by a field inside the draft.
+        for (const id of userIds) {
+          db.craftsmanDrafts.delete(id);
+          db.users.delete(id);
+          revokeUserSessions(id);
+        }
+        db.supportMessages = db.supportMessages.filter(message => !craftsmanIds.has(message.craftsmanId));
+        db.aiReports = db.aiReports.filter(report => !report.craftsmanId || !craftsmanIds.has(report.craftsmanId));
+        db.auditLog.unshift(auditEntry);
+      });
+    } catch (error: any) {
+      if (error.code === 'BOG_ACCOUNT_PAYMENT_PENDING') return res.status(409).json({ code: error.code });
+      return res.status(503).json({ code: 'ADMIN_MUTATION_NOT_PERSISTED', message: 'The database did not save this change. Refresh the page and try again.' });
+    }
+  } else if (user) {
+    const previousUser = { ...user };
+    const previousSessions = Array.from(db.sessions.entries()).filter(([, session]) => session.userId === user!.id);
+    user.status = 'DELETED';
+    revokeUserSessions(user.id);
+    db.auditLog.unshift(auditEntry);
+    if (!await persistAdminMutation(res, () => {
+      db.users.set(previousUser.id, previousUser);
+      for (const [id, session] of previousSessions) db.sessions.set(id, session);
+      const auditIndex = db.auditLog.indexOf(auditEntry);
+      if (auditIndex >= 0) db.auditLog.splice(auditIndex, 1);
+    })) return;
+  }
 
   res.json({ success: true, deletedFromDatabase: isCraftsmanAccount });
 });

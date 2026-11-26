@@ -309,9 +309,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setDeletingCraftsman(true);
     try {
       await api.deleteCraftsman(deleteConfirmCraftsmanId);
+      setCraftsmen(current => current.filter(item => item.id !== deleteConfirmCraftsmanId));
+      setTop15Members(current => current.filter(item => item.craftsmanId !== deleteConfirmCraftsmanId));
       setSuccessMsg(lang === 'ka' ? 'ხელოსანი სიიდან წაიშალა' : lang === 'ru' ? 'Мастер удалён из списка' : 'Craftsman removed from the list');
       setDeleteConfirmCraftsmanId(null);
-      await loadData();
+      void loadData();
     } catch (err: any) {
       setErrorMsg(err.message || (lang === 'ka' ? 'წაშლა ვერ შესრულდა' : 'Delete failed'));
     } finally {
