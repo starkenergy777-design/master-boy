@@ -114,7 +114,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     </>
                   ) : l.flag}
                 </span>
-                <span>{l.label}</span>
+                <span lang={l.code} translate="no">{l.label}</span>
               </span>
               {lang === l.code && <Check className="w-4 h-4 text-amber-400" />}
             </button>
