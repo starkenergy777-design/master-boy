@@ -413,7 +413,8 @@ class Database {
     }
   }
 
-  async init(): Promise<void> {
+  async init(beforeReady?: () => Promise<void>): Promise<void> {
+    return storage.initializeDeployment(async () => {
     try {
       if (process.env.NODE_ENV === 'production') {
         if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
@@ -612,6 +613,7 @@ class Database {
       console.error('[MASTER_BOY] Error during db.init() hydration:', err);
       if (process.env.NODE_ENV === 'production') throw err;
     }
+    }, beforeReady);
   }
 
   async persistRuntimeState(): Promise<void> {

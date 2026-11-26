@@ -3,6 +3,7 @@ import { Advertisement, AdminAuditLog, AiReport, ChatMessage, City, Craftsman, C
 import { sortProfessionsByDemand } from './professionOrder.js';
 import { decryptPaymentCredentials, encryptPaymentCredentials, PaymentCredentialKeyError, separatePaymentCredentials } from './payment-credentials.js';
 import type { PaymentIntent } from './types.js';
+import { DeploymentWriter } from './deployment-safety.js';
 
 export type AiProvider = 'gemini' | 'openai';
 
@@ -79,6 +80,8 @@ const date = (value: any): string => value instanceof Date ? value.toISOString()
 const local = (row: any) => ({ ka: row.name_ka, ru: row.name_ru, en: row.name_en });
 
 export class StorageService {
+  private readonly deploymentWriter = new DeploymentWriter();
+  private guardedPool: Pool | null = null;
   private pool: Pool | null = null;
   private connected = false;
   private connectionError: string | null = null;
@@ -119,8 +122,38 @@ export class StorageService {
 
   private db(): Pool {
     if (!this.pool) throw new Error('DATABASE_URL is required for Supabase Postgres storage.');
+    if (process.env.NODE_ENV === 'production') {
+      this.guardedPool ??= this.deploymentWriter.wrap(this.pool);
+      return this.guardedPool;
+    }
     return this.pool;
   }
+
+  async claimDeploymentWriter(): Promise<void> {
+    if (process.env.NODE_ENV !== 'production') return;
+    if (!this.pool) throw new Error('Database required before claiming deployment writer.');
+    await this.deploymentWriter.claim(this.pool);
+  }
+
+  async initializeDeployment<T>(hydrate: () => Promise<T>, beforeCommit?: () => Promise<void>): Promise<T> {
+    if (process.env.NODE_ENV !== 'production') {
+      const result = await hydrate();
+      await beforeCommit?.();
+      return result;
+    }
+    if (!this.pool) throw new Error('Database required before deployment initialization.');
+    return this.deploymentWriter.initialize(this.pool, hydrate, beforeCommit);
+  }
+
+  async assertDeploymentWriter(): Promise<void> {
+    if (process.env.NODE_ENV === 'production') {
+      if (!this.pool) throw new Error('Database required.');
+      await this.deploymentWriter.assertActive(this.pool);
+    }
+  }
+
+  stopWriteAdmission() { this.deploymentWriter.stopAdmission(); }
+  isDeploymentWriterClaimed() { return this.deploymentWriter.isClaimed(); }
 
   async listFinancialCases(craftsmanId?: string): Promise<any[]> {
     const result = craftsmanId
@@ -577,7 +610,9 @@ export class StorageService {
 
   async saveRuntimeState(state:RuntimeState):Promise<void> {
     if (!this.pool && process.env.NODE_ENV !== 'production') return;
-    const next=this.saveQueue.then(()=>this.persist(state)); this.saveQueue=next.catch(()=>undefined); return next;
+    // Freeze at queue execution, after preceding targeted commits publish their
+    // memory changes. Requests arriving during SQL cannot split this snapshot.
+    const next=this.saveQueue.then(()=>this.persist(structuredClone(state))); this.saveQueue=next.catch(()=>undefined); return next;
   }
 
   // This shares the runtime snapshot queue. Publish in memory only after the SQL transaction commits.
@@ -747,19 +782,20 @@ export class StorageService {
       if (timeoutId) clearTimeout(timeoutId);
     }
   }
-  async close() { await this.pool?.end(); }
+  async close() { await this.saveQueue; await this.pool?.end(); }
 }
 
 export const storage = new StorageService();
 
 const superAdminAgentRetentionInterval = setInterval(() => {
+  if (process.env.NODE_ENV === 'production' && !storage.isDeploymentWriterClaimed()) return;
   void storage.pruneSuperAdminAgentMessages().catch(() => {
     console.warn('[MASTER_BOY] Could not apply superadmin agent chat retention cleanup.');
   });
 }, 60 * 60 * 1000);
 superAdminAgentRetentionInterval.unref?.();
 
-void storage.pruneSuperAdminAgentMessages().catch(() => {
+if (process.env.NODE_ENV !== 'production') void storage.pruneSuperAdminAgentMessages().catch(() => {
   console.warn('[MASTER_BOY] Could not apply superadmin agent chat retention cleanup.');
 });
 

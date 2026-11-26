@@ -2,11 +2,15 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { once } from 'node:events';
+import type { Server } from 'node:http';
 import { apiRouter } from './server/routes.js';
 import { db } from './server/db.js';
 import { storage } from './server/storage.js';
 import { seoRouter } from './server/seo.js';
 import { reconcilePendingBogOrders } from './server/bog-checkout-flow.js';
+import { durableApiResponses, installGracefulShutdown } from './server/deployment-lifecycle.js';
+import { isDeploymentHandoff } from './server/deployment-safety.js';
 
 dotenv.config();
 
@@ -14,7 +18,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
-  await db.init();
   const app = express();
   // Support command line arguments (--port, --host) passed by dev runner
   const portArgIndex = process.argv.indexOf('--port');
@@ -24,6 +27,11 @@ async function startServer() {
   const hostArgIndex = process.argv.indexOf('--host');
   const hostFromArg = hostArgIndex !== -1 ? process.argv[hostArgIndex + 1] : undefined;
   const HOST = hostFromArg || process.env.HOST || '0.0.0.0';
+  let starting = true;
+  app.use((_req, res, next) => {
+    if (starting) return res.status(503).set('Retry-After', '3').json({ code: 'DEPLOYMENT_IN_PROGRESS' });
+    next();
+  });
 
   // Body parsing middleware
   app.disable('x-powered-by');
@@ -63,22 +71,20 @@ async function startServer() {
     next();
   });
 
-  // Persist only mutating API requests. GET requests must never rewrite the entire
-  // runtime state: that creates unnecessary database traffic and can overwrite
-  // a newer snapshot after a read.
-  const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-  app.use((req, res, next) => {
-    // Express removes the mounted router prefix while its response is finishing.
-    const requestPath = req.path;
-    // Bank OAuth verification sends only an authentication request and saves no app data.
-    if (/^\/api\/v1\/(?:admin\/providers\/payment\/prov-bog\/verify|payments\/bog\/(?:callback\/(?:live|sandbox)|[a-f0-9-]{36}\/status))\/?$/i.test(requestPath)) return next();
-    res.on('finish', () => {
-      if (requestPath.startsWith('/api/v1/') && mutatingMethods.has(req.method) && res.statusCode < 500) {
-        void db.persistRuntimeState().catch((err) => console.error('[MASTER_BOY] Runtime persistence failed:', err));
-      }
-    });
-    next();
-  });
+  let draining = false;
+  let persistenceFailed = false;
+  app.use(durableApiResponses({
+    assertWriter: () => storage.assertDeploymentWriter(),
+    persist: () => db.persistRuntimeState(),
+    isDraining: () => draining || persistenceFailed,
+    onPersistenceFailure: (error) => {
+      // A retired instance stays read-only until Render removes it. Do not
+      // provoke a restart that would compete with the replacement writer.
+      if (isDeploymentHandoff(error)) draining = true;
+      else persistenceFailed = true;
+      console.error('[MASTER_BOY] Required runtime persistence failed:', error);
+    },
+  }));
 
   // Mount API Router under /api/v1
   app.use('/api/v1', apiRouter);
@@ -87,7 +93,7 @@ async function startServer() {
   app.get('/health', async (req, res) => {
     const durableRequired = process.env.NODE_ENV === 'production' && process.env.REQUIRE_DURABLE_STORAGE !== 'false';
     const durableReady = await storage.checkDatabaseHealth();
-    if (durableRequired && !durableReady) {
+    if (durableRequired && (!durableReady || persistenceFailed)) {
       return res.status(503).json({ status: 'NOT_READY', service: 'MASTER_BOY API Server', version: 'v1.4.0', durableStorage: false, timestamp: new Date().toISOString() });
     }
     res.json({ status: 'UP', service: 'MASTER_BOY API Server', version: 'v1.4.0', durableStorage: durableReady, timestamp: new Date().toISOString() });
@@ -138,14 +144,46 @@ async function startServer() {
     });
   }
 
-  const server = app.listen(PORT, HOST, () => {
-    console.log(`[MASTER_BOY] Server running on http://${HOST}:${PORT} in ${isProd ? 'production' : 'development'} mode`);
-    console.log(`[MASTER_BOY] API v1 base: http://${HOST}:${PORT}/api/v1`);
+  let server!: Server;
+  await db.init(async () => {
+    server = app.listen(PORT, HOST);
+    await once(server, 'listening');
   });
+  starting = false;
+  console.log(`[MASTER_BOY] Server running on http://${HOST}:${PORT} in ${isProd ? 'production' : 'development'} mode`);
+  console.log(`[MASTER_BOY] API v1 base: http://${HOST}:${PORT}/api/v1`);
   // Covers lost redirects and missed notifications without requiring a separate worker service.
-  const pendingPayments = setInterval(() => { void reconcilePendingBogOrders(); }, 60_000);
+  let reconciliation: Promise<void> | undefined;
+  const pendingPayments = setInterval(() => {
+    if (draining || persistenceFailed || reconciliation) return;
+    reconciliation = storage.assertDeploymentWriter().then(() => reconcilePendingBogOrders()).catch(error => {
+      if (!isDeploymentHandoff(error)) console.error('[MASTER_BOY] Payment reconciliation unavailable:', error);
+    }).finally(() => { reconciliation = undefined; });
+  }, 60_000);
   pendingPayments.unref();
   server.on('close', () => clearInterval(pendingPayments));
+
+  const shutdown = installGracefulShutdown({
+    stopAdmission: () => { draining = true; storage.stopWriteAdmission(); },
+    stopWorkers: () => clearInterval(pendingPayments),
+    closeServer: () => new Promise<void>((resolve, reject) => {
+      server.close(error => error ? reject(error) : resolve());
+      server.closeIdleConnections();
+    }),
+    closeStorage: async () => { await reconciliation; await storage.close(); },
+  });
+  const terminate = () => {
+    // Render's default forced shutdown is 30 seconds. Completed responses are
+    // already durable; interrupted transactions roll back and BOG reconciles.
+    const deadline = setTimeout(() => process.exit(1), 25_000);
+    deadline.unref();
+    void shutdown().then(() => { clearTimeout(deadline); process.exit(0); }).catch(error => {
+      console.error('[MASTER_BOY] Shutdown failed:', error);
+      process.exit(1);
+    });
+  };
+  process.once('SIGTERM', terminate);
+  process.once('SIGINT', terminate);
 
   server.on('error', (err: any) => {
     console.error('[MASTER_BOY] Server error:', err);
