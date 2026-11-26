@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AndroidFrame } from './components/AndroidFrame.js';
 import { TopAppBar } from './components/TopAppBar.js';
 import { Navbar, NavTab } from './components/Navbar.js';
@@ -57,6 +57,7 @@ export default function App() {
 
   // Navigation History Stack (§Universal Back Navigation)
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const browserEntryId = useRef<string | null>(null);
   const [wizardStep, setWizardStep] = useState<number>(1);
 
   // Contextual Data
@@ -125,7 +126,9 @@ export default function App() {
     if (params?.craftsman !== undefined) setSelectedCraftsman(params.craftsman);
 
     try {
-      window.history.pushState({ screen: nextScreen }, '');
+      const entryId = crypto.randomUUID();
+      window.history.pushState({ screen: nextScreen, mbNavigationId: entryId }, '');
+      browserEntryId.current = entryId;
     } catch {}
   };
 
@@ -162,11 +165,15 @@ export default function App() {
   // Sync with browser / mobile hardware back button
   useEffect(() => {
     const onPopState = () => {
+      const entryId = window.history.state?.mbNavigationId ?? null;
+      // Ignore delayed/repeated events that did not leave the login history entry.
+      if (activeScreen === 'login' && entryId !== null && entryId === browserEntryId.current) return;
+      browserEntryId.current = entryId;
       goBack();
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [history]);
+  }, [history, activeScreen]);
 
   // Check existing session
   useEffect(() => {
