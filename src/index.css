@@ -1,5 +1,49 @@
 @import "tailwindcss";
 
+/* Keep the superadmin controls inside the existing app frame at every viewport. */
+.superadmin-dashboard {
+  overflow-wrap: anywhere;
+}
+
+.superadmin-dashboard :where(.flex, .grid, form, label) {
+  min-width: 0;
+}
+
+.superadmin-dashboard :where(button, input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.superadmin-dashboard button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.superadmin-dashboard button[aria-pressed].w-11 {
+  display: flex;
+  align-items: center;
+}
+
+.superadmin-dashboard svg {
+  flex-shrink: 0;
+}
+
+.superadmin-dashboard .superadmin-action-row {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.superadmin-dashboard .superadmin-action-row > :first-child {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.superadmin-dashboard .superadmin-action-row > :not(:first-child) {
+  max-width: 100%;
+}
+
 
 /* Super admin console visual system: scoped so other cabinets keep their existing design. */
 .superadmin-dashboard .superadmin-panel {
