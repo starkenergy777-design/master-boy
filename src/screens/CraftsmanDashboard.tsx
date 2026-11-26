@@ -73,7 +73,6 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   // Renewal / Pay Modal
   const [showRenewalModal, setShowRenewalModal] = useState(false);
-  const [selectedProviderId, setSelectedProviderId] = useState('');
   const [paying, setPaying] = useState(false);
   const [renewalError, setRenewalError] = useState('');
   const [financialCaseOpen, setFinancialCaseOpen] = useState(false);
@@ -124,7 +123,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
     ? `${(listing.price.amountMinor / 100).toFixed(2)} ${listing.price.currency || 'GEL'}`
     : (lang === 'ka' ? 'ფასი მიუწვდომელია' : lang === 'ru' ? 'Цена недоступна' : 'Price unavailable');
 
-  const selectedPaymentProviderAvailable = paymentProviders.some((provider) => provider.id === selectedProviderId);
+  const paymentAvailable = paymentProviders.length > 0;
   const paymentUnavailableMessage = lang === 'ka'
     ? 'ონლაინ გადახდა ამჟამად არ არის ჩართული. ეს მოქმედება ახლა მიუწვდომელია.'
     : lang === 'ru'
@@ -150,7 +149,6 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       setMemberships(resMemberships);
       setPaymentProviders(Array.isArray(provList) ? provList : []);
       setPendingBankOrders(Array.isArray(pending) ? pending : []);
-      setSelectedProviderId('');
       if (resListing) {
         setListing(resListing);
         if (resListing.secondsRemaining !== undefined) {
@@ -172,6 +170,17 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   useEffect(() => {
     loadProfile();
   }, []);
+
+  useEffect(() => {
+    if (!showRenewalModal) return;
+    let cancelled = false;
+    api.getPaymentProviders().then(providers => {
+      if (!cancelled) setPaymentProviders(providers);
+    }).catch(() => {
+      if (!cancelled) setPaymentProviders([]);
+    });
+    return () => { cancelled = true; };
+  }, [showRenewalModal]);
 
   // Server-authoritative live countdown timer (§4.2)
   useEffect(() => {
@@ -205,21 +214,24 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
 
   const handlePayOrRenew = async () => {
     setRenewalError('');
-    if (!selectedPaymentProviderAvailable) {
-      setRenewalError(paymentUnavailableMessage);
-      return;
-    }
     try {
       setPaying(true);
+      const providers = await api.getPaymentProviders();
+      setPaymentProviders(providers);
+      const providerId = providers[0]?.id;
+      if (!providerId) {
+        setRenewalError(paymentUnavailableMessage);
+        return;
+      }
       if (listing?.status === 'UNPAID_DRAFT') {
-        const res = await api.payCraftsmanListing(selectedProviderId, true);
+        const res = await api.payCraftsmanListing(providerId, true);
         if (redirectToBog(res)) return;
         if (res.listing) {
           setListing(res.listing);
           setRemainingSeconds(res.listing.secondsRemaining || 0);
         }
       } else {
-        const res = await api.renewCraftsmanListing(selectedProviderId, true);
+        const res = await api.renewCraftsmanListing(providerId, true);
         if (redirectToBog(res)) return;
         if (res.listing) {
           setListing(res.listing);
@@ -229,7 +241,10 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       setShowRenewalModal(false);
       loadProfile();
     } catch (err: any) {
-      setRenewalError(err.message || 'Payment failed');
+      setRenewalError(err.code === 'BOG_ORDER_REJECTED'
+        ? (lang === 'ka' ? 'გადახდა ვერ შესრულდა. სცადეთ ხელახლა ან დაუკავშირდით მხარდაჭერას.' : lang === 'ru' ? 'Не удалось выполнить оплату. Повторите попытку или обратитесь в поддержку.' : 'Payment could not be completed. Retry or contact support.')
+        : err.code === 'PAYMENT_PROVIDER_UNAVAILABLE' || err.code === 'PAYMENT_PROVIDER_NOT_READY'
+        ? paymentUnavailableMessage : (err.message || 'Payment failed'));
     } finally {
       setPaying(false);
     }
@@ -798,31 +813,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               </div>
             )}
 
-            {paymentProviders.length > 0 ? (
-              <div className="space-y-2">
-                <label className="text-[11px] font-medium text-slate-400">
-                  {lang === 'ka' ? 'აირჩიეთ გადახდის პროვაიდერი' : lang === 'ru' ? 'Выберите платёжного провайдера' : 'Select a payment provider'}
-                </label>
-                <div className="space-y-1.5">
-                  {paymentProviders.map((p) => (
-                    <button
-                      type="button"
-                      key={p.id}
-                      aria-pressed={selectedProviderId === p.id}
-                      onClick={() => setSelectedProviderId(p.id)}
-                      className={`w-full text-left p-2.5 rounded-xl border flex items-center justify-between text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
-                        selectedProviderId === p.id
-                          ? 'bg-amber-500/10 border-amber-500 text-white'
-                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                      }`}
-                    >
-                      <span>{p.name}</span>
-                      {selectedProviderId === p.id && <span aria-hidden="true" className="w-2 h-2 rounded-full bg-amber-400" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
+            {paymentProviders.length === 0 && (
               <div role="status" className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-200">
                 {paymentUnavailableMessage}
               </div>
@@ -843,20 +834,18 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               <button
                 type="button"
                 onClick={handlePayOrRenew}
-                disabled={paying || !selectedPaymentProviderAvailable}
+                disabled={paying || !paymentAvailable}
                 className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {paying
                   ? '...'
-                  : !paymentProviders.length
+                  : !paymentAvailable
                     ? (lang === 'ka' ? 'გადახდა მიუწვდომელია' : lang === 'ru' ? 'Оплата недоступна' : 'Payment unavailable')
-                    : !selectedPaymentProviderAvailable
-                      ? (lang === 'ka' ? 'აირჩიეთ პროვაიდერი' : lang === 'ru' ? 'Выберите провайдера' : 'Select provider')
-                      : (lang === 'ka'
-                        ? `გადახდა (${listingPriceLabel})`
-                        : lang === 'ru'
-                          ? `Оплатить (${listingPriceLabel})`
-                          : `Pay (${listingPriceLabel})`)}
+                    : (lang === 'ka'
+                      ? `გადახდა (${listingPriceLabel})`
+                      : lang === 'ru'
+                        ? `Оплатить (${listingPriceLabel})`
+                        : `Pay (${listingPriceLabel})`)}
               </button>
             </div>
           </div>
