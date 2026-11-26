@@ -1323,6 +1323,7 @@ export function localizeTree(lang: Language, node: React.ReactNode): React.React
 
   const element = node as React.ReactElement<Record<string, unknown>>;
   if (element.type !== React.Fragment && typeof element.type !== 'string') return element;
+  if (element.props.translate === 'no') return element;
 
   const props: Record<string, unknown> = { ...element.props };
   if ('children' in props) props.children = localizeTree(lang, props.children as React.ReactNode);
