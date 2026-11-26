@@ -23,6 +23,8 @@ import {
   Role,
   User,
   Craftsman,
+  CraftsmanListing,
+  Top15Reservation,
   CraftsmanStatus,
   CraftsmanPhoto,
   ChatMessage,
@@ -1144,6 +1146,7 @@ apiRouter.post(['/auth/password/login', '/auth/login', '/auth/phone/login'], (re
 
 // POST /auth/craftsman/register (also /auth/register and /craftsmen/register)
 apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const {
     phone,
@@ -1237,6 +1240,7 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
     }
   } else if (!isFree) {
     if (!requireRealPaymentIntegration(res)) return;
+    res.locals.runtimeSnapshotHandled = false;
     const provider = db.providerConfig.payment.find(p => p.id === providerId);
     if (!provider || !provider.isActive) {
       return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
@@ -1270,7 +1274,7 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
     };
-    if (!bogRegistration) db.users.set(userId, user);
+    if (!bogRegistration && !isFree) db.users.set(userId, user);
   }
 
   const now = new Date();
@@ -1320,11 +1324,12 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
 
   if (bogRegistration) {
     try {
+      res.locals.runtimeSnapshotHandled = true;
       return res.status(202).json(await openBogCheckout({ kind: 'REGISTRATION', registration: { user, craftsman: newCraftsman },
         proofHash, amountMinor: db.listingPrice.amountMinor, currency: db.listingPrice.currency }));
     } catch (error) { return sendBogResult(res, error); }
   }
-  db.craftsmen.set(craftsmanId, newCraftsman);
+  if (!isFree) db.craftsmen.set(craftsmanId, newCraftsman);
 
   // Setup 180-day listing
   const listExpiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString();
@@ -1351,7 +1356,7 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
     });
   }
 
-  db.craftsmanListings.set(craftsmanId, {
+  const registrationListing: CraftsmanListing = {
     id: `list-${craftsmanId}`,
     craftsmanId,
     cityId,
@@ -1363,7 +1368,17 @@ apiRouter.post(['/auth/craftsman/register', '/auth/register'], async (req, res) 
     lastPaymentId: paymentIntentId,
     createdAt: startsAt,
     updatedAt: startsAt,
-  });
+  };
+  if (isFree) {
+    res.locals.runtimeSnapshotHandled = true;
+    try {
+      await storage.saveFreeCraftsmanRegistration(user, newCraftsman, registrationListing, false, () => {
+        db.users.set(user!.id, user!);
+        db.craftsmen.set(craftsmanId, newCraftsman);
+        db.craftsmanListings.set(craftsmanId, registrationListing);
+      });
+    } catch { return res.status(503).json({ code: 'REGISTRATION_SAVE_FAILED', message: 'Registration could not be saved. Please retry.' }); }
+  } else db.craftsmanListings.set(craftsmanId, registrationListing);
 
   // Issue session token
   const sessionToken = `mb_sess_${crypto.randomBytes(24).toString('hex')}`;
@@ -1433,6 +1448,7 @@ apiRouter.get('/craftsmen/me/financial-terms', requireCraftsman, (req: AuthReque
 });
 
 apiRouter.post('/craftsmen/me/financial-terms/accept', requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   const craftsman = getMyCraftsman(req.user!.id);
   if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
   if (hasCurrentFinancialTermsAcceptance(req.user!.id)) {
@@ -1452,7 +1468,8 @@ apiRouter.post('/craftsmen/me/financial-terms/accept', requireCraftsman, async (
 });
 
 // PUT /craftsmen/me/draft (wizard auto-save)
-apiRouter.put('/craftsmen/me/draft', requireCraftsman, (req: AuthRequest, res) => {
+apiRouter.put('/craftsmen/me/draft', requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   const { step, data } = req.body;
   if (typeof step !== 'number' || !data) {
     return res.status(400).json({ code: 'INVALID_DRAFT', message: 'Valid step number and data required' });
@@ -1463,12 +1480,15 @@ apiRouter.put('/craftsmen/me/draft', requireCraftsman, (req: AuthRequest, res) =
     data,
     updatedAt: new Date().toISOString(),
   };
-  db.craftsmanDrafts.set(req.user!.id, draft);
+  try {
+    await storage.saveCraftsmanDraft(req.user!.id, draft, () => { db.craftsmanDrafts.set(req.user!.id, draft); });
+  } catch { return res.status(503).json({ code: 'DRAFT_SAVE_FAILED', message: 'Draft could not be saved. Please retry.' }); }
   res.json(draft);
 });
 
 // POST /craftsmen/register (draft -> ACTIVE)
 apiRouter.post('/craftsmen/register', requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   const existing = getMyCraftsman(req.user!.id);
   if (existing) {
     return res.status(409).json({ code: 'ALREADY_REGISTERED', message: 'Craftsman profile already exists' });
@@ -1523,14 +1543,17 @@ apiRouter.post('/craftsmen/register', requireCraftsman, async (req: AuthRequest,
     }
   } else if (!isFree) {
     if (!requireRealPaymentIntegration(res)) return;
+    res.locals.runtimeSnapshotHandled = false;
     const provider = db.providerConfig.payment.find(p => p.id === data.providerId);
     if (!provider || !provider.isActive) {
       return res.status(422).json({ code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'Selected payment provider is not available.' });
     }
   }
 
+  const registrationUser = { ...req.user! };
   if (!bogRegistration && data.password && typeof data.password === 'string' && data.password.length >= 12 && data.password.length <= 128) {
-    req.user!.password = hashPassword(data.password);
+    registrationUser.password = hashPassword(data.password);
+    if (!isFree) req.user!.password = registrationUser.password;
   }
 
   const now = new Date();
@@ -1570,17 +1593,15 @@ apiRouter.post('/craftsmen/register', requireCraftsman, async (req: AuthRequest,
 
   if (bogRegistration) {
     try {
+      res.locals.runtimeSnapshotHandled = true;
       const user = req.user!;
       const existingUser = { id: user.id, phone: user.phone, roles: user.roles, status: user.status, createdAt: user.createdAt };
       return res.status(202).json(await openBogCheckout({ kind: 'REGISTRATION', registration: { user: existingUser, craftsman: newCraftsman, existingUser: true },
         proofHash, amountMinor: db.listingPrice.amountMinor, currency: db.listingPrice.currency }));
     } catch (error) { return sendBogResult(res, error); }
   }
-  db.craftsmen.set(craftsmanId, newCraftsman);
-  db.craftsmanDrafts.delete(req.user!.id);
-
   // Initialize craftsman listing subscription (§3.11, §7.7, §24)
-  db.craftsmanListings.set(craftsmanId, {
+  const registrationListing: CraftsmanListing = {
     id: `list-${craftsmanId}`,
     craftsmanId,
     cityId: data.cityId,
@@ -1591,7 +1612,22 @@ apiRouter.post('/craftsmen/register', requireCraftsman, async (req: AuthRequest,
     graceEndsAt: isPaid ? graceEndsAt : null,
     createdAt: startsAt,
     updatedAt: startsAt,
-  });
+  };
+  if (isFree) {
+    res.locals.runtimeSnapshotHandled = true;
+    try {
+      await storage.saveFreeCraftsmanRegistration(registrationUser, newCraftsman, registrationListing, true, () => {
+        Object.assign(req.user!, registrationUser);
+        db.craftsmen.set(craftsmanId, newCraftsman);
+        db.craftsmanDrafts.delete(req.user!.id);
+        db.craftsmanListings.set(craftsmanId, registrationListing);
+      });
+    } catch { return res.status(503).json({ code: 'REGISTRATION_SAVE_FAILED', message: 'Registration could not be saved. Please retry.' }); }
+  } else {
+    db.craftsmen.set(craftsmanId, newCraftsman);
+    db.craftsmanDrafts.delete(req.user!.id);
+    db.craftsmanListings.set(craftsmanId, registrationListing);
+  }
 
   if (isPaid && !isFree) {
     const paymentIntentId = `pi-reg-${Date.now()}`;
@@ -1646,7 +1682,8 @@ apiRouter.get(['/craftsmen/me', '/craftsman/profile', '/craftsmen/profile'], req
 });
 
 // PUT /craftsmen/me (also /craftsman/profile, /craftsman/phone-visibility, /craftsmen/phone-visibility)
-apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibility', '/craftsmen/phone-visibility'], requireCraftsman, (req: AuthRequest, res) => {
+apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibility', '/craftsmen/phone-visibility'], requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
@@ -1655,13 +1692,18 @@ apiRouter.put(['/craftsmen/me', '/craftsman/profile', '/craftsman/phone-visibili
 
   const { name, description, workingHours, phoneVisible, isPhoneHidden, bankAccount } = req.body;
 
-  if (name !== undefined) c.name = name;
-  if (description !== undefined) c.description = description;
-  if (workingHours !== undefined) c.workingHours = workingHours;
-  if (phoneVisible !== undefined) c.phoneVisible = !!phoneVisible;
-  if (isPhoneHidden !== undefined) c.phoneVisible = !isPhoneHidden;
-  if (bankAccount !== undefined) c.bankAccount = bankAccount;
-  c.updatedAt = new Date().toISOString();
+  const patch = {
+    ...(name !== undefined ? { name } : {}),
+    ...(description !== undefined ? { description } : {}),
+    ...(workingHours !== undefined ? { workingHours } : {}),
+    ...(phoneVisible !== undefined ? { phoneVisible: !!phoneVisible } : {}),
+    ...(isPhoneHidden !== undefined ? { phoneVisible: !isPhoneHidden } : {}),
+    ...(bankAccount !== undefined ? { bankAccount } : {}),
+  };
+  const updatedAt = new Date().toISOString();
+  try {
+    await storage.updateCraftsmanProfile(c.id, req.user!.id, patch, updatedAt, () => { Object.assign(c, patch, { updatedAt }); });
+  } catch { return res.status(503).json({ code: 'PROFILE_SAVE_FAILED', message: 'Profile could not be saved. Please retry.' }); }
 
   res.json({
     ...c,
@@ -1691,6 +1733,7 @@ async function withPhotoMutationLock<T>(craftsmanId: string, action: () => Promi
 
 // POST /craftsmen/me/photos
 apiRouter.post('/craftsmen/me/photos', requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
@@ -1742,6 +1785,7 @@ apiRouter.post('/craftsmen/me/photos', requireCraftsman, async (req: AuthRequest
 
 // PUT /craftsmen/me/photos/:id
 apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
@@ -1785,6 +1829,7 @@ apiRouter.put('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequ
 
 // DELETE /craftsmen/me/photos/:id
 apiRouter.delete('/craftsmen/me/photos/:id', requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   if (!requireFinancialTerms(req, res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
@@ -1857,6 +1902,7 @@ apiRouter.get('/craftsmen/me/listing', requireCraftsman, (req: AuthRequest, res)
 
 // POST /craftsmen/me/listing/pay
 async function openBogListing(req: AuthRequest, res: Response) {
+  res.locals.runtimeSnapshotHandled = true;
   if (!requireFinancialTerms(req, res)) return;
   const craftsman = getMyCraftsman(req.user!.id);
   if (!craftsman || ['BLOCKED', 'DELETED', 'PURGED'].includes(craftsman.status)) return res.status(403).json({ code: 'FORBIDDEN' });
@@ -2064,7 +2110,8 @@ apiRouter.get('/top15/availability', requireCraftsman, (req, res) => {
 });
 
 // POST /top15/reserve (creates a 3-minute candidate ticket; it does not occupy a slot)
-apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
+apiRouter.post('/top15/reserve', requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   if (!requireFinancialTerms(req, res)) return;
   if (!isBogCheckoutAvailable() && !requireRealPaymentIntegration(res)) return;
   if (!db.providerConfig.payment.some(provider => provider.isActive)) {
@@ -2136,7 +2183,9 @@ apiRouter.post('/top15/reserve', requireCraftsman, (req: AuthRequest, res) => {
     status: 'CANDIDATE' as const,
   };
 
-  db.top15Reservations.set(reservationId, reservation);
+  try {
+    await storage.saveTop15Candidate(reservation, () => { db.top15Reservations.set(reservationId, reservation); });
+  } catch { return res.status(503).json({ code: 'RESERVATION_SAVE_FAILED', message: 'Reservation could not be saved. Please retry.' }); }
 
   res.json({
     reservationId,
@@ -2162,8 +2211,17 @@ apiRouter.get('/top15/providers', (req, res) => {
 });
 
 // POST /top15/pay & /top15/purchase (first click wins after a fixed arbitration window)
+async function saveReservationStates(res: Response, current: () => Top15Reservation[]): Promise<boolean> {
+  try { await storage.saveTop15ReservationStates(current); return true; }
+  catch {
+    res.status(503).json({ code: 'RESERVATION_SAVE_FAILED', message: 'Reservation could not be saved. Please retry.' });
+    return false;
+  }
+}
+
 apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: AuthRequest, res) => {
   const realBog = req.body?.providerId === 'prov-bog' && isBogCheckoutAvailable();
+  if (realBog) res.locals.runtimeSnapshotHandled = true;
   if (!realBog && !requireRealPaymentIntegration(res)) return;
   if (!requireFinancialTerms(req, res)) return;
   if (realBog && (req.body.financialTermsAccepted !== true || req.body.financialTermsVersion !== FINANCIAL_TERMS_VERSION)) {
@@ -2221,6 +2279,7 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
 
   if (!['CANDIDATE', 'HELD'].includes(reservation.status) || reservation.expiresAt < Date.now()) {
     reservation.status = 'EXPIRED';
+    if (realBog && !await saveReservationStates(res, () => [reservation])) return;
     return res.status(410).json({ code: 'RESERVATION_EXPIRED', message: 'Reservation expired. Try again.' });
   }
 
@@ -2270,6 +2329,10 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
       paymentWindow.resolved = true;
     }
 
+    if (realBog && !await saveReservationStates(res, () => paymentWindow!.attempts
+      .map(attempt => db.top15Reservations.get(attempt.reservationId))
+      .filter((candidate): candidate is Top15Reservation => Boolean(candidate)))) return;
+
     if (!paymentWindow.winnerIds?.has(reservationId)) {
       reservation.status = 'CANCELLED';
       const { freeSlots } = db.getTop15Availability(reservation.cityId, reservation.professionId);
@@ -2285,16 +2348,21 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
   const listingAtCharge = db.getCraftsmanListing(craftsman.id);
   if (realBog && getMyCraftsman(req.user!.id)?.status !== 'ACTIVE') {
     reservation.status = 'CANCELLED';
+    if (!await saveReservationStates(res, () => [reservation])) return;
     return res.status(403).json({ code: 'NOT_A_CRAFTSMAN' });
   }
   if (!listingAtCharge || listingAtCharge.status !== 'ACTIVE' || !coversTop15Term(listingAtCharge.expiresAt, Date.now())) {
     reservation.status = 'CANCELLED';
+    if (realBog && !await saveReservationStates(res, () => [reservation])) return;
     return res.status(403).json({ code: 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის 30 დღის დასაფარად განაახლეთ ხელოსნის განთავსება. თანხა არ ჩამოგეჭრათ.' });
   }
   if (realBog) {
     try { return res.status(202).json(await openBogCheckout({ kind: 'TOP15', craftsman, reservation, amountMinor: reservation.amountMinor, currency: reservation.currency })); }
     catch (error) {
-      if (!findPendingBogOrder(craftsman.id, 'TOP15')) reservation.status = 'CANCELLED';
+      if (!findPendingBogOrder(craftsman.id, 'TOP15')) {
+        reservation.status = 'CANCELLED';
+        if (!await saveReservationStates(res, () => [reservation])) return;
+      }
       return sendBogResult(res, error);
     }
   }
@@ -2438,6 +2506,7 @@ apiRouter.get('/financial/cases', requireCraftsman, async (req: AuthRequest, res
 });
 
 apiRouter.post('/financial/cases', requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   if (!requireFinancialTerms(req, res)) return;
   const craftsman = getMyCraftsman(req.user!.id);
   if (!craftsman) return res.status(404).json({ code: 'NOT_FOUND' });
@@ -2529,6 +2598,7 @@ apiRouter.get('/support/messages', requireCraftsman, (req: AuthRequest, res) => 
 
 // POST /support/messages & /support/chat (7 msg/day limit, configured AI response with autonomous fallback)
 apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled = true;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Support chat is for craftsmen only' });
@@ -2560,7 +2630,7 @@ apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (
 
   // Store craftsman message
   const userMsg: ChatMessage = {
-    id: `msg-${Date.now()}-u`,
+    id: `msg-${crypto.randomUUID()}-u`,
     craftsmanId: c.id,
     sender: 'CRAFTSMAN',
     body: text,
@@ -2590,14 +2660,19 @@ apiRouter.post(['/support/messages', '/support/chat'], requireCraftsman, async (
   userMsg.flaggedForHuman = replyResult.flaggedForHuman;
 
   const aiMsg: ChatMessage = {
-    id: `msg-${Date.now()}-ai`,
+    id: `msg-${crypto.randomUUID()}-ai`,
     craftsmanId: c.id,
     sender: 'AI_ADMIN',
     body: replyResult.reply,
     flaggedForHuman: replyResult.flaggedForHuman,
     createdAt: new Date().toISOString(),
   };
-  db.supportMessages.push(aiMsg);
+  try {
+    await storage.saveSupportMessages([userMsg, aiMsg], () => { db.supportMessages.push(aiMsg); });
+  } catch {
+    db.supportMessages = db.supportMessages.filter(message => message.id !== userMsg.id);
+    return res.status(503).json({ code: 'SUPPORT_MESSAGE_SAVE_FAILED', message: 'Message could not be saved. Please retry.' });
+  }
 
   const remainingToday = Math.max(0, 7 - (messagesToday + 1));
 

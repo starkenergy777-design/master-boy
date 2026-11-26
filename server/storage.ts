@@ -538,6 +538,86 @@ export class StorageService {
     return next;
   }
 
+  // These cabinet actions use the existing transaction guard and snapshot
+  // queue. Publish their memory changes only after the targeted SQL commits.
+  private commitCraftsmanAction(write: (client: PoolClient) => Promise<void>, onSaved: () => void): Promise<void> {
+    const next = this.saveQueue.then(async () => {
+      if (!this.pool && process.env.NODE_ENV !== 'production') { onSaved(); return; }
+      const client = await this.db().connect();
+      try {
+        await client.query('BEGIN');
+        await write(client);
+        await client.query('COMMIT');
+        onSaved();
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally { client.release(); }
+    });
+    this.saveQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  saveCraftsmanDraft(userId: string, draft: CraftsmanDraft, onSaved: () => void): Promise<void> {
+    return this.commitCraftsmanAction(async client => {
+      await client.query('INSERT INTO public.craftsman_drafts(user_id,step,data,updated_at) VALUES($1,$2,$3::jsonb,$4) ON CONFLICT(user_id) DO UPDATE SET step=EXCLUDED.step,data=EXCLUDED.data,updated_at=EXCLUDED.updated_at',
+        [userId,draft.step,JSON.stringify(draft.data),draft.updatedAt]);
+    }, onSaved);
+  }
+
+  updateCraftsmanProfile(craftsmanId: string, userId: string, patch: Partial<Pick<Craftsman, 'name' | 'description' | 'workingHours' | 'phoneVisible' | 'bankAccount'>>, updatedAt: string, onSaved: () => void): Promise<void> {
+    const columns: Record<string, string> = { name:'name', description:'description', workingHours:'working_hours', phoneVisible:'phone_visible', bankAccount:'bank_account' };
+    const fields = Object.entries(patch).filter(([key, value]) => Object.hasOwn(columns, key) && value !== undefined);
+    return this.commitCraftsmanAction(async client => {
+      const args: any[] = [craftsmanId,userId,updatedAt];
+      const assignments = fields.map(([key,value]) => {
+        args.push(key === 'workingHours' ? JSON.stringify(value) : value);
+        return `${columns[key]}=$${args.length}${key === 'workingHours' ? '::jsonb' : ''}`;
+      });
+      const result = await client.query(`UPDATE public.craftsmen SET updated_at=$3${assignments.length ? ',' + assignments.join(',') : ''} WHERE id=$1 AND user_id=$2 AND status NOT IN ('DELETED','BLOCKED','PURGED')`, args);
+      if (result.rowCount !== 1) throw new Error('Craftsman profile is no longer available.');
+    }, onSaved);
+  }
+
+  saveTop15Candidate(reservation: Top15Reservation, onSaved: () => void): Promise<void> {
+    return this.commitCraftsmanAction(async client => {
+      await client.query("INSERT INTO public.top15_reservations(id,craftsman_id,city_id,profession_id,amount_minor,currency,expires_at,status) VALUES($1,$2,$3,$4,$5,$6,to_timestamp($7/1000.0),'CANDIDATE')",
+        [reservation.id,reservation.craftsmanId,reservation.cityId,reservation.professionId,reservation.amountMinor,reservation.currency,reservation.expiresAt]);
+    }, onSaved);
+  }
+
+  saveTop15ReservationStates(current: () => Top15Reservation[]): Promise<void> {
+    return this.commitCraftsmanAction(async client => {
+      const changes = current().map(r => ({ id:r.id, status:r.status === 'HELD' ? 'PENDING' : r.status === 'PAID' ? 'CONFIRMED' : r.status, expires_at:r.expiresAt }));
+      await client.query(`UPDATE public.top15_reservations AS r SET status=changes.status::reservation_status,expires_at=to_timestamp(changes.expires_at/1000.0)
+        FROM jsonb_to_recordset($1::jsonb) AS changes(id text,status text,expires_at double precision) WHERE r.id=changes.id`, [JSON.stringify(changes)]);
+    }, () => {});
+  }
+
+  saveFreeCraftsmanRegistration(user: User, c: Craftsman, listing: CraftsmanListing, existingUser: boolean, onSaved: () => void): Promise<void> {
+    return this.commitCraftsmanAction(async client => {
+      if (existingUser) {
+        const result = await client.query("UPDATE public.users SET password_hash=$3,updated_at=NOW() WHERE id=$1 AND phone=$2 AND status='ACTIVE'", [user.id,user.phone,user.password]);
+        if (result.rowCount !== 1) throw new Error('Registration account is no longer available.');
+      } else {
+        await client.query('INSERT INTO public.users(id,phone,password_hash,roles,status,created_at,updated_at) VALUES($1,$2,$3,$4::user_role[],$5::user_status,$6,$6)', [user.id,user.phone,user.password,user.roles,user.status,user.createdAt]);
+      }
+      await client.query('INSERT INTO public.craftsmen(id,user_id,name,description,phone,phone_visible,city_id,profession_id,working_hours,status,bank_account,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::craftsman_status,$11,$12,$13)',
+        [c.id,c.userId,c.name,c.description,c.phone,c.phoneVisible,c.cityId,c.professionId,JSON.stringify(c.workingHours),c.status,c.bankAccount,c.createdAt,c.updatedAt]);
+      for (const photo of c.photos) await client.query('INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$6)', [photo.id,c.id,photo.url,photo.isPrimary,photo.displayOrder,photo.createdAt]);
+      await client.query('INSERT INTO public.craftsman_listings(id,craftsman_id,city_id,profession_id,status,starts_at,expires_at,grace_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,$5::craftsman_status,$6,$7,$8,$9,$10)',
+        [listing.id,c.id,listing.cityId,listing.professionId,listing.status,listing.startsAt,listing.expiresAt,listing.graceEndsAt,listing.createdAt,listing.updatedAt]);
+      if (existingUser) await client.query('DELETE FROM public.craftsman_drafts WHERE user_id=$1', [user.id]);
+    }, onSaved);
+  }
+
+  saveSupportMessages(messages: ChatMessage[], onSaved: () => void): Promise<void> {
+    return this.commitCraftsmanAction(async client => {
+      for (const message of messages) await client.query('INSERT INTO public.support_messages(id,craftsman_id,sender,body,flagged_for_human,created_at) VALUES($1,$2,$3::chat_sender_type,$4,$5,$6)',
+        [message.id,message.craftsmanId,message.sender,message.body,message.flaggedForHuman,message.createdAt]);
+    }, onSaved);
+  }
+
   // Persist a single craftsman photo without synchronizing unrelated accounts.
   // Use the same queue as runtime snapshots. Apply the in-memory change inside
   // the queued step, so a snapshot cannot revive a just-deleted photo.
@@ -551,7 +631,7 @@ export class StorageService {
           'INSERT INTO public.craftsman_photos(id,craftsman_id,url,is_primary,display_order,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7)',
           [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.createdAt, photo.updatedAt]
         );
-        if (userId) await client.query("UPDATE public.craftsman_drafts SET data = COALESCE(data, '{}'::jsonb) - 'photoUrl' - 'photos', updated_at=NOW() WHERE user_id=$1", [userId]);
+        if (userId) await client.query('DELETE FROM public.craftsman_drafts WHERE user_id=$1', [userId]);
         await client.query('COMMIT');
         onSaved?.();
       } catch (error) {
@@ -590,7 +670,7 @@ export class StorageService {
           [photo.id, photo.craftsmanId, photo.url, photo.isPrimary, photo.displayOrder, photo.updatedAt]
         );
         if ((result.rowCount ?? 0) === 1) {
-          if (userId) await client.query("UPDATE public.craftsman_drafts SET data = COALESCE(data, '{}'::jsonb) - 'photoUrl' - 'photos', updated_at=NOW() WHERE user_id=$1", [userId]);
+          if (userId) await client.query('DELETE FROM public.craftsman_drafts WHERE user_id=$1', [userId]);
           await client.query('COMMIT');
           onUpdated?.();
         } else {

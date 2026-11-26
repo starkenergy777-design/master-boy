@@ -76,6 +76,7 @@ export const SupportChatScreen: React.FC<SupportChatScreenProps> = ({
         setHasDisputeFlag(true);
       }
     } catch (err: any) {
+      setInputText(previous => previous || textToSend);
       if (err.status === 429) {
         setErrorMsg(t.maxMessagesPerDay);
         setRemainingToday(0);
