@@ -615,16 +615,16 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
             className="w-full text-left bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-indigo-500/40 rounded-2xl p-4 flex items-center justify-between hover:border-indigo-400 transition-all shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300"
           >
             <span className="flex items-center gap-3">
-              <span className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <span className="p-2.5 rounded-xl bg-indigo-500/20 text-slate-950 border border-indigo-500/30">
                 <MessageSquare className="w-5 h-5" />
               </span>
               <span>
-                <span className="text-xs font-bold text-white block">{t.supportChat}</span>
-                <span className="text-[11px] text-indigo-300 block">{t.supportSubtitle}</span>
-                <span className="text-[10px] text-slate-400 block">{lang === 'ka' ? 'დღეში 7 შეტყობინების ლიმიტი' : lang === 'ru' ? 'Лимит: 7 сообщений в день' : '7 messages per day'}</span>
+                <span className="text-xs font-bold text-slate-950 block">{t.supportChat}</span>
+                <span className="text-[11px] text-slate-900 block">{t.supportSubtitle}</span>
+                <span className="text-[10px] text-slate-800 block">{lang === 'ka' ? 'დღეში 7 შეტყობინების ლიმიტი' : lang === 'ru' ? 'Лимит: 7 сообщений в день' : '7 messages per day'}</span>
               </span>
             </span>
-            <span className="text-xs text-indigo-400 font-bold bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-800">
+            <span className="text-xs text-slate-950 font-bold bg-amber-100/80 px-2.5 py-1 rounded-lg border border-amber-700/30">
               {lang === 'ka' ? 'ჩატის გახსნა' : lang === 'ru' ? 'Открыть чат' : 'Open chat'}
             </span>
           </button>
