@@ -15,6 +15,7 @@ import { SuperAdminScreen } from './screens/SuperAdminScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { AdPartnerScreen } from './screens/AdPartnerScreen.js';
 import { FinancialTermsScreen } from './screens/FinancialTermsScreen.js';
+import { PlatformInformationScreen } from './screens/PlatformInformationScreen.js';
 import { FinancialTermsGate } from './components/FinancialTermsGate.js';
 import { BogPaymentReturn } from './components/BogPaymentReturn.js';
 import { currentBogOrder } from './bogCheckout.js';
@@ -34,7 +35,8 @@ type ScreenName =
   | 'superadmin'
   | 'adpartner'
   | 'settings'
-  | 'financial-terms';
+  | 'financial-terms'
+  | 'platform-info';
 
 interface HistoryItem {
   screen: ScreenName;
@@ -71,9 +73,9 @@ export default function App() {
       : activeScreen === 'results' && selectedCityId && selectedProfessionId
         ? `/xelosnebi/${encodeURIComponent(selectedCityId)}/${encodeURIComponent(selectedProfessionId)}`
         : activeScreen === 'results' && !selectedCityId && selectedProfessionId
-          ? `/profesiebi/${encodeURIComponent(selectedProfessionId)}` : activeScreen === 'financial-terms' ? '/financial-terms' : '/';
+          ? `/profesiebi/${encodeURIComponent(selectedProfessionId)}` : activeScreen === 'financial-terms' ? '/financial-terms' : activeScreen === 'platform-info' ? '/platform-info' : '/';
     window.history.replaceState(window.history.state, '', publicPath);
-    const title = activeScreen === 'detail' && selectedCraftsman
+    const title = activeScreen === 'platform-info' ? 'კომპანიის ინფორმაცია და პირობები | Master Boy' : activeScreen === 'detail' && selectedCraftsman
       ? `${selectedCraftsman.name} — ${selectedCraftsman.professionName}, ${selectedCraftsman.cityName} | მასტერ ბოი`
       : activeScreen === 'results' && publicPage.screen === 'results' && selectedCityId === publicPage.cityId && selectedProfessionId === publicPage.professionId
         ? publicPage.title : 'Master Boy | მასტერ ბოი — მოძებნე ხელოსანი საქართველოში';
@@ -312,6 +314,7 @@ export default function App() {
             <MainScreen
               lang={lang}
               onSearch={handleSearch}
+              onOpenPlatformInformation={() => pushScreen('platform-info', 'search')}
               onSelectCraftsman={handleSelectCraftsman}
             />
           )}
@@ -422,6 +425,7 @@ export default function App() {
               onBack={goBack}
             />
           )}
+          {activeScreen === 'platform-info' && <PlatformInformationScreen lang={lang} onBack={goBack} />}
           {activeScreen === 'financial-terms' && <FinancialTermsScreen lang={lang} onBack={goBack} />}
         </div>
 

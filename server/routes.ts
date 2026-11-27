@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { isIP } from 'node:net';
 import { db, verifyPassword, hashPassword } from './db.js';
+import { platformInformationHandler } from './platformInformation.js';
 import { storage } from './storage.js';
 import { BankApiError, verifyBogCallback, verifyBogCredentials } from './bank-gateway.js';
 import { BogCheckoutError, checkoutResponse, findPendingBogOrder, hasPendingBogRegistration, isBogCheckoutAvailable, openBogCheckout, reconcileBogPayment, registrationProofHash } from './bog-checkout-flow.js';
@@ -1423,6 +1424,8 @@ apiRouter.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
 
 // Public before-payment disclosure. It deliberately excludes the recipient
 // IBAN and every payment-provider credential.
+apiRouter.get('/platform-information', platformInformationHandler);
+
 apiRouter.get('/merchant-disclosure', (_req, res) => {
   const d = db.merchantDisclosure;
   res.json({ ...d, configured: hasMerchantDisclosure(), termsVersion: FINANCIAL_TERMS_VERSION });

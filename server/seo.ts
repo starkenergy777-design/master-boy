@@ -3,6 +3,8 @@ import { financialTerms, FINANCIAL_TERMS_VERSION } from '../src/financialTerms.j
 import { readFileSync } from 'node:fs';
 import { db } from './db.js';
 import { professionSeo } from './professionSeo.js';
+import { getPlatformInformation } from './platformInformation.js';
+import { informationFor, formatPublicPrice } from '../src/platformInformation.js';
 
 export const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const json = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
@@ -44,8 +46,26 @@ export function seoRouter(templatePath: string) {
   router.get('/index.html', (_req, res) => res.redirect(301, '/'));
   router.get('/robots.txt', (_req, res) => res.type('text/plain').send(`User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n`));
   router.get('/sitemap.xml', (_req, res) => {
-    const paths = ['/', '/financial-terms', ...db.professions.filter(p => professionSeo[p.id]).map(p => professionPath(p.id)), ...categories(), ...profiles().map(c => profilePath(c.id))];
+    const paths = ['/', '/financial-terms', '/platform-info', ...db.professions.filter(p => professionSeo[p.id]).map(p => professionPath(p.id)), ...categories(), ...profiles().map(c => profilePath(c.id))];
     res.set('Cache-Control', 'no-cache').type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(p => `<url><loc>${escapeHtml(origin + p)}</loc></url>`).join('')}</urlset>`);
+  });
+  router.get('/platform-info', (_req, res) => {
+    const copy = informationFor('ka');
+    const info = getPlatformInformation();
+    const terms = financialTerms.ka;
+    const paragraphs = (texts: readonly string[]) => texts.map(text => `<p>${escapeHtml(text)}</p>`).join('');
+    const section = (index: number, body: string) => `<section id="information-${index}"><h2>${index + 1}. ${escapeHtml(copy.headings[index])}</h2>${body}</section>`;
+    const contacts = Object.values(info.merchant).map((value, i) => `<p>${escapeHtml(copy.contactLabels[i])}: ${escapeHtml(value || '—')}</p>`).join('');
+    const priceTable = info.top15.length ? `<details><summary>${escapeHtml(copy.allPrices)}</summary><table><thead><tr><th>${escapeHtml(copy.category)}</th><th>${escapeHtml(copy.price)}</th></tr></thead><tbody>${info.top15.map(row => `<tr><td>${escapeHtml(row.city)} / ${escapeHtml(row.profession)}</td><td>${escapeHtml(formatPublicPrice(row))}</td></tr>`).join('')}</tbody></table></details>` : '';
+    const prices = [...new Set(info.top15.map(formatPublicPrice))];
+    const financial = `<h3>${escapeHtml(copy.financial)}</h3><small>${FINANCIAL_TERMS_VERSION}</small>${paragraphs([terms.introduction])}${terms.sections.map(([heading, body]) => `<h4>${escapeHtml(heading)}</h4>${paragraphs([body])}`).join('')}<a href="/financial-terms">${escapeHtml(terms.title)}</a>`;
+    const content = `<main style="max-width:720px;margin:auto;padding:16px;overflow-wrap:anywhere"><a href="/">Master Boy</a><h1>${escapeHtml(copy.title)}</h1>${section(0, paragraphs(copy.about))}${section(1, contacts)}${section(2, paragraphs(copy.services))}${section(3, paragraphs([`${copy.listing}: ${formatPublicPrice(info.listing)}`, `${copy.top15}: ${prices.join(' / ') || copy.unavailable}`, copy.pricing]) + priceTable)}${section(4, paragraphs(copy.delivery) + financial)}${section(5, paragraphs(copy.privacy))}${section(6, paragraphs(copy.usage))}</main>`;
+    const title = `${copy.title} | Master Boy`;
+    const description = copy.about[0];
+    const canonical = `${origin}/platform-info`;
+    const html = pageMetadata(template, title, description, canonical, publicImage(undefined, origin), [{ '@type': 'WebPage', name: title, url: canonical, inLanguage: 'ka' }])
+      .replace(/<div id="root">[\s\S]*?<script src="\/app-bootstrap.js"><\/script>/, () => `<div id="root">${content}</div><script type="application/json" id="mb-public-page">${json({ screen: 'platform-info', title })}</script><script src="/app-bootstrap.js"></script>`);
+    res.set('Cache-Control', 'no-cache').type('html').send(html);
   });
   router.get('/financial-terms', (_req, res) => {
     const terms = financialTerms.ka;
@@ -108,7 +128,7 @@ export function seoRouter(templatePath: string) {
       if (req.path === '/') {
         // These same profession links remain available in MainScreen after React loads.
         const directory = `<nav aria-label="ხელოსნების პროფესიები"><details><summary>ყველა პროფესიის ნახვა</summary>${db.professions.filter(p => professionSeo[p.id]).map(p => `<p><a href="${professionPath(p.id)}">${escapeHtml(p.name.ka)}</a></p>`).join('')}</details></nav>`;
-        html = html.replace('<div id="mb-connection-notice"', () => `${directory}<div id="mb-connection-notice"`)
+        html = html.replace('<div id="mb-connection-notice"', () => `${directory}<a href="/platform-info">კომპანიის ინფორმაცია და პირობები</a><div id="mb-connection-notice"`)
           .replace('<script src="/app-bootstrap.js"></script>', () => `<script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
       } else {
         html = html.replace(/<div id="root">[\s\S]*?<script src="\/app-bootstrap.js"><\/script>/, () => `<div id="root">${content}</div><script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
