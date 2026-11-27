@@ -106,7 +106,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const t = translations[lang] || translations.ka;
   const isSuperAdmin = currentUser.roles.includes('SUPER_ADMIN');
   const isStaffAdmin = currentUser.roles.includes('ADMIN') && !isSuperAdmin;
-  const adminShareLabel = lang === 'ka' ? 'კომპანიის შენთვის მინიჭებული წილი' : lang === 'ru' ? 'Назначенная вам доля компании' : 'Your assigned company share';
+  const adminShareLabel = lang === 'ka' ? 'ხელფასი კომპანიის მოგებიდან,  მოიწვიე ხელოსნები, ხელფასიც გაიზრდება' : lang === 'ru' ? 'Назначенная вам доля компании' : 'Your assigned company share';
   const adminShareMissing = lang === 'ka' ? 'წილი მინიჭებული არ არის' : lang === 'ru' ? 'Доля не назначена' : 'No share assigned';
 
   const [activeTab, setActiveTab] = useState<'craftsmen' | 'prices' | 'analytics' | 'reports' | 'top15'>('analytics');
