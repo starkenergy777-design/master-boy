@@ -1,7 +1,6 @@
 import { localizeTree } from '../i18n.js';
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   ChevronDown,
   X,
   ExternalLink,
@@ -24,9 +23,9 @@ export const MainScreen: React.FC<MainScreenProps> = ({
   const t = translations[lang] || translations.ka;
   const [cities, setCities] = useState<City[]>([]);
   const [professions, setProfessions] = useState<Profession[]>([]);
-  const [selectedCityId, setSelectedCityId] = useState<string>('');
+  const [selectedCityId, setSelectedCityId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
-  const [selectedProfessionId, setSelectedProfessionId] = useState<string>('');
+  const [selectedProfessionId, setSelectedProfessionId] = useState<string | null>(null);
   const [activeAd, setActiveAd] = useState<AdvertisementPublic | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -59,8 +58,19 @@ export const MainScreen: React.FC<MainScreenProps> = ({
     loadData();
   }, [lang]);
 
-  const handleSearchClick = () => {
-    onSearch(selectedCityId || undefined, selectedProfessionId || undefined);
+  const handleCityChange = (cityId: string) => {
+    setSelectedCityId(cityId);
+    setCityPickerOpen(false);
+    if (selectedProfessionId !== null) {
+      onSearch(cityId || undefined, selectedProfessionId || undefined);
+    }
+  };
+
+  const handleProfessionChange = (professionId: string) => {
+    setSelectedProfessionId(professionId);
+    if (selectedCityId !== null) {
+      onSearch(selectedCityId || undefined, professionId || undefined);
+    }
   };
 
   return localizeTree(lang, (
@@ -117,12 +127,12 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                   </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2">
-                  <button type="button" onClick={() => { setSelectedCityId(''); setCityPickerOpen(false); }} className="flex w-full items-center gap-3 rounded-lg border-b border-slate-800 px-3 py-4 text-left text-lg font-semibold text-white">
+                  <button type="button" onClick={() => handleCityChange('')} className="flex w-full items-center gap-3 rounded-lg border-b border-slate-800 px-3 py-4 text-left text-lg font-semibold text-white">
                     <span className="w-10 shrink-0 text-center text-amber-300">—</span>
                     {t.allCities}
                   </button>
                   {cities.map((city, index) => (
-                    <button key={city.id} type="button" onClick={() => { setSelectedCityId(city.id); setCityPickerOpen(false); }} className="flex w-full items-center gap-3 rounded-lg border-b border-slate-800 px-3 py-4 text-left text-lg text-white hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-amber-400">
+                    <button key={city.id} type="button" onClick={() => handleCityChange(city.id)} className="flex w-full items-center gap-3 rounded-lg border-b border-slate-800 px-3 py-4 text-left text-lg text-white hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-amber-400">
                       <span className="w-10 shrink-0 text-center font-extrabold tabular-nums text-amber-300">{String(index + 1).padStart(2, '0')}</span>
                       <span className="flex-1">{city.name}</span>
                     </button>
@@ -136,8 +146,8 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           {/* Profession dropdown */}
           <ProfessionPicker
             professions={professions}
-            value={selectedProfessionId}
-            onChange={setSelectedProfessionId}
+            value={selectedProfessionId || ''}
+            onChange={handleProfessionChange}
             label={t.selectProfession}
             ariaLabel={t.selectProfession}
             placeholder={lang === 'ka' ? 'პროფესია' : lang === 'ru' ? 'Профессия' : 'Profession'}
@@ -153,14 +163,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           />
 
           <div className="pt-1 grid grid-cols-1 gap-1.5">
-            <button
-              type="button"
-              onClick={handleSearchClick}
-              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold py-2.5 px-4 rounded-lg shadow-sm shadow-amber-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-sm"
-            >
-              <Search className="w-4 h-4 stroke-[2.5]" />
-              <span className="truncate">{t.searchCraftsmen}</span>
-            </button>
+            <div aria-hidden="true" className="h-10" />
           </div>
         </div>
         </div>
