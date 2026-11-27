@@ -163,7 +163,22 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           />
 
           <div className="pt-1 grid grid-cols-1 gap-1.5">
-            <div aria-hidden="true" className="h-10" />
+            <div className="grid h-10 min-w-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-1.5 rounded-lg border border-orange-500 bg-white px-1.5 text-slate-950" aria-label="Bank of Georgia">
+              <div className="flex h-8 min-w-0 items-center border-r border-slate-300 pr-1.5">
+                <img src="/payment-logos/Bog-logo.png" alt="საქართველოს ბანკი / Bank of Georgia" width={1200} height={417} className="h-full w-full object-cover" />
+              </div>
+              <div className="flex min-w-0 flex-col items-center gap-0.5">
+                <p className="text-center text-[8px] min-[360px]:text-[9px] sm:text-[10px] font-semibold leading-[1.1]">
+                  <span className="block">{lang === 'ka' ? 'უსაფრთხო ონლაინ გადახდები' : lang === 'ru' ? 'Безопасные онлайн-платежи' : 'Secure online payments'}</span>
+                  <span className="block">{lang === 'ka' ? 'საქართველოს ბანკის მეშვეობით.' : lang === 'ru' ? 'через Банк Грузии.' : 'through Bank of Georgia.'}</span>
+                </p>
+                <div className="flex h-3 items-center justify-center gap-2">
+                  <img src="/payment-logos/Visa.png" alt="Visa" width={1000} height={323} className="h-2.5 w-7 object-contain" />
+                  <img src="/payment-logos/MC.PNG" alt="Mastercard" width={1000} height={778} className="h-3 w-5 object-contain" />
+                  <img src="/payment-logos/Amex.png" alt="American Express" width={1000} height={1000} className="h-3 w-3 object-contain" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         </div>
@@ -206,7 +221,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
       </div>
 
       {/* Commercial Advertisement Banner Container */}
-      <div className="flex-1 -mx-3 sm:-mx-4 mb-0 mt-2 flex flex-col min-h-[160px]">
+      <div className={`flex-1 -mx-3 sm:-mx-4 mb-0 mt-2 flex flex-col ${activeAd?.company_name && activeAd.image_url ? 'min-h-[160px]' : 'min-h-0'}`}>
         <div className="flex-1 flex flex-col min-h-0 bg-slate-900 border-t border-x border-slate-800/90 overflow-hidden transition-all group shadow-xl">
           {activeAd && activeAd.company_name && activeAd.image_url ? (
             <>
@@ -248,8 +263,8 @@ export const MainScreen: React.FC<MainScreenProps> = ({
                   {lang === 'ka' ? 'თავისუფალია' : lang === 'ru' ? 'Свободно' : 'Available'}
                 </span>
               </div>
-              <div className="flex-1 min-h-[140px] flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/10 border-x border-b border-dashed border-slate-700/80">
-                <div className="text-center px-5">
+              <div className="flex-1 min-h-0 [container-type:size] overflow-hidden flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/10 border-x border-b border-dashed border-slate-700/80">
+                <div className="text-center px-5 [@container(max-height:80px)]:hidden">
                   <p className="text-sm font-bold text-slate-300">
                     {lang === 'ka' ? 'მოათავსეთ თქვენი რეკლამა აქ' : lang === 'ru' ? 'Разместите здесь свою рекламу' : 'Place your advertisement here'}
                   </p>
