@@ -1,10 +1,12 @@
 // Isolated HTTP regression checks; never connects to Supabase or creates accounts.
 import assert from 'node:assert/strict';
+import type { Craftsman } from './server/types.js';
 process.env.NODE_ENV = 'test';
 delete process.env.DATABASE_URL;
 delete process.env.SUPABASE_DB_URL;
 const { default: express } = await import('express');
 const { seoRouter, escapeHtml } = await import('./server/seo.js');
+const { db } = await import('./server/db.js');
 const app = express();
 app.use(seoRouter('dist/index.html'));
 const listener = app.listen(0, '127.0.0.1');
@@ -21,6 +23,10 @@ try {
   assert.match(html, /<script[^>]+src="\/assets\//);
   assert.doesNotMatch(html, /<main style="max-width:512px/);
   assert.equal((html.match(/id="root"/g) || []).length, 1);
+  assert.match(html, /<a href="\/profesiebi\/prof-plumber">/);
+  assert.match(html, /<meta property="og:url" content="https:\/\/master-boy.onrender.com\/"/);
+  const schema = (body: string) => JSON.parse(body.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)![1]);
+  assert.equal(schema(html)['@graph'][0]['@type'], 'WebSite');
   const sitemap = await (await get('/sitemap.xml')).text();
   assert.equal((sitemap.match(/<loc>/g) || []).length, 22);
   assert.match(sitemap, /https:\/\/master-boy.onrender.com\//);
@@ -51,5 +57,58 @@ try {
   assert.equal((await get('/xelosnebi/city-tbilisi/prof-plumber')).status, 404);
   assert.match(await (await get('/robots.txt')).text(), /Sitemap:/);
   assert.equal(escapeHtml('<script>"&'), '&lt;script&gt;&quot;&amp;');
-  console.log('SEO HTTP checks passed: server HTML, bootstrap, assets, verification, financial terms, 20 profession pages and aliases, sitemap, no invented profiles, empty categories, 404, escaping.');
+  // Synthetic public records only: prove TOP 15 discovery and privacy filtering.
+  const now = new Date().toISOString();
+  const future = new Date(Date.now() + 86400000).toISOString();
+  const past = new Date(Date.now() - 86400000).toISOString();
+  const addProfile = (id: string, overrides: Partial<Craftsman> = {}) => {
+    const userId = `seo-user-${id}`;
+    db.users.set(userId, { id: userId, phone: '+995555000001', password: 'not-a-real-credential', roles: ['CRAFTSMAN'], status: 'ACTIVE', createdAt: now });
+    const c: Craftsman = { id, userId, name: `ხელოსანი ${id}`, description: 'სანტექნიკის მომსახურება', phone: '+995555000001', phoneVisible: false, latitude: null, longitude: null, workingHours: null, cityId: 'city-tbilisi', professionId: 'prof-plumber', status: 'ACTIVE', photos: [], createdAt: now, updatedAt: now, ...overrides };
+    db.craftsmen.set(id, c);
+    db.craftsmanListings.set(id, { id: `seo-listing-${id}`, craftsmanId: id, cityId: c.cityId, professionId: c.professionId, status: 'ACTIVE', startsAt: now, expiresAt: future, createdAt: now, updatedAt: now });
+    return c;
+  };
+  const regular = addProfile('seo-regular');
+  const top = addProfile('seo-top', { name: 'ოსტატი <script>alert(1)</script> $&', phoneVisible: true, photos: [{ id: 'seo-photo', craftsmanId: 'seo-top', url: '/icons/icon-192.jpg', displayOrder: 0, isPrimary: true, createdAt: now, updatedAt: now }] });
+  db.top15Memberships.set('seo-membership', { id: 'seo-membership', craftsmanId: top.id, cityId: top.cityId, cityName: 'თბილისი', professionId: top.professionId, professionName: 'სანტექნიკოსი', startsAt: now, expiresAt: future, status: 'ACTIVE' });
+  addProfile('seo-blocked', { status: 'BLOCKED' });
+  addProfile('seo-draft', { status: 'UNPAID_DRAFT' });
+  const expired = addProfile('seo-expired');
+  db.craftsmanListings.get(expired.id)!.expiresAt = past;
+  const blockedUser = addProfile('seo-blocked-user');
+  db.users.get(blockedUser.userId)!.status = 'BLOCKED';
+  const updatedSitemap = await (await get('/sitemap.xml')).text();
+  assert.match(updatedSitemap, /\/xelosani\/seo-top<\/loc>/);
+  assert.match(updatedSitemap, /\/xelosani\/seo-regular<\/loc>/);
+  for (const id of ['seo-blocked', 'seo-draft', 'seo-expired', 'seo-blocked-user']) {
+    assert.doesNotMatch(updatedSitemap, new RegExp(`/xelosani/${id}<`));
+    const unavailable = await get(`/xelosani/${id}`);
+    assert.equal(unavailable.status, 404);
+    assert.equal(unavailable.headers.get('x-robots-tag'), 'noindex');
+    await unavailable.text();
+  }
+  const profileHtml = await (await get(`/xelosani/${top.id}`)).text();
+  const business = schema(profileHtml)['@graph'].find((entry: any) => entry['@type'] === 'LocalBusiness');
+  assert.equal(business.name, top.name);
+  assert.equal(business.telephone, top.phone);
+  assert.equal(business.image, 'https://master-boy.onrender.com/icons/icon-192.jpg');
+  assert.match(profileHtml, /<span>TOP 15<\/span>/);
+  assert.match(profileHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt; \$&amp;/);
+  assert.doesNotMatch(profileHtml, /<script>alert\(1\)/);
+  assert.equal((profileHtml.match(/id="root"/g) || []).length, 1);
+  const privateHtml = await (await get(`/xelosani/${regular.id}`)).text();
+  assert.doesNotMatch(privateHtml, /\+995555000001|"telephone"/);
+  const categoryHtml = await (await get('/xelosnebi/city-tbilisi/prof-plumber')).text();
+  const list = schema(categoryHtml)['@graph'].find((entry: any) => entry['@type'] === 'ItemList');
+  assert.equal(list.numberOfItems, 2);
+  assert.equal(list.itemListElement[0].url, 'https://master-boy.onrender.com/xelosani/seo-top');
+  assert.match(categoryHtml, /\/xelosani\/seo-top/);
+  const professionHtml = await (await get('/profesiebi/prof-plumber')).text();
+  assert.match(professionHtml, /\/xelosani\/seo-top/);
+  db.top15Memberships.get('seo-membership')!.expiresAt = past;
+  const expiredTopHtml = await (await get(`/xelosani/${top.id}`)).text();
+  assert.doesNotMatch(expiredTopHtml, /<span>TOP 15<\/span>/);
+  assert.match(await (await get('/sitemap.xml')).text(), /\/xelosani\/seo-top<\/loc>/);
+  console.log('SEO HTTP checks passed: home discovery, metadata, structured data, public TOP 15 profiles, membership expiry, privacy, sitemap, bootstrap, assets, verification, financial terms, 20 profession pages, 404, escaping.');
 } finally { listener.close(); }
