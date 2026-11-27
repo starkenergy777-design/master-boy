@@ -359,7 +359,23 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
         <p>{merchantDisclosure.legalName}</p><p>{lang === 'ka' ? 'საიდენტიფიკაციო კოდი' : lang === 'ru' ? 'Идентификационный код' : 'Identification code'}: {merchantDisclosure.identificationCode}</p><p>{merchantDisclosure.address}</p><p>{merchantDisclosure.phone} · {merchantDisclosure.email}</p>
       </div>}
 
-      <button type="button" onClick={openFinancialCases} className="self-start text-xs text-amber-400 underline">{lang === 'ka' ? 'გადახდის დავა და დაბრუნების მოთხოვნა' : lang === 'ru' ? 'Спор по оплате и запрос возврата' : 'Payment dispute or refund request'}</button>
+      <div className="flex items-start justify-between gap-3 text-xs">
+        <button type="button" onClick={openFinancialCases} className="min-w-0 text-left text-xs text-amber-400 underline">{lang === 'ka' ? 'გადახდის დავა და დაბრუნების მოთხოვნა' : lang === 'ru' ? 'Спор по оплате и запрос возврата' : 'Payment dispute or refund request'}</button>
+        {listing?.status === 'ACTIVE' && (
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="whitespace-nowrap text-xs text-slate-300 tabular-nums" title={lang === 'ka' ? 'გამოწერის დარჩენილი დრო' : lang === 'ru' ? 'Оставшееся время подписки' : 'Listing time remaining'}>
+              {days} {lang === 'ka' ? 'დღე' : lang === 'ru' ? 'дн.' : 'days'} {String(hours).padStart(2, '0')}:{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+            </span>
+            <button
+              onClick={() => setShowRenewalModal(true)}
+              className="text-[11px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30 transition-colors flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>{lang === 'ka' ? 'განახლება (+180 დღე)' : 'Renew (+180d)'}</span>
+            </button>
+          </div>
+        )}
+      </div>
       {pendingBankOrders.map(order => <a key={order.id} href={`/?bog_order=${encodeURIComponent(order.id)}`} className="self-start text-xs text-amber-400 underline">
         {order.kind === 'TOP15' ? 'Top 15' : lang === 'ka' ? 'პროფილის განთავსება' : lang === 'ru' ? 'Размещение профиля' : 'Profile listing'} · {lang === 'ka' ? 'გადახდის მდგომარეობა' : lang === 'ru' ? 'Статус оплаты' : 'Payment status'}
       </a>)}
@@ -385,45 +401,26 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
         </div>
       )}
 
-      {/* 180-Day Server-Authoritative Listing Timer & Warning Banners (§4.2, §24.5) */}
+      <div className="bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 border border-amber-500/40 rounded-3xl p-5 shadow-lg space-y-3">
+        <div className="flex items-center gap-2">
+          <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+          <h3 className="text-sm font-black text-white">{t.top15Badge}</h3>
+        </div>
+        <p className="text-xs text-slate-300 leading-relaxed">
+          {t.top15Desc}
+        </p>
+        <button
+          onClick={onOpenTop15Purchase}
+          className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-xs transition-all active:scale-95"
+        >
+          <Plus className="w-4 h-4 stroke-[3]" />
+          <span>{t.buyTop15}</span>
+        </button>
+      </div>
+
+      {/* Existing listing warnings and inactive states (§4.2, §24.5). */}
       {listing?.status === 'ACTIVE' ? (
-        <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-slate-800 rounded-3xl p-4 shadow space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-bold text-slate-300">
-                {lang === 'ka' ? '6-თვიანი გამოწერის ტაიმერი:' : 'Listing Subscription Timer:'}
-              </span>
-            </div>
-            <button
-              onClick={() => setShowRenewalModal(true)}
-              className="text-[11px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30 transition-colors flex items-center gap-1"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>{lang === 'ka' ? 'განახლება (+180 დღე)' : 'Renew (+180d)'}</span>
-            </button>
-          </div>
-
-          {/* Countdown Display */}
-          <div className="grid grid-cols-4 gap-2 text-center">
-            <div className="bg-slate-950 p-2 rounded-xl border border-slate-800">
-              <span className="text-base font-black text-white font-mono">{days}</span>
-              <span className="text-[9px] text-slate-400 block uppercase">{lang === 'ka' ? 'დღე' : 'Days'}</span>
-            </div>
-            <div className="bg-slate-950 p-2 rounded-xl border border-slate-800">
-              <span className="text-base font-black text-white font-mono">{hours}</span>
-              <span className="text-[9px] text-slate-400 block uppercase">{lang === 'ka' ? 'საათი' : 'Hours'}</span>
-            </div>
-            <div className="bg-slate-950 p-2 rounded-xl border border-slate-800">
-              <span className="text-base font-black text-white font-mono">{minutes}</span>
-              <span className="text-[9px] text-slate-400 block uppercase">{lang === 'ka' ? 'წუთი' : 'Mins'}</span>
-            </div>
-            <div className="bg-slate-950 p-2 rounded-xl border border-slate-800">
-              <span className="text-base font-black text-amber-400 font-mono">{seconds}</span>
-              <span className="text-[9px] text-slate-400 block uppercase">{lang === 'ka' ? 'წამი' : 'Secs'}</span>
-            </div>
-          </div>
-
+        <>
           {/* Warning Banners per §4.2 */}
           {days < 7 ? (
             <div className="p-2.5 bg-rose-500/15 border border-rose-500/40 rounded-2xl flex items-center justify-between text-xs text-rose-300">
@@ -452,7 +449,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
               </button>
             </div>
           ) : null}
-        </div>
+        </>
       ) : listing?.status === 'EXPIRED' ? (
         <div className="bg-rose-950/40 border border-rose-500/50 rounded-3xl p-4 shadow space-y-2.5">
           <div className="flex items-center gap-2 text-rose-400">
@@ -682,23 +679,6 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
       {/* Top 15 Tab */}
       {activeTab === 'top15' && (
         <div className="space-y-4">
-          <div className="bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 border border-amber-500/40 rounded-3xl p-5 shadow-lg space-y-3">
-            <div className="flex items-center gap-2">
-              <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
-              <h3 className="text-sm font-black text-white">{t.top15Badge}</h3>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              {t.top15Desc}
-            </p>
-            <button
-              onClick={onOpenTop15Purchase}
-              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-xs transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>{t.buyTop15}</span>
-            </button>
-          </div>
-
           <div className="space-y-2">
             <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider px-1">
               {lang === 'ka' ? 'ჩემი აქტიური TOP 15 ადგილები' : 'My Active Top 15 Slots'}
