@@ -9,8 +9,10 @@ import { translations } from '../i18n.js';
 import { City, Profession, Language, CraftsmanPublic, AdvertisementPublic } from '../types.js';
 import { api } from '../api.js';
 import { ProfessionPicker } from '../components/ProfessionPicker.js';
+import { informationFor } from '../platformInformation.js';
 
 interface MainScreenProps {
+  onOpenPlatformInformation: () => void;
   lang: Language;
   onSearch: (cityId?: string, professionId?: string) => void;
   onSelectCraftsman: (craftsman: CraftsmanPublic) => void;
@@ -19,6 +21,7 @@ interface MainScreenProps {
 export const MainScreen: React.FC<MainScreenProps> = ({
   lang,
   onSearch,
+  onOpenPlatformInformation,
 }) => {
   const t = translations[lang] || translations.ka;
   const [cities, setCities] = useState<City[]>([]);
@@ -197,7 +200,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           </div>
         )}
 
-        <p className="mb-2 px-3 py-2 text-xs leading-relaxed text-slate-400">
+        <p className="mb-2 px-3 py-2 [@media(max-height:640px)]:py-0 [@media(max-height:640px)]:mb-0 text-xs leading-relaxed text-slate-400">
             {lang === 'ka'
               ? 'ხელოსნის მოსაძებნად რეგისტრაცია საჭირო არ არის — აირჩიეთ ქალაქი და პროფესია.'
               : lang === 'ru'
@@ -222,6 +225,9 @@ export const MainScreen: React.FC<MainScreenProps> = ({
 
       {/* Commercial Advertisement Banner Container */}
       <div className={`flex-1 -mx-3 sm:-mx-4 mb-0 mt-2 flex flex-col ${activeAd?.company_name && activeAd.image_url ? 'min-h-[160px]' : 'min-h-0'}`}>
+        <a href="/platform-info" onClick={event => { if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onOpenPlatformInformation(); } }} className="mx-3 sm:mx-4 mb-2 flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-amber-400/50 bg-slate-900 px-3 py-2 text-center text-xs font-semibold text-amber-300 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-amber-400">
+          {informationFor(lang).button}
+        </a>
         <div className="flex-1 flex flex-col min-h-0 bg-slate-900 border-t border-x border-slate-800/90 overflow-hidden transition-all group shadow-xl">
           {activeAd && activeAd.company_name && activeAd.image_url ? (
             <>

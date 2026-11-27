@@ -1,5 +1,6 @@
 import { Language, User, Advertisement, AdvertisementPublic, AdminTop15Member } from './types.js';
 import { localizeApiError } from './i18n.js';
+import type { PlatformInformation } from './platformInformation.js';
 import { FINANCIAL_TERMS_VERSION } from './financialTerms.js';
 
 class ApiClient {
@@ -143,6 +144,10 @@ class ApiClient {
 
   getMerchantDisclosure() {
     return this.request<{ legalName: string; identificationCode: string; address: string; phone: string; email: string; configured: boolean; termsVersion: string }>('/merchant-disclosure');
+  }
+
+  getPlatformInformation() {
+    return this.request<PlatformInformation>('/platform-information');
   }
 
   // Auth
