@@ -1,9 +1,8 @@
 import type { Request, Response } from 'express';
 import { db } from './db.js';
 import type { Language } from './types.js';
-import type { PlatformInformation } from '../src/platformInformation.js';
 
-export function getPlatformInformation(lang: Language = 'ka'): PlatformInformation {
+export function getPlatformInformation(lang: Language = 'ka') {
   const d = db.merchantDisclosure;
   // Explicit public projection: never include configuration credentials or internal audit fields.
   return {

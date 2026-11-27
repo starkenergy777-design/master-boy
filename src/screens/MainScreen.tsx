@@ -79,7 +79,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
   return localizeTree(lang, (
     <div className="flex-1 flex flex-col p-3 sm:p-4 pb-0 animate-fade-in text-slate-100 min-h-0">
       {/* Top Banner & Search Controls grouped */}
-      <div className="space-y-3 shrink-0">
+      <div className="space-y-3 [@media(max-height:640px)]:space-y-1 shrink-0">
         {/* Unified welcome and search panel */}
         <div className="rounded-xl border border-slate-800 shadow-sm bg-slate-900/90 p-3 sm:p-4 space-y-3">
         {/* Top Banner / Welcome - compact */}
@@ -224,14 +224,14 @@ export const MainScreen: React.FC<MainScreenProps> = ({
       </div>
 
       {/* Commercial Advertisement Banner Container */}
-      <div className={`flex-1 -mx-3 sm:-mx-4 mb-0 mt-2 flex flex-col ${activeAd?.company_name && activeAd.image_url ? 'min-h-[160px]' : 'min-h-0'}`}>
+      <div className={`flex-1 -mx-3 sm:-mx-4 mb-0 mt-2 [@media(max-height:640px)]:mt-0 flex flex-col ${activeAd?.company_name && activeAd.image_url ? 'min-h-[160px]' : 'min-h-0'}`}>
         <a href="/platform-info" onClick={event => { if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onOpenPlatformInformation(); } }} className="mx-3 sm:mx-4 mb-2 flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-amber-400/50 bg-slate-900 px-3 py-2 text-center text-xs font-semibold text-amber-300 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-amber-400">
           {informationFor(lang).button}
         </a>
         <div className="flex-1 flex flex-col min-h-0 bg-slate-900 border-t border-x border-slate-800/90 overflow-hidden transition-all group shadow-xl">
           {activeAd && activeAd.company_name && activeAd.image_url ? (
             <>
-              <div className="px-3 py-1.5 bg-slate-950/95 border-b border-slate-800/80 flex items-center justify-between shrink-0">
+              <div className="px-3 py-1.5 [@media(max-height:640px)]:py-0 bg-slate-950/95 border-b border-slate-800/80 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
                     {lang === 'ka' ? 'რეკლამა' : lang === 'ru' ? 'Реклама' : 'Sponsored'}
@@ -261,7 +261,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
             </>
           ) : (
             <>
-              <div className="px-3 py-1.5 bg-slate-950/95 border-b border-slate-800/80 flex items-center justify-between shrink-0">
+              <div className="px-3 py-1.5 [@media(max-height:640px)]:py-0 bg-slate-950/95 border-b border-slate-800/80 flex items-center justify-between shrink-0">
                 <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                   {lang === 'ka' ? 'სარეკლამო ადგილი' : lang === 'ru' ? 'Рекламное место' : 'Ad space'}
                 </span>
