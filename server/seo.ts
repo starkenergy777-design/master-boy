@@ -9,6 +9,23 @@ const json = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
 const profilePath = (id: string) => `/xelosani/${encodeURIComponent(id)}`;
 const categoryPath = (city: string, profession: string) => `/xelosnebi/${encodeURIComponent(city)}/${encodeURIComponent(profession)}`;
 const professionPath = (id: string) => `/profesiebi/${encodeURIComponent(id)}`;
+const publicImage = (value: string | undefined, origin: string) => {
+  try {
+    const url = new URL(value || '/icons/icon-512.jpg', origin);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : `${origin}/icons/icon-512.jpg`;
+  } catch { return `${origin}/icons/icon-512.jpg`; }
+};
+
+function pageMetadata(template: string, title: string, description: string, canonical: string, image: string, graph: unknown[]) {
+  return template.replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escapeHtml(title)}</title>`)
+    .replace(/<meta name="description"[^>]*>/, () => `<meta name="description" content="${escapeHtml(description)}" />`)
+    .replace(/<link rel="canonical"[^>]*>/, () => `<link rel="canonical" href="${escapeHtml(canonical)}" />`)
+    .replace(/<meta property="og:title"[^>]*>/, () => `<meta property="og:title" content="${escapeHtml(title)}" />`)
+    .replace(/<meta property="og:description"[^>]*>/, () => `<meta property="og:description" content="${escapeHtml(description)}" />`)
+    .replace(/<meta property="og:image"[^>]*>/, () => `<meta property="og:image" content="${escapeHtml(image)}" />`)
+    .replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, () => `<script type="application/ld+json">${json({ '@context': 'https://schema.org', '@graph': graph })}</script>`)
+    .replace('</head>', () => `<meta property="og:url" content="${escapeHtml(canonical)}" /><meta property="og:locale" content="ka_GE" /><meta name="robots" content="index, follow, max-image-preview:large" /></head>`);
+}
 export function publicProfiles() {
   return [...db.craftsmen.values()].filter(c => {
     const listing = db.getCraftsmanListing(c.id);
@@ -57,20 +74,44 @@ export function seoRouter(templatePath: string) {
       const title = profile ? `${profile.name} — ${profile.professionName}, ${profile.cityName} | მასტერ ბოი` : isCategory ? `${selected[0].professionName} — ${selected[0].cityName} | მასტერ ბოი` : profession && professionInfo ? `${profession.name.ka} — ${professionInfo.also} | მასტერ ბოი` : 'Master Boy | მასტერ ბოი — მოძებნე ხელოსანი საქართველოში';
       const description = profile ? `${profile.name}: ${profile.professionName}, ${profile.cityName}. ${profile.description || ''}`.slice(0, 300) : professionInfo ? `${professionInfo.service} ${professionInfo.also}. მოძებნეთ ხელოსანი მასტერ ბოიში ქალაქისა და პროფესიის მიხედვით.` : 'მასტერ ბოი (Master Boy) — მოძებნე ხელოსანი ქალაქისა და პროფესიის მიხედვით საქართველოში. ძიება რეგისტრაციის გარეშე.';
       const canonical = origin + (profile ? profilePath(profile.id) : isCategory ? categoryPath(req.params.city, req.params.profession) : profession ? professionPath(profession.id) : '/');
-      const links = (profile ? [profile] : selected).map(c => `<li><a href="${profilePath(c.id)}">${escapeHtml(c.name)} — ${escapeHtml(c.professionName)}, ${escapeHtml(c.cityName)}</a></li>`).join('');
+      const ordered = [...selected].sort((a, b) => Number(!!b.isTop15) - Number(!!a.isTop15));
+      const links = (profile ? [profile] : ordered).map(c => `<li><a href="${profilePath(c.id)}">${escapeHtml(c.name)} — ${escapeHtml(c.professionName)}, ${escapeHtml(c.cityName)}</a>${c.isTop15 ? ' <span>TOP 15</span>' : ''}</li>`).join('');
       const professionContent = professionInfo ? `<p>${escapeHtml(professionInfo.service)}</p><p>${escapeHtml(professionInfo.ask)}</p><p>აირჩიეთ ქალაქი და შეამოწმეთ ხელმისაწვდომი ხელოსნები. შედეგები აქტიური პროფილების მიხედვით განახლდება.</p>` : '';
-      const content = `<main style="max-width:512px;margin:auto;padding:24px"><a href="/">მასტერ ბოი — Master Boy</a><h1>${escapeHtml(profession?.name.ka || title)}</h1>${professionContent || `<p>${escapeHtml(description)}</p>`}${profile?.phone ? `<p>${escapeHtml(profile.phone)}</p>` : ''}${links ? `<ul>${links}</ul>` : ''}${profession && !links ? '<p>ამ პროფესიაში ამჟამად აქტიური ხელოსნის პროფილი არ არის გამოქვეყნებული.</p>' : ''}${!profile && !profession ? `<nav>${[...new Map(selected.map(c => [categoryPath(c.cityId,c.professionId),c])).entries()].map(([p,c]) => `<p><a href="${p}">${escapeHtml(c.professionName)} — ${escapeHtml(c.cityName)}</a></p>`).join('')}</nav>` : ''}</main>`;
+      const content = `<main style="max-width:512px;margin:auto;padding:24px"><a href="/">მასტერ ბოი — Master Boy</a><h1>${escapeHtml(profession?.name.ka || title)}</h1>${professionContent || `<p>${escapeHtml(description)}</p>`}${profile?.phone ? `<p>${escapeHtml(profile.phone)}</p>` : ''}${profile?.primaryPhotoUrl ? `<img src="${escapeHtml(publicImage(profile.primaryPhotoUrl, origin))}" alt="${escapeHtml(profile.name)}" width="240" />` : ''}${links ? `<ul>${links}</ul>` : ''}${profession && !links ? '<p>ამ პროფესიაში ამჟამად აქტიური ხელოსნის პროფილი არ არის გამოქვეყნებული.</p>' : ''}${!profile && !profession ? `<nav>${[...new Map(selected.map(c => [categoryPath(c.cityId,c.professionId),c])).entries()].map(([p,c]) => `<p><a href="${p}">${escapeHtml(c.professionName)} — ${escapeHtml(c.cityName)}</a></p>`).join('')}</nav>` : ''}</main>`;
       const bootstrap = { screen: profile ? 'detail' : isCategory || profession ? 'results' : 'main', title, description, craftsman: profile || null, cityId: req.params.city, professionId: req.params.profession };
-      let html = template;
-      html = html.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
-        .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escapeHtml(description)}" />`)
-        .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${escapeHtml(canonical)}" />`)
-        .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeHtml(title)}" />`)
-        .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeHtml(description)}" />`);
+      const website = { '@type': 'WebSite', '@id': `${origin}/#website`, name: 'Master Boy', alternateName: ['მასტერ ბოი', 'MASTER_BOY'], url: `${origin}/`, inLanguage: 'ka' };
+      const graph: unknown[] = [website, {
+        '@type': profile ? 'WebPage' : 'CollectionPage', '@id': `${canonical}#webpage`, url: canonical,
+        name: title, description, inLanguage: 'ka', isPartOf: { '@id': website['@id'] },
+        ...(profile ? { mainEntity: { '@id': `${canonical}#craftsman` } } : {}),
+      }];
+      if (profile) {
+        graph.push({ '@type': 'LocalBusiness', '@id': `${canonical}#craftsman`, name: profile.name, url: canonical,
+          description: `${profile.professionName}, ${profile.cityName}. ${profile.description || ''}`,
+          address: { '@type': 'PostalAddress', addressLocality: profile.cityName, addressCountry: 'GE' },
+          areaServed: { '@type': 'City', name: profile.cityName },
+          ...(profile.phone ? { telephone: profile.phone } : {}),
+          ...(profile.primaryPhotoUrl ? { image: publicImage(profile.primaryPhotoUrl, origin) } : {}),
+        });
+      } else if (isCategory || profession) {
+        graph.push({ '@type': 'ItemList', '@id': `${canonical}#craftsmen`, numberOfItems: ordered.length,
+          itemListElement: ordered.map((c, index) => ({ '@type': 'ListItem', position: index + 1, name: c.name, url: origin + profilePath(c.id) })),
+        });
+      }
+      if (profile || isCategory || profession) {
+        graph.push({ '@type': 'BreadcrumbList', itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'მასტერ ბოი', item: `${origin}/` },
+          { '@type': 'ListItem', position: 2, name: profile?.name || profession?.name.ka || title, item: canonical },
+        ] });
+      }
+      let html = pageMetadata(template, title, description, canonical, publicImage(profile?.primaryPhotoUrl, origin), graph);
       if (req.path === '/') {
-        html = html.replace('<script src="/app-bootstrap.js"></script>', `<script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
+        // These same profession links remain available in MainScreen after React loads.
+        const directory = `<nav aria-label="ხელოსნების პროფესიები"><details><summary>ყველა პროფესიის ნახვა</summary>${db.professions.filter(p => professionSeo[p.id]).map(p => `<p><a href="${professionPath(p.id)}">${escapeHtml(p.name.ka)}</a></p>`).join('')}</details></nav>`;
+        html = html.replace('<div id="mb-connection-notice"', () => `${directory}<div id="mb-connection-notice"`)
+          .replace('<script src="/app-bootstrap.js"></script>', () => `<script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
       } else {
-        html = html.replace(/<div id="root">[\s\S]*?<script src="\/app-bootstrap.js"><\/script>/, `<div id="root">${content}</div><script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
+        html = html.replace(/<div id="root">[\s\S]*?<script src="\/app-bootstrap.js"><\/script>/, () => `<div id="root">${content}</div><script type="application/json" id="mb-public-page">${json(bootstrap)}</script><script src="/app-bootstrap.js"></script>`);
       }
       res.set('Cache-Control', 'no-cache').type('html').send(html);
     } catch (error) { next(error); }
