@@ -20,6 +20,7 @@ RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/src/financialTerms.ts ./src/financialTerms.ts
+COPY --from=builder /app/src/platformInformation.ts ./src/platformInformation.ts
 COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/migrations ./migrations
