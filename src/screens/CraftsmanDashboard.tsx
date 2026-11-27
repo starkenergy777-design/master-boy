@@ -36,6 +36,8 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const [activeAd, setActiveAd] = useState<AdvertisementPublic | null>(null);
   const [merchantDisclosure, setMerchantDisclosure] = useState<any>(null);
+  const [top15Price, setTop15Price] = useState<{ amountMinor: number; currency: string } | null>(null);
+  const [top15PriceLoading, setTop15PriceLoading] = useState(true);
 
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ name: '', description: '', workingHours: {} as Record<string, string> });
@@ -122,6 +124,11 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const listingPriceLabel = listing?.price && Number.isFinite(listing.price.amountMinor)
     ? `${(listing.price.amountMinor / 100).toFixed(2)} ${listing.price.currency || 'GEL'}`
     : (lang === 'ka' ? 'ფასი მიუწვდომელია' : lang === 'ru' ? 'Цена недоступна' : 'Price unavailable');
+  const top15PriceLabel = top15Price
+    ? `${(top15Price.amountMinor / 100).toFixed(2)} ${top15Price.currency}`
+    : top15PriceLoading
+      ? (lang === 'ka' ? 'ფასი იტვირთება…' : lang === 'ru' ? 'Загрузка цены…' : 'Loading price…')
+      : (lang === 'ka' ? 'ფასი მიუწვდომელია' : lang === 'ru' ? 'Цена недоступна' : 'Price unavailable');
 
   const paymentAvailable = paymentProviders.length > 0;
   const paymentUnavailableMessage = lang === 'ka'
@@ -170,6 +177,23 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   useEffect(() => {
     loadProfile();
   }, []);
+
+  useEffect(() => {
+    const cityId = craftsman?.cityId;
+    const professionId = craftsman?.professionId;
+    setTop15Price(null);
+    if (!cityId || !professionId) { setTop15PriceLoading(false); return; }
+    let cancelled = false;
+    setTop15PriceLoading(true);
+    api.getTop15Price(cityId, professionId).then(price => {
+      if (!cancelled && Number.isSafeInteger(price?.amountMinor) && price.amountMinor >= 0 && typeof price.currency === 'string' && price.currency.trim()) {
+        setTop15Price({ amountMinor: price.amountMinor, currency: price.currency });
+      }
+    }).catch(() => {}).finally(() => {
+      if (!cancelled) setTop15PriceLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [craftsman?.cityId, craftsman?.professionId]);
 
   useEffect(() => {
     if (!showRenewalModal) return;
@@ -409,12 +433,15 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
         <p className="text-xs text-slate-300 leading-relaxed">
           {t.top15Desc}
         </p>
+        <p className="text-sm font-bold text-amber-300">
+          {top15Price && `${t.price}: `}{top15PriceLabel}{top15Price && ` / 30 ${lang === 'ka' ? 'დღე' : lang === 'ru' ? 'дней' : 'days'}`}
+        </p>
         <button
           onClick={onOpenTop15Purchase}
           className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 text-xs transition-all active:scale-95"
         >
           <Plus className="w-4 h-4 stroke-[3]" />
-          <span>{t.buyTop15}</span>
+          <span>{t.buyTop15}{top15Price && ` • ${top15PriceLabel}`}</span>
         </button>
       </div>
 
