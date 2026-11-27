@@ -202,7 +202,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
 
         <p className="mb-2 px-3 py-2 [@media(max-height:640px)]:py-0 [@media(max-height:640px)]:mb-0 text-xs leading-relaxed text-slate-400">
             {lang === 'ka'
-              ? 'ხელოსნის მოსაძებნად რეგისტრაცია საჭირო არ არის — აირჩიეთ ქალაქი და პროფესია.'
+              ? 'რჩეულ 15 ხელოსნებში გამოჩენის ფასი 10 ლარი ერთი თვით.'
               : lang === 'ru'
                 ? 'Для поиска мастера регистрация не нужна — выберите город и профессию.'
                 : 'You do not need an account to find a craftsman — choose a city and profession.'}
