@@ -92,7 +92,8 @@ check('provider editor leaves saved credentials blank to avoid overwriting them 
 });
 check('saved administrator passwords are not reset from deployment secrets at startup', () => {
   assert.match(db, /Supabase is authoritative after the first boot/);
-  assert.match(db, /if \(!storedUsers\.some\(user => user\.roles\.includes\('ADMIN'\)\)\)/);
+  assert.match(db, /if \(!storedUsers\.some\(user => user\.roles\.includes\('ADMIN'\)\) &&/);
+  assert.match(db, /entry\.action === 'REMOVE_ADMIN' \|\| entry\.action === 'PURGE_DELETED_ADMIN'/);
   assert.match(db, /if \(!storedUsers\.some\(user => user\.roles\.includes\('SUPER_ADMIN'\)\)\)/);
   assert.doesNotMatch(db, /deployment secrets only replace the two configured administrator credentials/);
 });
@@ -217,8 +218,9 @@ check('accountant agent has read-only context and no administrative action execu
   assert.doesNotMatch(routes, /runSuperAdminAgentAction|validateAgentAdminAction/);
 });
 check('craftsman deletion handles drafts by map key and nullable payment owner safely', () => {
-  assert.match(routes, /for \(const id of userIds\) \{\s*db\.craftsmanDrafts\.delete\(id\)/);
-  assert.match(routes, /payment\.craftsmanId != null && craftsmanIds\.has\(payment\.craftsmanId\)/);
+  assert.match(routes, /db\.forgetDeletedAccount\(craftsmanIds, userIds\)/);
+  assert.match(db, /for \(const id of userIds\) \{\s*this\.craftsmanDrafts\.delete\(id\)/);
+  assert.match(db, /payment\.craftsmanId != null && craftsmanIds\.has\(payment\.craftsmanId\)/);
 });
 check('AI user interface identifies the selected provider and does not promise continuous audits', () => {
   assert.match(topBar, /subtitle: t\.supportSubtitle/);

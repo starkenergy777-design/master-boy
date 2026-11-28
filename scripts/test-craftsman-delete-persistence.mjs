@@ -5,7 +5,8 @@ import { PGlite } from '@electric-sql/pglite';
 // Embedded PostgreSQL and the actual storage method; no external database.
 process.env.NODE_ENV = 'test';
 for (const key of Object.keys(process.env)) if (/DATABASE|SUPABASE|PGHOST|PGPASSWORD/.test(key)) delete process.env[key];
-const { StorageService } = await import('../.audit-build/storage.js');
+const { StorageService, storage } = await import('../.audit-build/storage.js');
+const { db } = await import('../.audit-build/db.js');
 const postgres = await PGlite.create();
 const store = new StorageService();
 let failAudit = false;
@@ -14,7 +15,9 @@ let reachedDelete;
 const query = async (sql, args) => {
   if (heldDelete && sql.startsWith('DELETE FROM public.craftsmen')) { reachedDelete(); await heldDelete; }
   if (failAudit && sql.startsWith('INSERT INTO public.audit_logs')) throw new Error('isolated audit failure');
-  const result = await postgres.query(sql, args);
+  // Match node-postgres encoding, including custom PostgreSQL enum arrays.
+  const values = args?.map(value => Array.isArray(value) ? '{' + value.map(item => JSON.stringify(String(item))).join(',') + '}' : value);
+  const result = await postgres.query(sql, values);
   return { ...result, rowCount: result.affectedRows ?? result.rows.length };
 };
 store.pool = { query, connect: async () => ({ query, release() {} }) };
@@ -90,6 +93,77 @@ try {
   assert.equal((await rows('craftsmen')).length, 0);
   assert.equal((await rows('users')).length, 0);
   console.log('PASS: the existing persistence queue cannot revive a committed deletion with a stale snapshot');
+
+  await postgres.exec(`
+    INSERT INTO users(id,phone,password_hash,roles,status) VALUES
+      ('staff','+995555100010','hash','{ADMIN}','ACTIVE'),
+      ('legacy','+995555100011','hash','{ADMIN}','DELETED'),
+      ('blocked','+995555100012','hash','{ADMIN}','BLOCKED'),
+      ('super','+995555100013','hash','{SUPER_ADMIN}','ACTIVE'),
+      ('legacy-craftsman','+995555100014','hash','{CRAFTSMAN}','DELETED');
+    INSERT INTO craftsman_drafts(user_id,step,data) VALUES('staff',2,'{}'),('legacy',2,'{}');
+    INSERT INTO top15_prices(id,city_id,profession_id,amount_minor,updated_by) VALUES('price','city','profession',1000,'staff');
+    INSERT INTO audit_logs(id,actor_type,actor_id,action,target_type,target_id) VALUES('legacy-delete','USER','super','REMOVE_ADMIN','USER','legacy');
+  `);
+  const priceBefore = (await rows('top15_prices'))[0];
+  const ledgerBefore = await rows('payment_intents');
+  const disputesBefore = await rows('financial_cases');
+  await store.deleteCraftsmanAccount([], ['staff'], { ...audit('staff'), action: 'REMOVE_ADMIN', targetType: 'USER' }, () => false, () => {});
+  assert.equal((await rows('users')).some(row => row.id === 'staff'), false);
+  assert.equal((await rows('craftsman_drafts')).some(row => row.user_id === 'staff'), false);
+  assert.deepEqual((await rows('top15_prices'))[0], { ...priceBefore, updated_by: null });
+  await postgres.query("INSERT INTO users(id,phone,password_hash,roles) VALUES('replacement',$1,'hash','{ADMIN}')", ['+995555100010']);
+  await assert.rejects(postgres.query("INSERT INTO users(id,phone,password_hash,roles) VALUES('duplicate',$1,'hash','{ADMIN}')", ['+995555100010']), error => error.code === '23505');
+  assert.deepEqual(await rows('payment_intents'), ledgerBefore);
+  assert.deepEqual(await rows('financial_cases'), disputesBefore);
+  console.log('PASS: administrator is physically deleted, FK attribution detaches without changing price, phone is reusable and its unique constraint remains enforced');
+
+  storage.pool = store.pool;
+  db.users = new Map(Object.entries(await store.loadRuntimeCollection('users')));
+  db.craftsmen.clear(); db.craftsmanDrafts = new Map(Object.entries(await store.loadRuntimeCollection('craftsmanDrafts')));
+  db.auditLog = await store.loadRuntimeArray('auditLog'); db.paymentIntents.clear(); db.sessions.clear();
+  db.sessions.set('legacy-session', { userId: 'legacy', createdAt: Date.now() });
+  failAudit = true;
+  await assert.rejects(db.purgeDeletedAdminAccounts(), /isolated audit failure/);
+  assert.equal(db.users.has('legacy'), true);
+  assert.equal(db.sessions.has('legacy-session'), true);
+  failAudit = false;
+  await db.purgeDeletedAdminAccounts();
+  assert.equal(db.users.has('legacy'), false);
+  assert.equal(db.sessions.has('legacy-session'), false);
+  assert.equal(db.craftsmanDrafts.has('legacy'), false);
+  const reloaded = await store.loadRuntimeCollection('users');
+  assert.equal(reloaded.legacy, undefined);
+  for (const id of ['replacement','blocked','super','legacy-craftsman']) assert.ok(reloaded[id], id + ' must survive legacy-admin cleanup');
+  assert.equal(db.auditLog.filter(entry => entry.action === 'PURGE_DELETED_ADMIN').length, 1);
+  assert.ok(db.auditLog.some(entry => entry.id === 'legacy-delete'));
+  await db.purgeDeletedAdminAccounts();
+  assert.equal(db.auditLog.filter(entry => entry.action === 'PURGE_DELETED_ADMIN').length, 1);
+  await postgres.query("INSERT INTO users(id,phone,password_hash,roles) VALUES('legacy-replacement',$1,'hash','{ADMIN}')", ['+995555100011']);
+  console.log('PASS: startup repair removes only legacy deleted administrators, revokes sessions, frees phones, survives reload and is idempotent; failure rolls back');
+
+  // Exercise the real production hydration/fence path: deployment environment
+  // credentials must not recreate the final administrator after its deletion.
+  const staffRows = (await postgres.query("SELECT id FROM public.users WHERE 'ADMIN'=ANY(roles)")).rows;
+  for (const row of staffRows) {
+    await store.deleteCraftsmanAccount([], [row.id], { ...audit(row.id), action: 'REMOVE_ADMIN', targetType: 'USER' }, () => false, () => {});
+  }
+  await postgres.exec('CREATE ROLE anon; CREATE ROLE authenticated;');
+  for (const migration of ['008_ai_provider_secrets.sql','009_superadmin_provider_config_secrets.sql','016_unipay_terms_consent.sql','018_payment_credentials_secret_name.sql','019_deployment_writer_fence.sql','020_top15_special_offers.sql']) {
+    await postgres.exec(await readFile(new URL('../migrations/' + migration, import.meta.url), 'utf8'));
+  }
+  for (const map of [db.users,db.craftsmen,db.craftsmanDrafts,db.craftsmanListings,db.top15Prices,db.top15Reservations,db.top15Memberships,db.paymentIntents,db.advertisements,db.sessions]) map.clear();
+  db.supportMessages=[]; db.aiReports=[]; db.auditLog=[]; db.listingPurgeLog=[];
+  process.env.NODE_ENV='production'; process.env.DATABASE_URL='postgresql://isolated-fixture.invalid/test';
+  process.env.ADMIN_PHONE='+995555100010'; process.env.ADMIN_PASSWORD='Isolated-environment-admin-123';
+  process.env.BOOTSTRAP_PHONE='+995555100013'; process.env.BOOTSTRAP_PASSWORD='Isolated-environment-super-123';
+  await db.init();
+  assert.equal([...db.users.values()].some(user => user.roles.includes('ADMIN')), false);
+  assert.equal((await postgres.query("SELECT id FROM public.users WHERE 'ADMIN'=ANY(roles)")).rows.length, 0);
+  assert.equal((await rows('users')).some(user => user.phone === '+995555100010'), false);
+  assert.ok(db.users.get('super'));
+  console.log('PASS: real production startup with the deployment writer fence does not resurrect the last deleted administrator from environment credentials');
 } finally {
+  process.env.NODE_ENV='test'; delete process.env.DATABASE_URL;
   await postgres.close();
 }

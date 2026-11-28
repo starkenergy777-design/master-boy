@@ -546,13 +546,15 @@ class Database {
       if (storedReports.length) this.aiReports = storedReports;
       if (storedAudit.length) this.auditLog = storedAudit;
       if (storedPurgeLog.length) this.listingPurgeLog = storedPurgeLog;
+      await this.purgeDeletedAdminAccounts();
       const requireDurable = process.env.REQUIRE_DURABLE_STORAGE !== 'false' && process.env.NODE_ENV === 'production';
 
       if (process.env.NODE_ENV === 'production') {
         // Supabase is authoritative after the first boot. Environment credentials
         // initialize missing administrator roles once and never reset saved passwords.
         const storedUsers = Array.from(this.users.values());
-        if (!storedUsers.some(user => user.roles.includes('ADMIN'))) {
+        if (!storedUsers.some(user => user.roles.includes('ADMIN')) &&
+            !this.auditLog.some(entry => entry.action === 'REMOVE_ADMIN' || entry.action === 'PURGE_DELETED_ADMIN')) {
           if (!process.env.ADMIN_PHONE || !process.env.ADMIN_PASSWORD) {
             throw new Error('No active administrator exists. Set ADMIN_PHONE and ADMIN_PASSWORD in Render secrets for one-time initialization.');
           }
@@ -614,6 +616,43 @@ class Database {
       if (process.env.NODE_ENV === 'production') throw err;
     }
     }, beforeReady);
+  }
+
+  // Publish account deletion only after the storage transaction commits.
+  forgetDeletedAccount(craftsmanIds: ReadonlySet<string>, userIds: ReadonlySet<string>): void {
+    for (const id of craftsmanIds) this.craftsmen.delete(id);
+    for (const [id, listing] of this.craftsmanListings) if (craftsmanIds.has(listing.craftsmanId)) this.craftsmanListings.delete(id);
+    for (const [id, reservation] of this.top15Reservations) if (craftsmanIds.has(reservation.craftsmanId)) this.top15Reservations.delete(id);
+    for (const [id, membership] of this.top15Memberships) if (craftsmanIds.has(membership.craftsmanId)) this.top15Memberships.delete(id);
+    for (const [id, payment] of this.paymentIntents) {
+      if (payment.craftsmanId != null && craftsmanIds.has(payment.craftsmanId)) this.paymentIntents.set(id, { ...payment, craftsmanId: '' });
+    }
+    for (const id of userIds) { this.craftsmanDrafts.delete(id); this.users.delete(id); }
+    for (const [token, session] of this.sessions) if (userIds.has(session.userId)) this.sessions.delete(token);
+    for (const price of this.top15Prices.values()) if (userIds.has(price.updatedBy)) price.updatedBy = '';
+    this.supportMessages = this.supportMessages.filter(message => !craftsmanIds.has(message.craftsmanId));
+    this.aiReports = this.aiReports.filter(report => !report.craftsmanId || !craftsmanIds.has(report.craftsmanId));
+  }
+
+  async purgeDeletedAdminAccounts(): Promise<void> {
+    // Repair only legacy, already deleted staff accounts, never active accounts
+    // or mixed-role/profile accounts. Run inside the existing startup writer fence.
+    const deleted = [...this.users.values()].filter(user => user.status === 'DELETED' &&
+      user.roles.length === 1 && user.roles[0] === 'ADMIN' &&
+      ![...this.craftsmen.values()].some(craftsman => craftsman.userId === user.id) &&
+      ![...this.paymentIntents.values()].some(payment => payment.status === 'PENDING' &&
+        payment.providerCheckout?.registration?.existingUser === true &&
+        payment.providerCheckout.registration.user.id === user.id));
+    for (const user of deleted) {
+      const original = this.auditLog.find(entry => entry.targetId === user.id && entry.action === 'REMOVE_ADMIN');
+      const audit: AdminAuditLog = { id: `audit-${crypto.randomUUID()}`, actorType: original?.actorType ?? 'AI_ADMIN', actorId: original?.actorId ?? 'legacy-admin-cleanup',
+        action: 'PURGE_DELETED_ADMIN', targetType: 'USER', targetId: user.id,
+        reason: 'Release phone of previously deleted administrator', createdAt: new Date().toISOString() };
+      await storage.deleteCraftsmanAccount([], [user.id], audit, () => false, () => {
+        this.forgetDeletedAccount(new Set(), new Set([user.id]));
+        this.auditLog.unshift(audit);
+      });
+    }
   }
 
   async persistRuntimeState(): Promise<void> {
