@@ -142,8 +142,13 @@ check('craftsman registration uses the enabled payment provider without hardcodi
   assert.match(wizard, /isFreeRegistration \? \[\] : await api\.getPaymentProviders\(\)/);
   assert.match(wizard, /!paymentAvailable \|\| !financialTermsAccepted/);
 });
-check('Top15 checkout requires an operational provider before reserving a slot', () => {
-  assert.match(routes, /apiRouter\.post\('\/top15\/reserve'[\s\S]{0,260}requireRealPaymentIntegration/);
+check('Paid Top15 requires a provider; free offers activate atomically before the bank path', () => {
+  const reserve=routes.slice(routes.indexOf("apiRouter.post('/top15/reserve'"),routes.indexOf('// GET /top15/providers'));
+  assert.ok(reserve.indexOf('activateFreeOffer') >= 0);
+  assert.match(reserve,/req\.body\.specialOffer\?\.amountMinor!==0 && !requireTop15PaidProvider\(res\)/);
+  assert.ok(reserve.indexOf('saveTop15Candidate') > reserve.indexOf('requireTop15PaidProvider'));
+  assert.match(routes,/function requireTop15PaidProvider[\s\S]{0,200}requireRealPaymentIntegration/);
+  assert.match(reserve,/storage\.commitTop15Offer/);
   assert.match(routes, /const simulationEnabled = process\.env\.NODE_ENV !== 'production'[\s\S]{0,180}PAYMENTS_SIMULATION/);
 });
 check('craftsman payment flows use server-enabled providers without displaying a chooser', () => {

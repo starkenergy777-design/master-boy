@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { BogProcessedAmountMismatch, createBankCheckout, getBankPaymentState, type BankCredentials, type BogEnvironment } from './bank-gateway.js';
 import { db } from './db.js';
-import { coversTop15Term, FINANCIAL_TERMS_VERSION, TOP15_TERM_MS } from './financial.js';
+import { FINANCIAL_TERMS_VERSION } from './financial.js';
 import { storage } from './storage.js';
+import { top15ServiceEnd } from './top15-offers.js';
 import type { BogCheckout, Craftsman, CraftsmanListing, PaymentIntent, Top15Membership, Top15Reservation } from './types.js';
 
 const DAY = 86_400_000;
@@ -134,7 +135,7 @@ export async function openBogCheckout(input: {
         providerId: 'prov-bog', amountMinor: input.amountMinor, currency: input.currency, idempotencyKey: scopedKey || `bog:${id}`,
         status: 'PENDING', createdAt: now, financialTermsVersion: FINANCIAL_TERMS_VERSION,
         financialTermsAcceptedAt: now, productType: input.kind === 'TOP15' ? 'TOP15' : 'LISTING',
-        providerCheckout: { kind: input.kind, environment: connection.environment, phone, proofHash: input.proofHash, registration: input.registration },
+        providerCheckout: { kind: input.kind, environment: connection.environment, phone, proofHash: input.proofHash, registration: input.registration, specialOffer: input.reservation?.specialOffer },
       };
       const reservation = input.reservation ? { ...input.reservation, expiresAt: Date.now() + CHECKOUT_HOLD_MS } : undefined;
       await persist(existing, { reservation });
@@ -204,12 +205,12 @@ export async function reconcileBogPayment(id: string, callbackBankId?: string) {
           status: 'ACTIVE', startsAt: serviceStart > now ? listing?.startsAt : settledAt, expiresAt: new Date(serviceEnd).toISOString(),
           graceEndsAt: new Date(serviceEnd + 30 * DAY).toISOString(), lastPaymentId: intent.id, createdAt: listing?.createdAt || settledAt, updatedAt: settledAt };
         settled.serviceStartsAt = new Date(serviceStart).toISOString(); settled.serviceEndsAt = changes.listing.expiresAt;
-      } else if (c && eligible && reservation?.status === 'HELD' && listing?.status === 'ACTIVE' && coversTop15Term(listing.expiresAt, now) &&
+      } else if (c && eligible && reservation?.status === 'HELD' && listing?.status === 'ACTIVE' && listing.expiresAt && Date.parse(listing.expiresAt)>=top15ServiceEnd(now,reservation.specialOffer) &&
           c.cityId === reservation.cityId && c.professionId === reservation.professionId && db.getActiveTop15Count(c.cityId, c.professionId) < 15 &&
           !db.getActiveTop15Memberships(c.cityId, c.professionId).some(member => member.craftsmanId === c!.id)) {
         const membership: Top15Membership = { id: `mem-${intent.id}`, craftsmanId: c.id, cityId: c.cityId, professionId: c.professionId,
           cityName: db.cities.find(city => city.id === c.cityId)?.name.ka || '', professionName: db.professions.find(prof => prof.id === c.professionId)?.name.ka || '',
-          status: 'ACTIVE', startsAt: settledAt, expiresAt: new Date(now + TOP15_TERM_MS).toISOString() };
+          status: 'ACTIVE', startsAt: settledAt, expiresAt: new Date(top15ServiceEnd(now,reservation.specialOffer)).toISOString(), specialOffer:reservation.specialOffer };
         changes.membership = membership;
         changes.reservation = { ...reservation, status: 'PAID' };
         settled.serviceStartsAt = settledAt; settled.serviceEndsAt = membership.expiresAt;

@@ -3,6 +3,9 @@ import { Language } from './types.js';
 
 export const translations = {
   ka: {
+    top15Offer: {
+      title:'TOP 15-ის სპეციალური შეთავაზება', history:'შეთავაზება / ისტორია', newOffer:'ახალი შეთავაზება', allCities:'ყველა ქალაქი', allProfessions:'ყველა პროფესია', city:'ქალაქი', profession:'პროფესია', price:'სპეციალური ფასი (GEL)', limit:'ხელოსნების საერთო ლიმიტი', months:'მოქმედების ვადა თვეებში (1–120)', used:'გამოყენებული', remaining:'დარჩენილი', pending:'გადახდის მოლოდინში', status:'სტატუსი', DRAFT:'მონახაზი', ACTIVE:'აქტიური', PAUSED:'შეჩერებული', COMPLETED:'დასრულებული', save:'პარამეტრების შენახვა', activate:'გააქტიურება', pause:'შეჩერება', reload:'ხელახლა ჩატვირთვა', saved:'შენახულია', loading:'იტვირთება…', invalid:'შეამოწმეთ ფასი, საერთო ლიმიტი და თვეების რაოდენობა.', unsaved:'გააქტიურებამდე შეინახეთ პარამეტრები.', changed:'პარამეტრები შეიცვალა. ხელახლა ჩატვირთეთ.', scope:'ცარიელი ქალაქი ან პროფესია ნიშნავს ყველას. საერთო ლიმიტი ყველა შერჩეულ კატეგორიაზე ერთიანია. ჩვეულებრივი ფასები უცვლელი რჩება.', listing:'ხელოსნის აქტიურმა სტანდარტულმა განცხადებამ მომსახურების სრული ვადა უნდა დაფაროს.', freeActivate:'უფასოდ გააქტიურება', free:'მიღებულია უფასოდ', active:'TOP 15 აქტიურია', start:'გააქტიურება', end:'დასრულება', monthUnit:'თვე', dayUnit:'დღე', offerTerms:'ამ შეძენაზე მოქმედებს აქ ნაჩვენები სპეციალური ფასი და ვადა. ავტომატური ჩამოჭრა ან განახლება არ ხდება.', updated:'ფასი ან შეთავაზება შეიცვალა. გადაამოწმეთ ახალი პირობები და თავიდან დააჭირეთ ღილაკს.'
+    },
     appName: 'MASTER_BOY',
     databaseConnected: 'Supabase-ის ბაზასთან კავშირი აქტიურია',
     databaseDisconnected: 'Supabase-ის ბაზასთან კავშირი მიუწვდომელია',
@@ -112,6 +115,9 @@ export const translations = {
     filterByProfession: 'პროფესიით ფილტრი',
   },
   ru: {
+    top15Offer: {
+      title:'Специальное предложение TOP 15', history:'Предложение / история', newOffer:'Новое предложение', allCities:'Все города', allProfessions:'Все профессии', city:'Город', profession:'Профессия', price:'Специальная цена (GEL)', limit:'Общий лимит мастеров', months:'Срок в месяцах (1–120)', used:'Использовано', remaining:'Осталось', pending:'Ожидают оплаты', status:'Статус', DRAFT:'Черновик', ACTIVE:'Активно', PAUSED:'Приостановлено', COMPLETED:'Завершено', save:'Сохранить параметры', activate:'Активировать', pause:'Приостановить', reload:'Перезагрузить', saved:'Сохранено', loading:'Загрузка…', invalid:'Проверьте цену, общий лимит и число месяцев.', unsaved:'Сохраните параметры перед активацией.', changed:'Параметры изменились. Перезагрузите данные.', scope:'Пустой город или профессия означает все. Лимит общий для всех выбранных категорий. Обычные цены сохраняются.', listing:'Активное стандартное размещение мастера должно покрывать весь срок услуги.', freeActivate:'Активировать бесплатно', free:'Получено бесплатно', active:'TOP 15 активен', start:'Активация', end:'Окончание', monthUnit:'мес.', dayUnit:'дней', offerTerms:'К этой покупке применяются показанные специальная цена и срок. Автоматического списания или продления нет.', updated:'Цена или предложение изменились. Проверьте новые условия и нажмите кнопку снова.'
+    },
     appName: 'MASTER_BOY',
     databaseConnected: 'Подключение к базе Supabase активно',
     databaseDisconnected: 'Нет подключения к базе Supabase',
@@ -221,6 +227,9 @@ export const translations = {
     filterByProfession: 'Фильтр по специальности',
   },
   en: {
+    top15Offer: {
+      title:'TOP 15 special offer', history:'Offer / history', newOffer:'New offer', allCities:'All cities', allProfessions:'All professions', city:'City', profession:'Profession', price:'Special price (GEL)', limit:'Total craftsman limit', months:'Duration in months (1–120)', used:'Used', remaining:'Remaining', pending:'Awaiting payment', status:'Status', DRAFT:'Draft', ACTIVE:'Active', PAUSED:'Paused', COMPLETED:'Completed', save:'Save settings', activate:'Activate', pause:'Pause', reload:'Reload', saved:'Saved', loading:'Loading…', invalid:'Check the price, total limit and number of months.', unsaved:'Save settings before activation.', changed:'Settings changed. Reload the data.', scope:'A blank city or profession means all. The limit is shared across all selected categories. Ordinary prices remain saved.', listing:'The craftsman’s active standard listing must cover the full service term.', freeActivate:'Activate for free', free:'Received for free', active:'TOP 15 is active', start:'Activated', end:'Expires', monthUnit:'months', dayUnit:'days', offerTerms:'The special price and term shown here apply to this purchase. There is no automatic charge or renewal.', updated:'The price or offer changed. Review the new terms and press the button again.'
+    },
     appName: 'MASTER_BOY',
     databaseConnected: 'Supabase database connected',
     databaseDisconnected: 'Supabase database unavailable',
@@ -1271,6 +1280,18 @@ const apiErrorRows: Array<readonly [string, string, string, string]> = [
   ['IDEMPOTENCY_KEY_REQUIRED', 'გადახდის მოთხოვნას დამუშავების უნიკალური გასაღები აკლია.', 'Для запроса оплаты требуется уникальный ключ.', 'The payment request is missing its unique key.'],
   ['ALREADY_ACTIVE', 'ეს გამოწერა უკვე აქტიურია.', 'Эта подписка уже активна.', 'This subscription is already active.'],
   ['ACCOUNT_BLOCKED', 'ანგარიში დაბლოკილია.', 'Аккаунт заблокирован.', 'The account is blocked.'],
+  ['INVALID_OFFER',translations.ka.top15Offer.invalid,translations.ru.top15Offer.invalid,translations.en.top15Offer.invalid],
+  ['OFFER_CHANGED',translations.ka.top15Offer.changed,translations.ru.top15Offer.changed,translations.en.top15Offer.changed],
+  ['TOP15_PRICE_CHANGED',translations.ka.top15Offer.updated,translations.ru.top15Offer.updated,translations.en.top15Offer.updated],
+  ['OFFER_LISTING_TERM_TOO_SHORT',translations.ka.top15Offer.listing,translations.ru.top15Offer.listing,translations.en.top15Offer.listing],
+  ['OFFER_EXHAUSTED','შეთავაზების საერთო ლიმიტი ამოიწურა.','Общий лимит предложения исчерпан.','The offer’s total limit has been reached.'],
+  ['OFFER_ALREADY_USED','ამ შეთავაზებით უკვე ისარგებლეთ.','Вы уже воспользовались этим предложением.','You have already used this offer.'],
+  ['OFFER_LIMIT_TOO_LOW','ლიმიტი გამოყენებულ და გადახდის მოლოდინში მყოფ ადგილებზე ნაკლები ვერ იქნება.','Лимит не может быть меньше использованных и ожидающих оплаты мест.','The limit cannot be lower than activated and pending payment places.'],
+  ['OTHER_OFFER_ACTIVE','ჯერ შეაჩერეთ სხვა აქტიური შეთავაზება.','Сначала приостановите другое активное предложение.','Pause the other active offer first.'],
+  ['OFFER_NOT_FOUND','შეთავაზება ვერ მოიძებნა.','Предложение не найдено.','Offer not found.'],
+  ['OFFER_STORAGE_REQUIRED','შეთავაზების მონაცემების ჩატვირთვა ან შენახვა ვერ დადასტურდა. სცადეთ მოგვიანებით.','Не удалось подтвердить загрузку или сохранение предложения. Попробуйте позже.','The offer could not be loaded or saved. Please retry later.'],
+  ['OFFER_CLAIM_NOT_FOUND',translations.ka.top15Offer.updated,translations.ru.top15Offer.updated,translations.en.top15Offer.updated],
+  ['INVALID_CATEGORY','აირჩიეთ მოქმედი ქალაქი და პროფესია.','Выберите действующий город и профессию.','Choose a valid city and profession.'],
 ];
 
 const apiErrorLookup = new Map(apiErrorRows.map(([code, ka, ru, en]) => [code, { ka, ru, en }]));

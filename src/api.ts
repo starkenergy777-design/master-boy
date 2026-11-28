@@ -304,10 +304,10 @@ class ApiClient {
     return this.request(`/top15/availability?cityId=${cityId}&professionId=${professionId}`);
   }
 
-  reserveTop15Slot(cityId: string, professionId: string) {
+  reserveTop15Slot(cityId: string, professionId: string, quote?: {amountMinor:number;specialOffer?:import('../server/types.js').Top15OfferSnapshot|null}) {
     return this.request('/top15/reserve', {
       method: 'POST',
-      body: JSON.stringify({ cityId, professionId }),
+      body: JSON.stringify({ cityId, professionId, specialOffer:quote?.specialOffer, expectedAmountMinor:quote?.amountMinor }),
     });
   }
 
@@ -325,6 +325,16 @@ class ApiClient {
 
   getMyMemberships() {
     return this.request('/top15/me/memberships');
+  }
+
+  getTop15Offers() {
+    return this.request<import('../server/types.js').Top15Offer[]>('/admin/top15/offers');
+  }
+  saveTop15Offer(input: {cityId:string|null;professionId:string|null;amountMinor:number;limit:number;durationMonths:number;version?:number}, id?:string) {
+    return this.request<{id:string}>(`/admin/top15/offers${id ? '/'+encodeURIComponent(id) : ''}`,{method:id?'PUT':'POST',body:JSON.stringify(input)});
+  }
+  setTop15OfferStatus(id:string, version:number, status:'ACTIVE'|'PAUSED') {
+    return this.request(`/admin/top15/offers/${encodeURIComponent(id)}/status`,{method:'PATCH',body:JSON.stringify({version,status})});
   }
 
   getSupportMessages(after?: string) {

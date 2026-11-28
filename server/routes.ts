@@ -2,6 +2,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { isIP } from 'node:net';
 import { db, verifyPassword, hashPassword } from './db.js';
+import { activateFreeOffer, activeTop15Offer, changeTop15OfferStatus, listTop15Offers, offerSnapshot, sameOffer, saveTop15Offer, top15ServiceEnd, Top15OfferError, validateOfferInput } from './top15-offers.js';
+import { quoteTop15 } from './top15-pricing.js';
 import { platformInformationHandler } from './platformInformation.js';
 import { storage } from './storage.js';
 import { BankApiError, verifyBogCallback, verifyBogCredentials } from './bank-gateway.js';
@@ -261,6 +263,25 @@ function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   req.user = user;
   req.sessionToken = token;
   next();
+}
+
+function optionalTop15User(req: Request): string | undefined {
+  const token=req.header('Authorization')?.replace(/^Bearer\s+/,'').trim();
+  const session=token && db.sessions.get(token);
+  if (!session || Date.now()-session.createdAt>SESSION_TTL_MS) return undefined;
+  return db.users.get(session.userId)?.status==='ACTIVE' ? session.userId : undefined;
+}
+function top15OfferFailure(res: Response, error: unknown) {
+  if (error instanceof Top15OfferError) return res.status(error.status).json({code:error.code});
+  console.warn('[MASTER_BOY] Top15 offer storage request failed', {code:(error as any)?.code || 'STORAGE_UNAVAILABLE'});
+  return res.status(503).json({code:'OFFER_STORAGE_REQUIRED'});
+}
+function requireTop15PaidProvider(res: Response): boolean {
+  if (!isBogCheckoutAvailable() && !requireRealPaymentIntegration(res)) return false;
+  if (!db.providerConfig.payment.some(provider=>provider.isActive)) {
+    res.status(503).json({code:'PAYMENT_PROVIDER_NOT_READY',message:'No active payment provider is available.'});return false;
+  }
+  return true;
 }
 
 function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
@@ -932,7 +953,7 @@ apiRouter.get(['/craftsmen/:id', '/craftsman/:id'], (req, res, next) => {
 });
 
 // GET /top15/price?cityId=&professionId=
-apiRouter.get('/top15/price', (req, res) => {
+apiRouter.get('/top15/price', async (req, res) => {
   const cityId = req.query.cityId as string;
   const professionId = req.query.professionId as string;
   if (!cityId || !professionId) {
@@ -943,10 +964,8 @@ apiRouter.get('/top15/price', (req, res) => {
   if (!price) {
     return res.status(404).json({ code: 'PRICE_NOT_SET', message: 'Price not configured for this category' });
   }
-  res.json({
-    amountMinor: price.amountMinor,
-    currency: price.currency,
-  });
+  try { res.set('Cache-Control','no-store').json(await quoteTop15(cityId,professionId,optionalTop15User(req))); }
+  catch(error) { return top15OfferFailure(res,error); }
 });
 
 // GET /config/backend (§16.4)
@@ -2093,7 +2112,7 @@ apiRouter.post('/craftsmen/me/listing/renew', requireCraftsman, async (req: Auth
 });
 
 // GET /top15/availability?cityId=&professionId=
-apiRouter.get('/top15/availability', requireCraftsman, (req, res) => {
+apiRouter.get('/top15/availability', requireCraftsman, async (req: AuthRequest, res) => {
   const cityId = req.query.cityId as string;
   const professionId = req.query.professionId as string;
   if (!cityId || !professionId) {
@@ -2105,25 +2124,36 @@ apiRouter.get('/top15/availability', requireCraftsman, (req, res) => {
     return res.status(404).json({ code: 'PRICE_NOT_SET', message: 'Price is not configured for this category' });
   }
 
-  res.json({
-    freeSlots,
-    amountMinor: price.amountMinor,
-    currency: price.currency,
-  });
+  try { res.set('Cache-Control','no-store').json({freeSlots,...await quoteTop15(cityId,professionId,req.user!.id)}); }
+  catch(error) { return top15OfferFailure(res,error); }
 });
 
 // POST /top15/reserve (creates a 3-minute candidate ticket; it does not occupy a slot)
 apiRouter.post('/top15/reserve', requireCraftsman, async (req: AuthRequest, res) => {
   res.locals.runtimeSnapshotHandled = true;
   if (!requireFinancialTerms(req, res)) return;
-  if (!isBogCheckoutAvailable() && !requireRealPaymentIntegration(res)) return;
-  if (!db.providerConfig.payment.some(provider => provider.isActive)) {
-    return res.status(503).json({ code: 'PAYMENT_PROVIDER_NOT_READY', message: 'No active payment provider is available.' });
-  }
+  if (req.body.specialOffer?.amountMinor!==0 && !requireTop15PaidProvider(res)) return;
   const c = getMyCraftsman(req.user!.id);
   if (!c) {
     return res.status(403).json({ code: 'NOT_A_CRAFTSMAN', message: 'Only registered craftsmen can reserve Top 15 slots' });
   }
+  const category=req.body;
+  if (category.cityId!==c.cityId || category.professionId!==c.professionId) return res.status(403).json({code:'CATEGORY_MISMATCH'});
+  let quote;
+  try {
+    // A zero-price click is always resolved here, before any provider/bank path.
+    if (req.body.specialOffer?.amountMinor===0) {
+      const membership=await storage.commitTop15Offer(sql=>activateFreeOffer(sql,req.user!.id,c.id,c.cityId,c.professionId,req.body.specialOffer), membership=>{
+        membership.cityName=db.cities.find(city=>city.id===c.cityId)?.name.ka || '';
+        membership.professionName=db.professions.find(prof=>prof.id===c.professionId)?.name.ka || '';
+        db.top15Memberships.set(membership.id,membership);
+      });
+      return res.json({status:'SUCCEEDED',freeActivation:true,membership});
+    }
+    quote=await quoteTop15(c.cityId,c.professionId,req.user!.id);
+    if (!quote) return res.status(404).json({code:'PRICE_NOT_SET'});
+    if (!sameOffer(quote.specialOffer,req.body.specialOffer) || req.body.expectedAmountMinor!==undefined && req.body.expectedAmountMinor!==quote.amountMinor) return res.status(409).json({code:'TOP15_PRICE_CHANGED',quote});
+  } catch(error) { return top15OfferFailure(res,error); }
   if (findPendingBogOrder(c.id, 'TOP15')) return res.status(409).json({ code: 'BOG_CHECKOUT_PENDING' });
 
   // Prerequisite: Top 15 requires ACTIVE listing (§24.3, §24.7)
@@ -2135,8 +2165,8 @@ apiRouter.post('/top15/reserve', requireCraftsman, async (req: AuthRequest, res)
       message: 'Top 15-ის შესაძენად აუცილებელია აქტიური გამოწერა. განაახლეთ გამოწერა კაბინეტიდან.',
     });
   }
-  if (!coversTop15Term(listing.expiresAt, Date.now())) {
-    return res.status(403).json({ code: 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის 30 დღის დასაფარად განაახლეთ ხელოსნის განთავსება.' });
+  if (!listing.expiresAt || Date.parse(listing.expiresAt)<top15ServiceEnd(Date.now(),quote.specialOffer)) {
+    return res.status(403).json({ code: quote.specialOffer ? 'OFFER_LISTING_TERM_TOO_SHORT' : 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის სრული ვადის დასაფარად განაახლეთ ხელოსნის განთავსება.' });
   }
 
   const { cityId, professionId } = req.body;
@@ -2160,7 +2190,8 @@ apiRouter.post('/top15/reserve', requireCraftsman, async (req: AuthRequest, res)
     });
   }
 
-  const { freeSlots, price } = db.getTop15Availability(cityId, professionId);
+  const { freeSlots } = db.getTop15Availability(cityId, professionId);
+  const price=quote;
   if (!price) {
     return res.status(404).json({ code: 'PRICE_NOT_SET', message: 'Top 15 price not configured' });
   }
@@ -2184,6 +2215,7 @@ apiRouter.post('/top15/reserve', requireCraftsman, async (req: AuthRequest, res)
     currency: price.currency,
     expiresAt,
     status: 'CANDIDATE' as const,
+    specialOffer: quote.specialOffer,
   };
 
   try {
@@ -2193,6 +2225,8 @@ apiRouter.post('/top15/reserve', requireCraftsman, async (req: AuthRequest, res)
   res.json({
     reservationId,
     ttlSeconds: 180,
+    specialOffer: quote.specialOffer,
+    durationMonths: quote.durationMonths,
     amountMinor: price.amountMinor,
     currency: price.currency,
   });
@@ -2216,7 +2250,8 @@ apiRouter.get('/top15/providers', (req, res) => {
 // POST /top15/pay & /top15/purchase (first click wins after a fixed arbitration window)
 async function saveReservationStates(res: Response, current: () => Top15Reservation[]): Promise<boolean> {
   try { await storage.saveTop15ReservationStates(current); return true; }
-  catch {
+  catch (error) {
+    if(error instanceof Top15OfferError) { top15OfferFailure(res,error); return false; }
     res.status(503).json({ code: 'RESERVATION_SAVE_FAILED', message: 'Reservation could not be saved. Please retry.' });
     return false;
   }
@@ -2271,9 +2306,17 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
   if (!reservation || reservation.craftsmanId !== craftsman.id) {
     return res.status(404).json({ code: 'RESERVATION_NOT_FOUND', message: 'Reservation not found' });
   }
+  if (reservation.specialOffer && !realBog) return res.status(503).json({code:'PAYMENT_PROVIDER_NOT_READY'});
+  try {
+    // A committed hold reserves its campaign budget; it must not reject itself
+    // as an already-used offer if recording the bank order needs a retry.
+    const heldOffer=reservation.status==='HELD' && reservation.specialOffer ? await storage.readTop15OfferData(activeTop15Offer,null) : null;
+    const currentQuote=heldOffer ? {amountMinor:heldOffer.amountMinor,currency:heldOffer.currency,specialOffer:offerSnapshot(heldOffer)} : await quoteTop15(reservation.cityId,reservation.professionId,craftsman.userId);
+    if (!currentQuote || !sameOffer(currentQuote.specialOffer,reservation.specialOffer) || currentQuote.specialOffer && currentQuote.amountMinor!==reservation.amountMinor) return res.status(409).json({code:'TOP15_PRICE_CHANGED',quote:currentQuote});
+  } catch(error) { return top15OfferFailure(res,error); }
   const currentListing = db.getCraftsmanListing(craftsman.id);
-  if (!currentListing || currentListing.status !== 'ACTIVE' || !coversTop15Term(currentListing.expiresAt, Date.now())) {
-    return res.status(403).json({ code: 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის 30 დღის დასაფარად განაახლეთ ხელოსნის განთავსება.' });
+  if (!currentListing || currentListing.status !== 'ACTIVE' || !currentListing.expiresAt || Date.parse(currentListing.expiresAt)<top15ServiceEnd(Date.now(),reservation.specialOffer)) {
+    return res.status(403).json({ code: reservation.specialOffer ? 'OFFER_LISTING_TERM_TOO_SHORT' : 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის სრული ვადის დასაფარად განაახლეთ ხელოსნის განთავსება.' });
   }
   const paymentProvider = db.providerConfig.payment.find(provider => provider.id === providerId && provider.isActive);
   if (!paymentProvider) {
@@ -2336,8 +2379,9 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
       .map(attempt => db.top15Reservations.get(attempt.reservationId))
       .filter((candidate): candidate is Top15Reservation => Boolean(candidate)))) return;
 
-    if (!paymentWindow.winnerIds?.has(reservationId)) {
+    if (!paymentWindow.winnerIds?.has(reservationId) || db.top15Reservations.get(reservationId)?.status!=='HELD') {
       reservation.status = 'CANCELLED';
+      if (reservation.specialOffer) return res.status(409).json({code:'TOP15_PRICE_CHANGED'});
       const { freeSlots } = db.getTop15Availability(reservation.cityId, reservation.professionId);
       return res.status(409).json({
         code: freeSlots === 0 ? 'TOP15_FULL' : 'TOP15_PAYMENT_LOST',
@@ -2354,10 +2398,10 @@ apiRouter.post(['/top15/pay', '/top15/purchase'], requireCraftsman, async (req: 
     if (!await saveReservationStates(res, () => [reservation])) return;
     return res.status(403).json({ code: 'NOT_A_CRAFTSMAN' });
   }
-  if (!listingAtCharge || listingAtCharge.status !== 'ACTIVE' || !coversTop15Term(listingAtCharge.expiresAt, Date.now())) {
+  if (!listingAtCharge || listingAtCharge.status !== 'ACTIVE' || !listingAtCharge.expiresAt || Date.parse(listingAtCharge.expiresAt)<top15ServiceEnd(Date.now(),reservation.specialOffer)) {
     reservation.status = 'CANCELLED';
     if (realBog && !await saveReservationStates(res, () => [reservation])) return;
-    return res.status(403).json({ code: 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის 30 დღის დასაფარად განაახლეთ ხელოსნის განთავსება. თანხა არ ჩამოგეჭრათ.' });
+    return res.status(403).json({ code: reservation.specialOffer ? 'OFFER_LISTING_TERM_TOO_SHORT' : 'LISTING_TERM_TOO_SHORT', message: 'Top 15-ის სრული ვადის დასაფარად განაახლეთ ხელოსნის განთავსება. თანხა არ ჩამოგეჭრათ.' });
   }
   if (realBog) {
     try { return res.status(202).json(await openBogCheckout({ kind: 'TOP15', craftsman, reservation, amountMinor: reservation.amountMinor, currency: reservation.currency })); }
@@ -3024,6 +3068,34 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
 });
 
 // GET /admin/top15/prices & /admin/prices
+apiRouter.get('/admin/top15/offers', requireSuperAdmin, async (_req, res) => {
+  try { res.set('Cache-Control','no-store').json(await storage.readTop15OfferData(listTop15Offers,[])); }
+  catch(error) { return top15OfferFailure(res,error); }
+});
+apiRouter.post('/admin/top15/offers', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled=true;
+  try {
+    const input=validateOfferInput(req.body);
+    const id=await storage.commitTop15Offer(sql=>saveTop15Offer(sql,req.user!.id,input));
+    return res.status(201).json({id});
+  } catch(error) { return top15OfferFailure(res,error); }
+});
+apiRouter.put('/admin/top15/offers/:id', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled=true;
+  try {
+    const input=validateOfferInput(req.body);
+    const id=await storage.commitTop15Offer(sql=>saveTop15Offer(sql,req.user!.id,input,req.params.id,req.body.version));
+    return res.json({id});
+  } catch(error) { return top15OfferFailure(res,error); }
+});
+apiRouter.patch('/admin/top15/offers/:id/status', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
+  res.locals.runtimeSnapshotHandled=true;
+  try {
+    await storage.commitTop15Offer(sql=>changeTop15OfferStatus(sql,req.user!.id,req.params.id,req.body.version,req.body.status));
+    return res.json({success:true});
+  } catch(error) { return top15OfferFailure(res,error); }
+});
+
 apiRouter.get(['/admin/top15/prices', '/admin/prices'], requireAdmin, (req, res) => {
   const list = Array.from(db.top15Prices.values());
   res.json(list);

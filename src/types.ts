@@ -108,6 +108,7 @@ export interface Top15Price {
 }
 
 export interface Top15Membership {
+  specialOffer?: import('../server/types.js').Top15OfferSnapshot | null;
   id: string;
   craftsmanId: string;
   cityId: string;

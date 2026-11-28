@@ -79,6 +79,7 @@ async function runMigrations() {
     '017_bog_payment_checkout.sql',
     '018_payment_credentials_secret_name.sql',
     '019_deployment_writer_fence.sql',
+    '020_top15_special_offers.sql',
   ];
 
   // Verify all files exist

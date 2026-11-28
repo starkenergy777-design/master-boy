@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "migrate": "tsx migrations/run-migrations.ts",
-    "audit": "node production-audit.mjs && tsc --ignoreConfig --target ES2022 --module ESNext --moduleResolution Bundler --skipLibCheck --esModuleInterop --outDir .audit-build server/routes.ts server/deployment-lifecycle.ts && node scripts/test-runtime-persistence.mjs && node scripts/test-auth-action-responsiveness.mjs && node scripts/test-craftsman-delete-persistence.mjs && node scripts/test-craftsman-actions.mjs && node scripts/test-craftsman-action-storage.mjs && node scripts/test-deployment-fence.mjs && node role-simulation.mjs",
+    "audit": "node production-audit.mjs && tsc --ignoreConfig --target ES2022 --module ESNext --moduleResolution Bundler --skipLibCheck --esModuleInterop --outDir .audit-build server/routes.ts server/deployment-lifecycle.ts && node scripts/test-runtime-persistence.mjs && node scripts/test-auth-action-responsiveness.mjs && node scripts/test-craftsman-delete-persistence.mjs && node scripts/test-craftsman-actions.mjs && node scripts/test-craftsman-action-storage.mjs && node scripts/test-deployment-fence.mjs && node role-simulation.mjs && node scripts/test-top15-offers.mjs",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },

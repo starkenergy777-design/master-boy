@@ -1,5 +1,6 @@
 import { formatLocalizedDate, formatLocalizedTime, localizeTree } from '../i18n.js';
 import React, { useState, useEffect } from 'react';
+import { Top15OfferPanel } from '../components/Top15OfferPanel.js';
 import {
   Key,
   Lock,
@@ -1493,6 +1494,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             {top15Busy ? '...' : 'Top 15-ის ფასის შენახვა'}
           </button>
         </form>
+        <Top15OfferPanel lang={lang} cities={top15Cities} professions={top15Professions} locked={configLock.locked} />
       </div>
 
       {/* 4. Mandatory Credential Migration */}
