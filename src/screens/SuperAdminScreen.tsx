@@ -20,10 +20,27 @@ import {
   Eye,
   EyeOff,
   Settings2,
+  ChevronDown,
 } from 'lucide-react';
 import { translations } from '../i18n.js';
 import { Language, User, Advertisement } from '../types.js';
 import { api } from '../api.js';
+
+const CabinetPanel: React.FC<{id:string;lang:Language;title:string;icon:React.ReactNode;open:boolean;onToggle:()=>void;children:React.ReactNode}> = ({id,lang,title,icon,open,onToggle,children}) => (
+  <section className={open ? 'min-w-0 space-y-3 @min-[640px]/superadmin:col-span-2' : 'min-w-0'}>
+    <button type="button" id={`superadmin-${id}-toggle`} aria-expanded={open} aria-controls={`superadmin-${id}-panel`} data-cabinet-tab="true" aria-pressed={open} onClick={onToggle}
+      style={{minHeight:'5rem'}} className="flex w-full items-center gap-3 rounded-2xl px-5 py-5 text-left text-base font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">
+      {icon}<span className="min-w-0 flex-1 break-words">{title}</span><ChevronDown aria-hidden="true" className={`h-5 w-5 transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} />
+    </button>
+    <div id={`superadmin-${id}-panel`} role="region" aria-labelledby={`superadmin-${id}-toggle`} hidden={!open}>{localizeTree(lang,children)}</div>
+  </section>
+);
+
+const cabinetPanelCopy = {
+  ka: {hint:'აირჩიეთ სამართავი განყოფილება',recipient:'გადახდის მიმღების რეკვიზიტები',listing:'ხელოსნის განცხადების ფასი',top15:'TOP 15 — ფასები და შეთავაზებები',credentials:'უსაფრთხოების მონაცემების განახლება',payments:'გადახდის სისტემების მართვა',advertisements:'სარეკლამო ბანერების მართვა',backend:'სერვერთან კავშირის მონაცემები',storage:'პარამეტრების მუდმივი შენახვა'},
+  ru: {hint:'Выберите раздел управления',recipient:'Реквизиты получателя платежа',listing:'Цена размещения мастера',top15:'TOP 15 — цены и предложения',credentials:'Обновление данных безопасности',payments:'Управление платёжными системами',advertisements:'Управление рекламными баннерами',backend:'Данные подключения к серверу',storage:'Постоянное хранение настроек'},
+  en: {hint:'Choose a management section',recipient:'Payment recipient details',listing:'Craftsman listing price',top15:'TOP 15 — prices and offers',credentials:'Security credential update',payments:'Payment system management',advertisements:'Advertisement management',backend:'Server connection details',storage:'Persistent settings storage'},
+} as const;
 
 const AgentMessageContent: React.FC<{ text: string }> = ({ text }) => <>{text}</>;
 
@@ -146,6 +163,9 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
   onOpenAdminTools,
 }) => {
   const t = translations[lang] || translations.ka;
+  const panelCopy = cabinetPanelCopy[lang];
+  const [openPanel,setOpenPanel] = useState<string|null>(null);
+  const togglePanel = (id:string) => setOpenPanel(current=>current===id ? null : id);
   const adminCopy = ({
     ka: {
       remove: 'ადმინისტრატორის წაშლა', confirmRemove: 'გაუუქმდეს ადმინისტრატორის წვდომა ამ ნომერს?', removed: 'ადმინისტრატორი წაიშალა.', removeError: 'წაშლა ვერ მოხერხდა.',
@@ -886,55 +906,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
 
   return localizeTree(lang, (
     <div className="superadmin-dashboard @container/superadmin min-w-0 relative isolate mx-auto flex w-full max-w-[1480px] flex-1 flex-col gap-5 px-4 pb-24 pt-5 text-slate-100 animate-fade-in">
-      {/* Cabinet identity and service overview */}
-      <header className="relative overflow-hidden rounded-[1.75rem] border border-cyan-400/20 bg-[radial-gradient(ellipse_at_top_right,_rgba(56,189,248,0.13),_transparent_46%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(17,24,39,0.96)_58%,_rgba(30,27,75,0.82))] p-5 shadow-[0_18px_50px_rgba(2,6,23,0.35)] @min-[640px]/superadmin:p-6">
-        <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full border border-cyan-300/10" />
-        <div className="pointer-events-none absolute right-8 top-8 h-32 w-32 rounded-full bg-cyan-400/5 blur-3xl" />
-        <div className="relative flex min-w-0 flex-col gap-5">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-400/10 text-cyan-200 shadow-inner shadow-cyan-100/5">
-              <ShieldAlert className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-bold tracking-tight text-white @min-[640px]/superadmin:text-2xl">
-                  <span>{t.superAdminCabinet}</span>
-                </h2>
-                <span className="max-w-full rounded-full border border-violet-300/25 bg-violet-400/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.14em] text-violet-200">
-                  SUPER_ADMIN
-                </span>
-              </div>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-300">
-                {lang === 'ka' ? 'სისტემის მართვა • უსაფრთხოება • ინტეგრაციები' : lang === 'ru' ? 'Система • безопасность • интеграции' : 'System control • security • integrations'}
-              </p>
-            </div>
-          </div>
-          <div className="relative flex min-w-0 flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${configLock.locked ? 'border-amber-400/25 bg-amber-400/10 text-amber-200' : 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200'}`}>
-                {configLock.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                {configLock.locked ? (lang === 'ka' ? 'ჩაკეტილია' : lang === 'ru' ? 'Заблокировано' : 'Locked') : (lang === 'ka' ? 'ღიაა' : lang === 'ru' ? 'Открыто' : 'Unlocked')}
-              </span>
-              <span className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${geminiStatus?.configured ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-100' : 'border-slate-600 bg-slate-800/70 text-slate-300'}`}>
-                <Cpu className="h-3.5 w-3.5" />
-                AI · {geminiStatus?.configured ? aiCopy.ready : aiCopy.missing}
-              </span>
-              {persistenceStatus && (
-                <span className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${persistenceStatus.databaseConnected ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100' : 'border-rose-400/25 bg-rose-400/10 text-rose-200'}`}>
-                  <CheckCircle className="h-3.5 w-3.5" />
-                  DB · {persistenceStatus.databaseConnected ? t.databaseConnected : t.databaseDisconnected}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={onOpenAdminTools}
-              className="min-h-10 shrink-0 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:border-cyan-200/40 hover:bg-cyan-300/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
-            >
-              {aiCopy.adminTools}
-            </button>
-          </div>
-        </div>
+      <header className="flex min-w-0 items-center gap-3 rounded-3xl border border-cyan-400/20 bg-slate-900/80 p-5">
+        <ShieldAlert className="h-7 w-7 text-cyan-200" />
+        <div className="min-w-0"><h2 className="text-xl font-bold text-white">{t.superAdminCabinet}</h2><p className="mt-1 text-sm text-slate-400">{panelCopy.hint}</p></div>
       </header>
+      <button type="button" onClick={onOpenAdminTools} style={{minHeight:'5rem'}} className="flex w-full items-center gap-3 rounded-2xl px-5 py-5 text-left text-base font-bold">
+        <Settings2 className="h-5 w-5" /><span className="min-w-0 flex-1 break-words">{aiCopy.adminTools}</span>
+      </button>
 
       {errorMsg && (
         <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-300 flex items-center gap-2">
@@ -950,6 +928,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         </div>
       )}
 
+      <CabinetPanel lang={lang} id="admins" title={adminCopy.title} icon={<ShieldAlert className="h-5 w-5" />} open={openPanel==='admins'} onToggle={()=>togglePanel('admins')}>
       <section className="superadmin-panel rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4">
         <div className="flex flex-col gap-3 @min-[640px]/superadmin:flex-row @min-[640px]/superadmin:items-center @min-[640px]/superadmin:justify-between">
           <div>
@@ -1060,9 +1039,11 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           )}
         </div>
       </section>
+      </CabinetPanel>
 
-      <div className="grid grid-cols-1 items-start gap-4 @min-[1280px]/superadmin:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 @min-[640px]/superadmin:grid-cols-2">
       {/* 1. Configuration Lock (§3.5 & §3.6) */}
+      <CabinetPanel lang={lang} id="lock" title={t.lockStatus} icon={<Lock className="h-5 w-5" />} open={openPanel==='lock'} onToggle={()=>togglePanel('lock')}>
       <div className="superadmin-panel rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1109,8 +1090,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </button>
         )}
       </div>
+      </CabinetPanel>
 
       {/* 2. AI provider setup: Gemini and OpenAI */}
+      <CabinetPanel lang={lang} id="ai" title={aiCopy.title} icon={<Cpu className="h-5 w-5" />} open={openPanel==='ai'} onToggle={()=>togglePanel('ai')}>
       <div className="superadmin-panel rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4">
         <div className="superadmin-action-row flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1194,9 +1177,11 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </button>
         </form>
       </div>
+      </CabinetPanel>
       </div>
 
       {/* Superadmin accountant/adviser: analysis preferences and chat */}
+      <CabinetPanel lang={lang} id="adviser" title={superAdminAgentCopy[lang].title} icon={<Cpu className="h-5 w-5" />} open={openPanel==='adviser'} onToggle={()=>togglePanel('adviser')}>
       <section className="superadmin-panel superadmin-panel-featured rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-5" aria-labelledby="superadmin-agent-title">
         <div className="superadmin-action-row flex items-start justify-between gap-3">
           <div>
@@ -1357,9 +1342,11 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           <p className="text-[10px] leading-relaxed text-slate-500">{superAdminAgentCopy[lang].privacy}</p>
         </div>
       </section>
+      </CabinetPanel>
 
-      <div className="grid grid-cols-1 items-start gap-4 @min-[1280px]/superadmin:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 @min-[640px]/superadmin:grid-cols-2">
       {/* 3. Recipient Account (§3.5) */}
+      <CabinetPanel lang={lang} id="recipient" title={panelCopy.recipient} icon={<Building2 className="h-5 w-5" />} open={openPanel==='recipient'} onToggle={()=>togglePanel('recipient')}>
       <div className="superadmin-panel rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4">
         <div className="flex items-center gap-2">
           <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
@@ -1418,8 +1405,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </button>
         </form>
       </div>
+      </CabinetPanel>
 
       {/* 4. Craftsman Listing Subscription Price (§6.6, R-25) */}
+      <CabinetPanel lang={lang} id="listing" title={panelCopy.listing} icon={<CreditCard className="h-5 w-5" />} open={openPanel==='listing'} onToggle={()=>togglePanel('listing')}>
       <div className="superadmin-panel rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4">
         <div className="superadmin-action-row flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1458,8 +1447,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </button>
         </form>
       </div>
+      </CabinetPanel>
 
       {/* Top 15 pricing beside standard listing pricing. */}
+      <CabinetPanel lang={lang} id="top15" title={panelCopy.top15} icon={<CreditCard className="h-5 w-5" />} open={openPanel==='top15'} onToggle={()=>togglePanel('top15')}>
       <div className="superadmin-panel rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4">
         <div className="flex items-center gap-2">
           <CreditCard className="w-5 h-5 text-amber-400" />
@@ -1496,10 +1487,12 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
         </form>
         <Top15OfferPanel lang={lang} cities={top15Cities} professions={top15Professions} locked={configLock.locked} />
       </div>
+      </CabinetPanel>
 
       {/* 4. Mandatory Credential Migration */}
       {bootstrapStatus?.bootstrapEnabled && (
-        <div className="superadmin-panel superadmin-panel-migration rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4 @min-[1280px]/superadmin:col-span-2">
+        <CabinetPanel lang={lang} id="credentials" title={panelCopy.credentials} icon={<Key className="h-5 w-5" />} open={openPanel==='credentials'} onToggle={()=>togglePanel('credentials')}>
+      <div className="superadmin-panel superadmin-panel-migration rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4 @min-[1280px]/superadmin:col-span-2">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-purple-400" />
             <div>
@@ -1554,11 +1547,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             </button>
           </form>
         </div>
+      </CabinetPanel>
       )}
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 @min-[1536px]/superadmin:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 @min-[640px]/superadmin:grid-cols-2">
       {/* 5. Payment Providers Configuration (BOG, TBC Bank, Stripe) */}
+      <CabinetPanel lang={lang} id="payments" title={panelCopy.payments} icon={<CreditCard className="h-5 w-5" />} open={openPanel==='payments'} onToggle={()=>togglePanel('payments')}>
       <div className="superadmin-panel rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1637,8 +1632,10 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           ))}
         </div>
       </div>
+      </CabinetPanel>
 
       {/* 6. Commercial Advertisements Management (§Task 10) */}
+      <CabinetPanel lang={lang} id="advertisements" title={panelCopy.advertisements} icon={<Megaphone className="h-5 w-5" />} open={openPanel==='advertisements'} onToggle={()=>togglePanel('advertisements')}>
       <div className="superadmin-panel rounded-3xl p-5 @min-[640px]/superadmin:p-6 space-y-4">
         <div className="superadmin-action-row flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1717,12 +1714,14 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
           </div>
         )}
       </div>
+      </CabinetPanel>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 @min-[1280px]/superadmin:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 @min-[640px]/superadmin:grid-cols-2">
       {/* 7. Signed Backend URL */}
       {backendConfig && (
-        <div className="superadmin-panel rounded-2xl p-4 text-xs space-y-2">
+        <CabinetPanel lang={lang} id="backend" title={panelCopy.backend} icon={<Link className="h-5 w-5" />} open={openPanel==='backend'} onToggle={()=>togglePanel('backend')}>
+      <div className="superadmin-panel rounded-2xl p-4 text-xs space-y-2">
           <div className="flex items-center gap-1.5 text-slate-400">
             <Link className="w-3.5 h-3.5 text-amber-400" />
             <span className="font-bold text-[11px]">Signed Backend URL</span>
@@ -1734,11 +1733,13 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             Signature: {backendConfig.signature}
           </p>
         </div>
+      </CabinetPanel>
       )}
 
       {/* 8. SuperAdmin Persistent Storage Status */}
       {persistenceStatus && (
-        <div className="superadmin-panel rounded-2xl border-emerald-400/20 p-4 text-xs space-y-2">
+        <CabinetPanel lang={lang} id="storage" title={panelCopy.storage} icon={<CheckCircle className="h-5 w-5" />} open={openPanel==='storage'} onToggle={()=>togglePanel('storage')}>
+      <div className="superadmin-panel rounded-2xl border-emerald-400/20 p-4 text-xs space-y-2">
           <div className="superadmin-action-row flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[11px]">
               <CheckCircle className="w-3.5 h-3.5" />
@@ -1755,6 +1756,7 @@ export const SuperAdminScreen: React.FC<SuperAdminScreenProps> = ({
             <span>სინქრონიზებული: {formatLocalizedTime(lang, persistenceStatus.lastCheck)}</span>
           </div>
         </div>
+      </CabinetPanel>
       )}
       </div>
 
