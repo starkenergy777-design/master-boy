@@ -4,6 +4,7 @@ import { sortProfessionsByDemand } from './professionOrder.js';
 import { decryptPaymentCredentials, encryptPaymentCredentials, PaymentCredentialKeyError, separatePaymentCredentials } from './payment-credentials.js';
 import type { PaymentIntent } from './types.js';
 import { DeploymentWriter } from './deployment-safety.js';
+import { assertTop15Capacity, claimPaidOffer, completeOfferUse, lockTop15Category, Top15OfferError } from './top15-offers.js';
 
 export type AiProvider = 'gemini' | 'openai';
 
@@ -491,8 +492,8 @@ export class StorageService {
       else if(name==='craftsmen') v={id:r.id,userId:r.user_id,name:r.name,description:r.description||'',phone:r.phone,phoneVisible:r.phone_visible,latitude:r.latitude==null?null:Number(r.latitude),longitude:r.longitude==null?null:Number(r.longitude),workingHours:r.working_hours,status:r.status,cityId:r.city_id,professionId:r.profession_id,bankAccount:r.bank_account,financialTermsVersion:r.financial_terms_version||null,financialTermsAcceptedAt:r.financial_terms_accepted_at?date(r.financial_terms_accepted_at):null,createdAt:date(r.created_at),updatedAt:date(r.updated_at),photos:r.photos||[]};
       else if(name==='craftsmanDrafts'){k=r.user_id;v={step:r.step,data:r.data||{},updatedAt:date(r.updated_at)};}
       else if(name==='top15Prices') v={cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,updatedAt:date(r.updated_at),updatedBy:r.updated_by||'system'};
-      else if(name==='top15Reservations') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,expiresAt:new Date(r.expires_at).getTime(),status:r.status==='CONFIRMED'?'PAID':r.status==='EXPIRED'?'EXPIRED':r.status==='CANCELLED'?'CANCELLED':r.status==='CANDIDATE'?'CANDIDATE':'HELD'};
-      else if(name==='top15Memberships') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,cityName:r.city_name,professionId:r.profession_id,professionName:r.profession_name,startsAt:date(r.starts_at),expiresAt:date(r.expires_at),status:r.status==='ACTIVE'?'ACTIVE':'EXPIRED'};
+      else if(name==='top15Reservations') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,professionId:r.profession_id,amountMinor:Number(r.amount_minor),currency:r.currency,expiresAt:new Date(r.expires_at).getTime(),status:r.status==='CONFIRMED'?'PAID':r.status==='EXPIRED'?'EXPIRED':r.status==='CANCELLED'?'CANCELLED':r.status==='CANDIDATE'?'CANDIDATE':'HELD',specialOffer:r.special_offer||null};
+      else if(name==='top15Memberships') v={id:r.id,craftsmanId:r.craftsman_id,cityId:r.city_id,cityName:r.city_name,professionId:r.profession_id,professionName:r.profession_name,startsAt:date(r.starts_at),expiresAt:date(r.expires_at),status:r.status==='ACTIVE'?'ACTIVE':'EXPIRED',specialOffer:r.special_offer||null};
       else if(name==='paymentIntents') v={id:r.id,reservationId:r.reservation_id,craftsmanId:r.craftsman_id||'',providerId:r.provider,amountMinor:Number(r.amount_minor),currency:r.currency,idempotencyKey:r.idempotency_key,status:r.status,createdAt:date(r.created_at),financialTermsVersion:r.financial_terms_version,financialTermsAcceptedAt:r.financial_terms_accepted_at?date(r.financial_terms_accepted_at):null,productType:r.product_type,serviceStartsAt:r.service_starts_at?date(r.service_starts_at):null,serviceEndsAt:r.service_ends_at?date(r.service_ends_at):null,bankPaymentId:r.provider_transaction_id,providerCheckout:r.provider_checkout};
       else if(name==='craftsmanListings') {
         k=r.craftsman_id;
@@ -558,6 +559,30 @@ export class StorageService {
     return next;
   }
 
+  async readTop15OfferData<T>(read: (sql: Pool) => Promise<T>, unavailable: T): Promise<T> {
+    if (!this.pool && process.env.NODE_ENV !== 'production') return unavailable;
+    return read(this.db());
+  }
+
+  commitTop15Offer<T>(write: (sql: PoolClient) => Promise<T>, publish: (value: T) => void = () => {}): Promise<T> {
+    const next = this.saveQueue.then(async () => {
+      if (!this.pool) throw new Top15OfferError('OFFER_STORAGE_REQUIRED',503);
+      const client = await this.db().connect();
+      try {
+        await client.query('BEGIN');
+        const value = await write(client);
+        await client.query('COMMIT');
+        publish(value);
+        return value;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally { client.release(); }
+    });
+    this.saveQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
   saveCraftsmanDraft(userId: string, draft: CraftsmanDraft, onSaved: () => void): Promise<void> {
     return this.commitCraftsmanAction(async client => {
       await client.query('INSERT INTO public.craftsman_drafts(user_id,step,data,updated_at) VALUES($1,$2,$3::jsonb,$4) ON CONFLICT(user_id) DO UPDATE SET step=EXCLUDED.step,data=EXCLUDED.data,updated_at=EXCLUDED.updated_at',
@@ -583,15 +608,44 @@ export class StorageService {
     return this.commitCraftsmanAction(async client => {
       await client.query("INSERT INTO public.top15_reservations(id,craftsman_id,city_id,profession_id,amount_minor,currency,expires_at,status) VALUES($1,$2,$3,$4,$5,$6,to_timestamp($7/1000.0),'CANDIDATE')",
         [reservation.id,reservation.craftsmanId,reservation.cityId,reservation.professionId,reservation.amountMinor,reservation.currency,reservation.expiresAt]);
+      if (reservation.specialOffer) await client.query('UPDATE public.top15_reservations SET special_offer=$2::jsonb WHERE id=$1',[reservation.id,JSON.stringify(reservation.specialOffer)]);
     }, onSaved);
   }
 
   saveTop15ReservationStates(current: () => Top15Reservation[]): Promise<void> {
+    const originals: Array<{reservation:Top15Reservation;status:Top15Reservation['status']}> = [];
     return this.commitCraftsmanAction(async client => {
+      const reservations=current();
+      const feature=(await client.query("SELECT to_regclass('public.top15_offers') AS relation")).rows[0]?.relation;
+      if (feature) {
+        const categories=[...new Set(reservations.map(r=>`${r.cityId}:${r.professionId}`))].sort();
+        for (const key of categories) {
+          const [cityId,professionId]=key.split(':');
+          await lockTop15Category(client,cityId,professionId);
+          const members=reservations.filter(r=>r.cityId===cityId && r.professionId===professionId);
+          const previous=await client.query('SELECT id,status FROM public.top15_reservations WHERE id=ANY($1::varchar[]) FOR UPDATE',[members.map(r=>r.id)]);
+          for (const row of previous.rows) originals.push({reservation:members.find(r=>r.id===row.id)!,status:row.status==='PENDING'?'HELD':row.status==='CONFIRMED'?'PAID':row.status});
+          const newHolds=members.filter(r=>r.status==='HELD' && originals.find(x=>x.reservation===r)?.status!=='HELD');
+          let available=15-(await assertTop15Capacity(client,cityId,professionId,members.map(r=>r.id)))-members.filter(r=>r.status==='HELD'&&!newHolds.includes(r)).length;
+          for (const reservation of newHolds) {
+            if(available<=0){reservation.status='CANCELLED';continue;}
+            if (reservation.specialOffer) {
+              const owner=await client.query('SELECT user_id FROM public.craftsmen WHERE id=$1',[reservation.craftsmanId]);
+              if (!owner.rows.length) {reservation.status='CANCELLED';continue;}
+              try {await claimPaidOffer(client,owner.rows[0].user_id,reservation);}
+              catch(error){if(error instanceof Top15OfferError){reservation.status='CANCELLED';continue;}throw error;}
+            }
+            available--;
+          }
+        }
+      }
       const changes = current().map(r => ({ id:r.id, status:r.status === 'HELD' ? 'PENDING' : r.status === 'PAID' ? 'CONFIRMED' : r.status, expires_at:r.expiresAt }));
       await client.query(`UPDATE public.top15_reservations AS r SET status=changes.status::reservation_status,expires_at=to_timestamp(changes.expires_at/1000.0)
         FROM jsonb_to_recordset($1::jsonb) AS changes(id text,status text,expires_at double precision) WHERE r.id=changes.id`, [JSON.stringify(changes)]);
-    }, () => {});
+    }, () => {}).catch(error => {
+      for (const original of originals) original.reservation.status=original.status;
+      throw error;
+    });
   }
 
   saveFreeCraftsmanRegistration(user: User, c: Craftsman, listing: CraftsmanListing, existingUser: boolean, onSaved: () => void): Promise<void> {
@@ -733,6 +787,12 @@ export class StorageService {
       const client = await this.db().connect();
       try {
         await client.query('BEGIN');
+        if (intent.providerCheckout?.specialOffer) {
+          const category=await client.query('SELECT city_id,profession_id FROM public.top15_reservations WHERE id=$1',[intent.reservationId]);
+          if (!category.rows.length) throw new Top15OfferError('RESERVATION_NOT_FOUND',404);
+          await lockTop15Category(client,category.rows[0].city_id,category.rows[0].profession_id);
+          await client.query('SELECT id FROM public.top15_offers WHERE id=$1 FOR UPDATE',[intent.providerCheckout.specialOffer.id]);
+        }
         const previous = await client.query('SELECT status, provider_transaction_id FROM public.payment_intents WHERE id=$1 FOR UPDATE', [intent.id]);
         if (previous.rows[0] && (previous.rows[0].status !== 'PENDING' ||
             (previous.rows[0].provider_transaction_id && previous.rows[0].provider_transaction_id !== intent.bankPaymentId))) {
@@ -772,6 +832,14 @@ export class StorageService {
         if (membership) await client.query(`INSERT INTO public.top15_memberships(id,craftsman_id,city_id,profession_id,payment_id,status,starts_at,expires_at,created_at)
           VALUES($1,$2,$3,$4,$5,'ACTIVE',$6,$7,$6)`,
           [membership.id,membership.craftsmanId,membership.cityId,membership.professionId,intent.id,membership.startsAt,membership.expiresAt]);
+        if (membership?.specialOffer) {
+          await client.query('UPDATE public.top15_memberships SET special_offer=$2::jsonb WHERE id=$1',[membership.id,JSON.stringify(membership.specialOffer)]);
+          const use=await client.query("SELECT user_id FROM public.top15_offer_uses WHERE reservation_id=$1 AND status='HELD'",[intent.reservationId]);
+          if (!use.rows.length) throw new Top15OfferError('OFFER_CLAIM_NOT_FOUND');
+          await completeOfferUse(client,membership.specialOffer.id,use.rows[0].user_id,membership);
+        } else if (intent.providerCheckout?.specialOffer && intent.status!=='PENDING') {
+          await client.query("UPDATE public.top15_offer_uses SET status='CANCELLED',updated_at=now() WHERE reservation_id=$1 AND status='HELD'",[intent.reservationId]);
+        }
         await client.query(`INSERT INTO public.payment_intents(id,reservation_id,craftsman_id,provider,amount_minor,currency,idempotency_key,status,provider_transaction_id,created_at,updated_at,
             financial_terms_version,financial_terms_accepted_at,product_type,service_starts_at,service_ends_at,provider_checkout)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8::payment_status,$9,$10,NOW(),$11,$12,$13,$14,$15,$16::jsonb)
@@ -841,7 +909,9 @@ export class StorageService {
 
   private async saveRows<T extends {id:string}>(client:PoolClient,table:string,rows:T[],values:(x:T)=>any[],sql:string):Promise<void> {
     for(const row of rows) await client.query(sql,values(row));
-    await client.query('DELETE FROM public.'+table+' WHERE NOT (id=ANY($1::text[]))',[rows.map((x)=>x.id)]);
+    // Offer audit entries are written transactionally alongside their durable
+    // campaign ledger, independently of the older in-memory audit collection.
+    await client.query('DELETE FROM public.'+table+' WHERE NOT (id=ANY($1::text[]))'+(table==='audit_logs'?" AND target_type IS DISTINCT FROM 'TOP15_OFFER'":''),[rows.map((x)=>x.id)]);
   }
 
   getStatus() { return { databaseConfigured:Boolean(this.pool), databaseConnected:this.connected }; }

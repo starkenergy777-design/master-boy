@@ -36,7 +36,7 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const [activeAd, setActiveAd] = useState<AdvertisementPublic | null>(null);
   const [merchantDisclosure, setMerchantDisclosure] = useState<any>(null);
-  const [top15Price, setTop15Price] = useState<{ amountMinor: number; currency: string } | null>(null);
+  const [top15Price, setTop15Price] = useState<{ amountMinor: number; currency: string; specialOffer?: import('../../server/types.js').Top15OfferSnapshot|null } | null>(null);
   const [top15PriceLoading, setTop15PriceLoading] = useState(true);
 
   const [editingProfile, setEditingProfile] = useState(false);
@@ -185,14 +185,16 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
     if (!cityId || !professionId) { setTop15PriceLoading(false); return; }
     let cancelled = false;
     setTop15PriceLoading(true);
-    api.getTop15Price(cityId, professionId).then(price => {
+    const loadPrice=()=>api.getTop15Price(cityId, professionId).then(price => {
       if (!cancelled && Number.isSafeInteger(price?.amountMinor) && price.amountMinor >= 0 && typeof price.currency === 'string' && price.currency.trim()) {
-        setTop15Price({ amountMinor: price.amountMinor, currency: price.currency });
+        setTop15Price({ amountMinor: price.amountMinor, currency: price.currency, specialOffer: price.specialOffer });
       }
     }).catch(() => {}).finally(() => {
       if (!cancelled) setTop15PriceLoading(false);
     });
-    return () => { cancelled = true; };
+    void loadPrice();
+    const timer=window.setInterval(()=>{if(!document.hidden)void loadPrice();},15000);
+    return () => { cancelled = true;window.clearInterval(timer); };
   }, [craftsman?.cityId, craftsman?.professionId]);
 
   useEffect(() => {
@@ -431,10 +433,10 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
           <h3 className="text-sm font-black text-white">{t.top15Badge}</h3>
         </div>
         <p className="text-xs text-slate-300 leading-relaxed">
-          {t.top15Desc}
+          {top15Price?.specialOffer ? t.top15Offer.offerTerms : t.top15Desc}
         </p>
         <p className="text-sm font-bold text-amber-300">
-          {top15Price && `${t.price}: `}{top15PriceLabel}{top15Price && ` / 30 ${lang === 'ka' ? 'დღე' : lang === 'ru' ? 'дней' : 'days'}`}
+          {top15Price && `${t.price}: `}{top15PriceLabel}{top15Price && ` / ${top15Price.specialOffer ? top15Price.specialOffer.durationMonths : 30} ${top15Price.specialOffer ? t.top15Offer.monthUnit : t.top15Offer.dayUnit}`}
         </p>
         <button
           onClick={onOpenTop15Purchase}
@@ -729,7 +731,8 @@ export const CraftsmanDashboard: React.FC<CraftsmanDashboardProps> = ({
                       </h4>
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      ვადა: {formatLocalizedDate(lang, m.expiresAt)}
+                      {m.specialOffer && <><span className="block">{t.top15Offer.start}: {formatLocalizedDate(lang,m.startsAt)}</span>{m.specialOffer.amountMinor===0&&<span className="block text-emerald-300">{t.top15Offer.free}</span>}</>}
+                      {t.top15Offer.end}: {formatLocalizedDate(lang, m.expiresAt)}
                     </p>
                   </div>
                   <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-500/30">

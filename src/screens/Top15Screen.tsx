@@ -1,7 +1,8 @@
 import { localizeTree } from '../i18n.js';
 import React, { useState, useEffect } from 'react';
 import { Star, Clock, ShieldCheck, CheckCircle2, AlertCircle, ChevronRight } from 'lucide-react';
-import { translations } from '../i18n.js';
+import { translations, formatLocalizedDateTime } from '../i18n.js';
+import type { Top15OfferSnapshot } from '../../server/types.js';
 import { Language, City, Profession } from '../types.js';
 import { redirectToBog } from '../bogCheckout.js';
 import { api } from '../api.js';
@@ -21,6 +22,8 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   onSuccess,
 }) => {
   const t = translations[lang] || translations.ka;
+  const offerText=t.top15Offer;
+  const period=(offer?:Top15OfferSnapshot|null)=>offer?`${offer.durationMonths} ${offerText.monthUnit}`:`30 ${offerText.dayUnit}`;
   const [cities, setCities] = useState<City[]>([]);
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [cityId, setCityId] = useState('');
@@ -28,8 +31,9 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   const professionDisplayNumber = getProfessionDisplayNumber(professions, professionId);
 
   // Flow State
-  const [availability, setAvailability] = useState<{ freeSlots: number; amountMinor: number; currency: string } | null>(null);
-  const [reservation, setReservation] = useState<{ reservationId: string; ttlSeconds: number; amountMinor: number; currency: string } | null>(null);
+  const [availability, setAvailability] = useState<{ freeSlots: number; amountMinor: number; currency: string; specialOffer?:Top15OfferSnapshot|null } | null>(null);
+  const [reservation, setReservation] = useState<{ reservationId: string; ttlSeconds: number; amountMinor: number; currency: string; specialOffer?:Top15OfferSnapshot|null } | null>(null);
+  const [freeMembership,setFreeMembership]=useState<{startsAt:string;expiresAt:string}|null>(null);
   const [countdown, setCountdown] = useState<number>(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -37,6 +41,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
 
   const [craftsmanProfile, setCraftsmanProfile] = useState<any>(null);
+  const displayedOffer=reservation ? reservation.specialOffer : availability?.specialOffer;
 
   useEffect(() => {
     async function loadMeta() {
@@ -64,9 +69,9 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   }, []);
 
   // Check Availability (§4.2 step 2)
-  const checkAvailability = async () => {
+  const checkAvailability = async (preserveError=false) => {
     if (!cityId || !professionId) return;
-    setErrorMsg('');
+    if(!preserveError) setErrorMsg('');
     try {
       setLoading(true);
       const res = await api.getTop15Availability(cityId, professionId);
@@ -89,6 +94,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
   useEffect(() => {
     if (!cityId || !professionId) return;
     const timer = window.setInterval(async () => {
+      if(document.hidden)return;
       try {
         const latest = await api.getTop15Availability(cityId, professionId);
         setAvailability(latest);
@@ -120,10 +126,11 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
 
   // Reserve Slot (§4.2 step 3 & 4)
   const handleReserve = async () => {
-    if (loading) return;
+    if (loading || !availability) return;
     setErrorMsg('');
     try {
       setLoading(true);
+      if(availability.amountMinor>0) {
       const provs = await api.getPaymentProviders();
       if (provs.length === 0) {
         setReservation(null);
@@ -134,12 +141,16 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
             : 'Top 15 online payment is not available yet; no slot was reserved.');
         return;
       }
-      const res = await api.reserveTop15Slot(cityId, professionId);
+      }
+      const res = await api.reserveTop15Slot(cityId, professionId,availability);
+      if(res.freeActivation && res.status==='SUCCEEDED') {
+        setFreeMembership(res.membership);setIsSuccess(true);return;
+      }
       setReservation(res);
       setCountdown(res.ttlSeconds || 180);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to reserve slot');
-      if (err.code === 'TOP15_FULL') void checkAvailability();
+      if (['TOP15_FULL','TOP15_PRICE_CHANGED','OFFER_EXHAUSTED','OFFER_ALREADY_USED','OFFER_LISTING_TERM_TOO_SHORT'].includes(err.code)) void checkAvailability(true);
     } finally {
       setLoading(false);
     }
@@ -176,6 +187,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
         ? (lang === 'ka' ? 'ონლაინ გადახდა ამჟამად მიუწვდომელია.' : lang === 'ru' ? 'Онлайн-оплата сейчас недоступна.' : 'Online payment is currently unavailable.')
         : (err.message || 'Payment failed');
       setErrorMsg(message + reference);
+      if(['TOP15_PRICE_CHANGED','OFFER_EXHAUSTED','OFFER_ALREADY_USED'].includes(err.code)) { setReservation(null);void checkAvailability(true); }
       if (err.code === 'TOP15_FULL' || err.code === 'TOP15_PAYMENT_LOST') {
         setReservation(null);
         setCountdown(0);
@@ -211,10 +223,12 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
           {lang === 'ka' ? 'გილოცავთ! TOP 15 გააქტიურებულია' : 'Success! Top 15 Activated'}
         </h2>
         <p className="text-xs text-slate-300 max-w-xs leading-relaxed">
-          {lang === 'ka'
+          {freeMembership ? offerText.free : lang === 'ka'
             ? 'თქვენი პროფილი გამოჩნდება რჩეულთა სიაში პრიორიტეტულად მომდევნო 30 დღის განმავლობაში.'
             : 'Your craftsman profile will be prioritized in the Top 15 block for the next 30 days.'}
         </p>
+
+        {freeMembership&&<div className="space-y-1 text-xs text-slate-200"><p>{offerText.active}</p><p>{offerText.start}: {formatLocalizedDateTime(lang,freeMembership.startsAt)}</p><p>{offerText.end}: {formatLocalizedDateTime(lang,freeMembership.expiresAt)}</p></div>}
 
         <button
           onClick={onSuccess}
@@ -236,7 +250,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
             <span>{t.reserveSlot}</span>
           </span>
           <span className="text-[11px] text-slate-400 font-medium">
-            30-დღიანი პრიორიტეტული განთავსება
+            {period(displayedOffer)}
           </span>
         </div>
 
@@ -247,7 +261,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
             <h3 className="text-sm font-black text-white">{t.top15Badge}</h3>
           </div>
           <p className="text-[11px] text-slate-300 leading-relaxed">
-            {t.top15Desc}
+            {displayedOffer ? offerText.offerTerms : t.top15Desc}
           </p>
         </div>
 
@@ -294,7 +308,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">{t.price}:</span>
                   <span className="font-bold text-white font-mono text-sm">
-                    {(availability.amountMinor / 100).toFixed(2)} {availability.currency} (30 დღე)
+                    {(availability.amountMinor / 100).toFixed(2)} {availability.currency} ({period(availability.specialOffer)})
                   </span>
                 </div>
 
@@ -304,13 +318,13 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
                     disabled={loading}
                     className="w-full mt-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold py-3 rounded-xl shadow text-xs transition-all active:scale-95 disabled:opacity-50"
                   >
-                    {loading ? '...' : `${t.reserveSlot} (3 min)`}
+                    {loading ? '...' : availability.amountMinor===0 ? offerText.freeActivate : `${t.reserveSlot} (3 min)`}
                   </button>
                 ) : (
                   <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-center text-rose-300 text-xs space-y-1">
                     <p className="font-bold">⚠️ Top 15 ამჟამად შევსებულია (15/15)</p>
                     <p className="text-[11px] text-slate-400">
-                      ადგილის შეძენის უფლება გექნებათ, როდესაც რომელიმე ხელოსანს გაუვა 30 დღიანი ვადა.
+                      {lang==='ka'?'ადგილი ხელმისაწვდომი გახდება მოქმედი წევრობის დასრულების შემდეგ.':lang==='ru'?'Место станет доступно после окончания действующего членства.':'A slot becomes available when an existing membership ends.'}
                     </p>
                   </div>
                 )}
@@ -346,6 +360,7 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
             </div>
 
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-300 space-y-2">
+              {reservation.specialOffer&&<p>{offerText.offerTerms} {period(reservation.specialOffer)}</p>}
               <button type="button" onClick={onOpenFinancialTerms} className="text-amber-400 underline text-left">{lang === 'ka' ? 'Top 15-ის გადახდისა და დაბრუნების წესები' : lang === 'ru' ? 'Правила оплаты и возврата Top 15' : 'Top 15 payment and refund terms'}</button>
             </div>
             <button
@@ -365,11 +380,11 @@ export const Top15Screen: React.FC<Top15ScreenProps> = ({
         )}
       </div>
 
-      <p className="text-center text-[11px] text-slate-500 pt-4">
+      {availability?.amountMinor!==0&&<p className="text-center text-[11px] text-slate-500 pt-4">
         {lang === 'ka'
           ? 'გადახდის მოთხოვნების 10-წამიანი რიგი • გამარჯვებულს დაეკავება ადგილი'
           : '10-second payment request window • the first request gets the slot'}
-      </p>
+      </p>}
     </div>
   ));
 };

@@ -163,6 +163,7 @@ export interface Top15Price {
 }
 
 export interface Top15Reservation {
+  specialOffer?: Top15OfferSnapshot | null;
   id: string;
   craftsmanId: string;
   cityId: string;
@@ -174,6 +175,7 @@ export interface Top15Reservation {
 }
 
 export interface Top15Membership {
+  specialOffer?: Top15OfferSnapshot | null;
   id: string;
   craftsmanId: string;
   cityId: string;
@@ -183,6 +185,26 @@ export interface Top15Membership {
   startsAt: string;
   expiresAt: string;
   status: 'ACTIVE' | 'EXPIRED';
+}
+
+export interface Top15OfferSnapshot {
+  id: string;
+  version: number;
+  amountMinor: number;
+  currency: string;
+  durationMonths: number;
+}
+
+export interface Top15Offer extends Top15OfferSnapshot {
+  cityId: string | null;
+  professionId: string | null;
+  limit: number;
+  used: number;
+  pending: number;
+  remaining: number;
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PaymentProvider {
@@ -213,6 +235,7 @@ export interface PaymentIntent {
 }
 
 export interface BogCheckout {
+  specialOffer?: Top15OfferSnapshot | null;
   kind: 'REGISTRATION' | 'LISTING' | 'TOP15';
   environment: 'live' | 'sandbox';
   redirectUrl?: string;
