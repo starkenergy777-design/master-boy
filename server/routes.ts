@@ -2981,7 +2981,7 @@ apiRouter.put(['/admin/users/:id/unblock', '/admin/craftsmen/:id/unblock'], requ
 });
 
 // DELETE /admin/craftsmen/:id & /admin/users/:id
-apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, async (req: AuthRequest, res) => {
+async function deleteManagedAccount(req: AuthRequest, res: Response) {
   // This handler commits its own transaction before responding.
   res.locals.runtimeSnapshotHandled = true;
   let craftsman = db.craftsmen.get(req.params.id);
@@ -2998,8 +2998,9 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
     : craftsman ? [craftsman] : [];
   const targetCraftsmen = affectedCraftsmen.length ? affectedCraftsmen : craftsman ? [craftsman] : [];
   const isCraftsmanAccount = targetCraftsmen.length > 0 || user?.roles.includes('CRAFTSMAN') === true;
+  const isAdminAccount = user?.roles.includes('ADMIN') === true;
 
-  if (!isCraftsmanAccount && user?.status === 'DELETED') {
+  if (!isCraftsmanAccount && !isAdminAccount && user?.status === 'DELETED') {
     return res.json({ success: true, alreadyDeleted: true });
   }
 
@@ -3018,32 +3019,18 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
     id: `audit-${crypto.randomUUID()}`,
     actorType: 'USER' as const,
     actorId: req.user!.id,
-    action: 'DELETE_CRAFTSMAN',
+    action: isAdminAccount ? 'REMOVE_ADMIN' : 'DELETE_CRAFTSMAN',
     targetType: isCraftsmanAccount ? 'CRAFTSMAN' as const : 'USER' as const,
     targetId: craftsman ? craftsman.id : (user ? user.id : req.params.id),
-    reason: isCraftsmanAccount ? 'Craftsman profile permanently deleted' : undefined,
+    reason: isAdminAccount ? 'Administrator account permanently deleted' : isCraftsmanAccount ? 'Craftsman profile permanently deleted' : undefined,
     createdAt: new Date().toISOString(),
   };
 
-  if (isCraftsmanAccount) {
+  if (isCraftsmanAccount || isAdminAccount) {
     try {
       await storage.deleteCraftsmanAccount([...craftsmanIds], [...userIds], auditEntry, hasPendingPayment, () => {
         // Publish only after commit, inside the same queue as runtime snapshots.
-        for (const id of craftsmanIds) db.craftsmen.delete(id);
-        for (const [id, listing] of db.craftsmanListings) if (craftsmanIds.has(listing.craftsmanId)) db.craftsmanListings.delete(id);
-        for (const [id, reservation] of db.top15Reservations) if (craftsmanIds.has(reservation.craftsmanId)) db.top15Reservations.delete(id);
-        for (const [id, membership] of db.top15Memberships) if (craftsmanIds.has(membership.craftsmanId)) db.top15Memberships.delete(id);
-        for (const [id, payment] of db.paymentIntents) {
-          if (payment.craftsmanId != null && craftsmanIds.has(payment.craftsmanId)) db.paymentIntents.set(id, { ...payment, craftsmanId: '' });
-        }
-        // Drafts are keyed by user ID, not by a field inside the draft.
-        for (const id of userIds) {
-          db.craftsmanDrafts.delete(id);
-          db.users.delete(id);
-          revokeUserSessions(id);
-        }
-        db.supportMessages = db.supportMessages.filter(message => !craftsmanIds.has(message.craftsmanId));
-        db.aiReports = db.aiReports.filter(report => !report.craftsmanId || !craftsmanIds.has(report.craftsmanId));
+        db.forgetDeletedAccount(craftsmanIds, userIds);
         db.auditLog.unshift(auditEntry);
       });
     } catch (error: any) {
@@ -3064,8 +3051,9 @@ apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, asy
     })) return;
   }
 
-  res.json({ success: true, deletedFromDatabase: isCraftsmanAccount });
-});
+  res.json({ success: true, deletedFromDatabase: isCraftsmanAccount || isAdminAccount });
+}
+apiRouter.delete(['/admin/craftsmen/:id', '/admin/users/:id'], requireAdmin, deleteManagedAccount);
 
 // GET /admin/top15/prices & /admin/prices
 apiRouter.get('/admin/top15/offers', requireSuperAdmin, async (_req, res) => {
@@ -3902,26 +3890,13 @@ apiRouter.post('/admin/admins', requireSuperAdmin, checkConfigLock, async (req: 
 // DELETE /admin/admins/:id (Protected by config lock!)
 apiRouter.delete('/admin/admins/:id', requireSuperAdmin, checkConfigLock, async (req: AuthRequest, res) => {
   const user = db.users.get(req.params.id);
-  if (!user || !user.roles.includes('ADMIN') || user.status === 'DELETED') {
+  if (!user || !user.roles.includes('ADMIN')) {
     return res.status(404).json({ code: 'NOT_FOUND', message: 'Administrator not found.' });
   }
   if (user.id === req.user!.id || user.roles.includes('SUPER_ADMIN')) {
     return res.status(403).json({ code: 'FORBIDDEN', message: 'Protected account.' });
   }
-  const otherRoles = user.roles.filter(role => role !== 'ADMIN');
-  const updated: User = otherRoles.length ? { ...user, roles: otherRoles } : { ...user, status: 'DELETED' };
-  db.users.set(user.id, updated);
-  const sessions = Array.from(db.sessions.entries()).filter(([, session]) => session.userId === user.id);
-  revokeUserSessions(user.id);
-  const entry = { id: crypto.randomUUID(), actorType: 'USER' as const, actorId: req.user!.id,
-    action: 'REMOVE_ADMIN', targetType: 'USER', targetId: user.id, reason: 'Removed administrator access', createdAt: new Date().toISOString() };
-  db.auditLog.unshift(entry);
-  if (!await persistAdminMutation(res, () => {
-    db.users.set(user.id, user);
-    for (const [token, session] of sessions) db.sessions.set(token, session);
-    db.auditLog = db.auditLog.filter(item => item !== entry);
-  })) return;
-  res.json({ success: true });
+  return deleteManagedAccount(req, res);
 });
 
 // PUT /admin/config/backend-url (§16.4; Protected by config lock!)

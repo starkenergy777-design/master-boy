@@ -754,6 +754,7 @@ export class StorageService {
         await client.query('DELETE FROM public.ai_reports WHERE craftsman_id=ANY($1::text[])', [craftsmanIds]);
         await client.query('DELETE FROM public.craftsmen WHERE id=ANY($1::text[])', [craftsmanIds]);
         await client.query('DELETE FROM public.craftsman_drafts WHERE user_id=ANY($1::text[])', [userIds]);
+        await client.query('UPDATE public.top15_prices SET updated_by=NULL WHERE updated_by=ANY($1::text[])', [userIds]);
         await client.query('DELETE FROM public.users WHERE id=ANY($1::text[])', [userIds]);
         await client.query('INSERT INTO public.audit_logs(id,actor_type,actor_id,action,target_type,target_id,reason,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
           [audit.id,audit.actorType,audit.actorId,audit.action,audit.targetType,audit.targetId,audit.reason ?? null,audit.createdAt]);
